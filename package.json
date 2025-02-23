@@ -1,0 +1,13 @@
+{
+  "name": "github-project-tool",
+  "version": "1.0.0",
+  "description": "CLI tool that manages GitHub Project v2 boards",
+  "main": "index.js",
+  "bin": {
+    "github-project": "index.js"
+  },
+  "dependencies": {
+    "commander": "^9.0.0",
+    "@octokit/graphql": "^4.8.0"
+  }
+}
