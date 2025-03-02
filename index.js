@@ -1,7 +1,20 @@
 #!/usr/bin/env node
 
 const { program } = require('commander');
-const { graphql } = require('@octokit/graphql');
+const { graphQLWithAuth, fetchPaginated } = require('./api');
+const {
+  LIST_PROJECTS_REPO_QUERY,
+  LIST_PROJECTS_ORG_QUERY,
+  REPO_ID_QUERY,
+  CREATE_PROJECT_MUTATION,
+  DELETE_PROJECT_MUTATION,
+  UPDATE_PROJECT_MUTATION,
+  LIST_ITEMS_QUERY,
+  LIST_FIELDS_QUERY,
+  SHOW_FIELD_QUERY,
+  LIST_ITEMS_WITH_LABELS_QUERY,
+  UPDATE_ITEM_FIELD_MUTATION
+} = require('./project');
 
 // Ensure GitHub token is set in environment variables
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
@@ -10,507 +23,507 @@ if (!GITHUB_TOKEN) {
   process.exit(1);
 }
 
-// Configure graphql client with authentication
-const graphQLWithAuth = graphql.defaults({
-  headers: {
-    authorization: `bearer ${GITHUB_TOKEN}`
-  }
-});
+//---------------------------------------------------------------------
+// Extracted command handlers for testability
 
-// Updated pagination logic for 'list' command to fetch all projects via pagination
-program
-  .command('list')
-  .description('List all GitHub Project v2 boards for a repository (if --repo is provided) or for an organization (if --repo is omitted)')
-  .requiredOption('--owner <owner>', 'GitHub repository owner or organization login')
-  .option('--repo <repo>', 'GitHub repository name (omit to list organization projects)')
-  .option('--limit <limit>', 'Number of boards to fetch per page', '10')
-  .option('--cursor <cursor>', 'Pagination cursor to start from')
-  .action(async (options) => {
-    const first = parseInt(options.limit, 10);
-    let after = options.cursor || null;
-    let allProjects = [];
+// Added helper function to create ANSI clickable hyperlink for issues
+function makeIssueLink(repo, number, title) {
+  return `\u001b]8;;http://github.com/giantswarm/${repo}/issues/${number}\u0007${title}\u001b]8;;\u0007`;
+}
 
-    if (options.repo) {
-      // Query for repository projects with pagination
-      const query = `
-        query ($owner: String!, $repo: String!, $first: Int!, $after: String) {
-          repository(owner: $owner, name: $repo) {
-            projectsV2(first: $first, after: $after) {
-              nodes {
-                id
-                title
-                number
-              }
-              pageInfo {
-                endCursor
-                hasNextPage
-              }
-            }
-          }
-        }
-      `;
-
-      try {
-        do {
-          const result = await graphQLWithAuth(query, {
-            owner: options.owner,
-            repo: options.repo,
-            first,
-            after
-          });
-          const data = result.repository.projectsV2;
-          allProjects.push(...data.nodes);
-          after = data.pageInfo.hasNextPage ? data.pageInfo.endCursor : null;
-        } while (after);
-
-        if (allProjects.length === 0) {
-          console.log(`No Project v2 boards found in repository ${options.owner}/${options.repo}`);
-        } else {
-          console.log(`Project v2 boards in repository ${options.owner}/${options.repo}:`);
-          allProjects.forEach(project => {
-            console.log(`- [#${project.number}] ${project.title} (ID: ${project.id})`);
-          });
-          console.log(`Fetched a total of ${allProjects.length} board(s).`);
-        }
-      } catch (error) {
-        console.error('Error fetching Project v2 boards for repository:', error.message);
+async function listProjects(options) {
+  const first = 100; // Always use pagination limit 100
+  if (options.repo) {
+    try {
+      const allProjects = await fetchPaginated(
+        LIST_PROJECTS_REPO_QUERY,
+        { owner: options.owner, repo: options.repo, first },
+        result => result.repository.projectsV2
+      );
+      if (allProjects.length === 0) {
+        console.log(`No Project v2 boards found in repository ${options.owner}/${options.repo}`);
+      } else {
+        console.log(`Project v2 boards in repository ${options.owner}/${options.repo}:`);
+        allProjects.forEach(project => {
+          console.log(`- [#${project.number}] ${project.title} (ID: ${project.id})`);
+        });
+        console.log(`Fetched a total of ${allProjects.length} board(s).`);
       }
+    } catch (error) {
+      console.error('Error fetching Project v2 boards for repository:', error.message);
+    }
+  } else {
+    try {
+      const allProjects = await fetchPaginated(
+        LIST_PROJECTS_ORG_QUERY,
+        { org: options.owner, first },
+        result => result.organization.projectsV2
+      );
+      if (allProjects.length === 0) {
+        console.log(`No Project v2 boards found for organization ${options.owner}`);
+      } else {
+        console.log(`Project v2 boards for organization ${options.owner}:`);
+        allProjects.forEach(project => {
+          console.log(`- [#${project.number}] ${project.title} (ID: ${project.id})`);
+        });
+        console.log(`Fetched a total of ${allProjects.length} board(s).`);
+      }
+    } catch (error) {
+      console.error('Error fetching Project v2 boards for organization:', error.message);
+    }
+  }
+}
+
+async function createProject(options) {
+  try {
+    const repoResult = await graphQLWithAuth(REPO_ID_QUERY, {
+      owner: options.owner,
+      repo: options.repo
+    });
+    const repositoryId = repoResult.repository.id;
+    if (!repositoryId) {
+      console.error('Repository not found.');
+      return;
+    }
+    const result = await graphQLWithAuth(CREATE_PROJECT_MUTATION, {
+      repositoryId,
+      title: options.title
+    });
+    const project = result.createProjectV2.projectV2;
+    console.log(`Created Project v2 board: [ID: ${project.id}] ${project.title}`);
+  } catch (error) {
+    console.error('Error creating Project v2 board:', error.message);
+  }
+}
+
+async function deleteProject(options) {
+  try {
+    await graphQLWithAuth(DELETE_PROJECT_MUTATION, { projectId: options.id });
+    console.log(`Deleted Project v2 board with ID ${options.id}`);
+  } catch (error) {
+    console.error('Error deleting Project v2 board:', error.message);
+  }
+}
+
+async function updateProject(options) {
+  try {
+    const result = await graphQLWithAuth(UPDATE_PROJECT_MUTATION, {
+      projectId: options.id,
+      title: options.title
+    });
+    const project = result.updateProjectV2.projectV2;
+    console.log(`Updated Project v2 board: [ID: ${project.id}] ${project.title}`);
+  } catch (error) {
+    console.error('Error updating Project v2 board:', error.message);
+  }
+}
+
+// Updating listItems function
+async function listItems(options) {
+  const first = 100; // Always use pagination limit 100
+  try {
+    const allItems = await fetchPaginated(
+      LIST_ITEMS_QUERY,
+      { projectId: options.id, first },
+      result => result.node.items
+    );
+    if (allItems.length === 0) {
+      console.log(`No items found in board with ID ${options.id}`);
     } else {
-      // Query for organization projects with pagination
-      const query = `
-        query ($org: String!, $first: Int!, $after: String) {
-          organization(login: $org) {
-            projectsV2(first: $first, after: $after) {
-              nodes {
-                id
-                title
-                number
+      console.log(`Items in board [ID: ${options.id}]:`);
+      allItems.forEach(item => {
+        let output = `- [${item.id}] `;
+        if (item.content && item.content.__typename === 'Issue') {
+          const title = item.content.title || 'No title';
+          let number = '';
+          let repo = '';
+          if (item.fieldValues && item.fieldValues.nodes) {
+            item.fieldValues.nodes.forEach(fv => {
+              if ('number' in fv && fv.number) {
+                number = fv.number;
               }
-              pageInfo {
-                endCursor
-                hasNextPage
+              if (fv.repository && fv.repository.name) {
+                repo = fv.repository.name;
               }
-            }
+            });
           }
-        }
-      `;
-
-      try {
-        do {
-          const result = await graphQLWithAuth(query, {
-            org: options.owner,
-            first,
-            after
-          });
-          const data = result.organization.projectsV2;
-          allProjects.push(...data.nodes);
-          after = data.pageInfo.hasNextPage ? data.pageInfo.endCursor : null;
-        } while (after);
-
-        if (allProjects.length === 0) {
-          console.log(`No Project v2 boards found for organization ${options.owner}`);
+          output += `${makeIssueLink(repo, number, title)} ${number ? `#${number}` : ''} (${repo})`;
         } else {
-          console.log(`Project v2 boards for organization ${options.owner}:`);
-          allProjects.forEach(project => {
-            console.log(`- [#${project.number}] ${project.title} (ID: ${project.id})`);
-          });
-          console.log(`Fetched a total of ${allProjects.length} board(s).`);
+          const title = (item.content && item.content.title) ? item.content.title : 'No title';
+          output += title;
         }
-      } catch (error) {
-        console.error('Error fetching Project v2 boards for organization:', error.message);
+        console.log(output);
+      });
+      console.log(`Fetched a total of ${allItems.length} item(s).`);
+    }
+  } catch (error) {
+    console.error('Error fetching items for board:', error.message);
+  }
+}
+
+async function listFields(options) {
+  const first = 100; // Always use pagination limit 100
+  try {
+    const allFields = await fetchPaginated(
+      LIST_FIELDS_QUERY,
+      { projectId: options.id, first },
+      result => result.node.fields
+    );
+    if (allFields.length === 0) {
+      console.log(`No fields found in board with ID ${options.id}`);
+    } else {
+      console.log(`Fields in board [ID: ${options.id}]:`);
+      allFields.forEach(field => {
+        let fieldInfo = `Type: ${field.__typename}`;
+        if (field.id && field.name) {
+          fieldInfo += `, Name: ${field.name}`;
+        }
+        if (field.dataType) {
+          fieldInfo += `, DataType: ${field.dataType}`;
+        }
+        if (field.__typename === 'ProjectV2SingleSelectField' && field.options) {
+          fieldInfo += `, Options: ${field.options.map(o => o.name).join(', ')}`;
+        }
+        console.log(`- [${field.id || 'N/A'}] ${fieldInfo}`);
+      });
+      console.log(`Fetched a total of ${allFields.length} field(s).`);
+    }
+  } catch (error) {
+    console.error('Error fetching fields for board:', error.message);
+  }
+}
+
+async function showField(options) {
+  const first = 100; // Always use pagination limit 100
+  try {
+    const allFields = await fetchPaginated(
+      SHOW_FIELD_QUERY,
+      { projectId: options.project, first },
+      result => result.node.fields
+    );
+    const field = allFields.find(f => f.id === options.field);
+    if (!field) {
+      console.log(`Field with ID ${options.field} not found in project ${options.project}.`);
+      return;
+    }
+    console.log(`Details for field [ID: ${field.id}]:`);
+    console.log(`- Type: ${field.__typename}`);
+    console.log(`- Name: ${field.name}`);
+    console.log(`- DataType: ${field.dataType}`);
+    if (field.__typename === 'ProjectV2SingleSelectField' && field.options) {
+      console.log(`- Options:`);
+      field.options.forEach(option => {
+        console.log(`   - [${option.id}] ${option.name} (Color: ${option.color}, Description: ${option.description})`);
+      });
+    } else if (field.__typename === 'ProjectV2IterationField' && field.configuration) {
+      console.log(`- Configuration:`);
+      console.log(`   - Duration: ${field.configuration.duration}`);
+      console.log(`   - Start Day: ${field.configuration.startDay}`);
+      if (field.configuration.iterations) {
+        console.log(`   - Iterations:`);
+        field.configuration.iterations.forEach(iteration => {
+          console.log(`      - [${iteration.id}] ${iteration.title} (Duration: ${iteration.duration}, Start: ${iteration.startDate})`);
+        });
       }
     }
-  });
+  } catch (error) {
+    console.error('Error fetching field details:', error.message);
+  }
+}
 
-// Updated command to create a new GitHub Project v2 board
+// Updating filterItems function
+async function filterItems(options) {
+  const first = 100; // Always use pagination limit 100
+  try {
+    const allItems = await fetchPaginated(
+      LIST_ITEMS_QUERY,
+      { projectId: options.id, first },
+      result => result.node.items
+    );
+
+    // Build filter criteria from options for keys: kind, status, function, sig, wg
+    // Exclude team if --no-team flag is provided
+    const filters = {};
+    ['kind', 'status', 'function', 'sig', 'wg'].forEach(key => {
+      if (options[key]) {
+        if (key === 'wg') {
+          filters['working group'] = options[key].toLowerCase();
+        } else {
+          filters[key.toLowerCase()] = options[key].toLowerCase();
+        }
+      }
+    });
+
+    const filtered = allItems.filter(item => {
+      // Log entire item id and fieldValues for debugging
+      if (!item.fieldValues || !item.fieldValues.nodes) {
+        console.error(`DEBUG: No fieldValues or nodes for item ${item.id}`);
+        return false;
+      }
+
+      // Check for --no-team flag
+      if (options.team === false) {
+        const hasTeam = item.fieldValues.nodes.some(node => {
+          console.log(node);
+          if (!node.field) {
+            console.error(`DEBUG: Missing field in node for item ${item.id}: ${JSON.stringify(node)}`);
+            return false;
+          }
+          return node.field.name && node.field.name.toLowerCase() === 'team' && typeof node.name === 'string' && node.name.trim() !== '';
+        });
+        if (hasTeam) {
+          return false;
+        }
+      } else if (options.team) {
+        filters['team'] = options.team.toLowerCase();
+      }
+
+      try {
+        return Object.entries(filters).every(([filterKey, filterValue]) => {
+          const matchingField = item.fieldValues.nodes.find(node => {
+            if (!node.field) {
+              console.error(`DEBUG: Missing field in node for filterKey '${filterKey}' in item ${item.id}: ${JSON.stringify(node)}`);
+              return false;
+            }
+            return node.field.name && node.field.name.toLowerCase() === filterKey && typeof node.name === 'string';
+          });
+          if (!matchingField) {
+            console.error(`DEBUG: No matching field for '${filterKey}' in item ${item.id}. Node details: ${JSON.stringify(item.fieldValues.nodes)}`);
+            return false;
+          }
+          const fieldName = matchingField.name;
+          if (!fieldName) {
+            console.error(`DEBUG: Matching field for '${filterKey}' in item ${item.id} has no 'name'. Node: ${JSON.stringify(matchingField)}`);
+            return false;
+          }
+          return fieldName.toLowerCase() === filterValue;
+        });
+      } catch (e) {
+        console.error(`DEBUG: Exception while processing filters for item ${item.id}: ${e}`);
+        return false;
+      }
+    });
+
+    if (filtered.length === 0) {
+      console.log(`No items found matching provided filters.`);
+    } else {
+      console.log(`Filtered items:`);
+      filtered.forEach(item => {
+        let output = `- [${item.id}] `;
+        
+        // test if item.content exists and isn't empty 
+        if (item.content && Object.keys(item.content).length > 0) {
+          const title = item.content.title || 'No title';
+          const number = item.content.number || '';
+          const repo = item.content.repository.name || '';
+
+          output += `${makeIssueLink(repo, number, title)} ${number ? `#${number}` : ''} (${repo})`;
+        } else {
+          const title = (item.content && item.content.title) ? item.content.title : 'No title';
+          output += title;
+        }
+        console.log(output);
+      });
+      console.log(`Fetched a total of ${filtered.length} filtered item(s).`);
+    }
+  } catch (error) {
+    console.error('Error filtering items:', error.message);
+  }
+}
+
+// Function to fix team fields based on team labels
+async function fixTeamField(options) {
+  const first = 100; // Always use pagination limit 100
+  try {
+    // 1. Get all project items with labels
+    const allItems = await fetchPaginated(
+      LIST_ITEMS_WITH_LABELS_QUERY,
+      { projectId: options.id, first },
+      result => result.node.items
+    );
+    
+    // 2. Get team field and its options
+    const allFields = await fetchPaginated(
+      LIST_FIELDS_QUERY,
+      { projectId: options.id, first },
+      result => result.node.fields
+    );
+    
+    const teamField = allFields.find(field => 
+      field.__typename === 'ProjectV2SingleSelectField' && 
+      field.name.toLowerCase() === 'team'
+    );
+    
+    if (!teamField) {
+      console.log('No team field found in this project.');
+      return;
+    }
+    
+    console.log(`Found team field: ${teamField.id}`);
+    
+    // 3. Filter items that don't have team field set
+    const itemsWithoutTeam = allItems.filter(item => {
+      if (!item.fieldValues || !item.fieldValues.nodes) return true;
+      
+      return !item.fieldValues.nodes.some(node => {
+        return node.field && 
+          node.field.name && 
+          node.field.name.toLowerCase() === 'team' && 
+          typeof node.name === 'string' && 
+          node.name.trim() !== ''
+      });
+    });
+    
+    console.log(`Found ${itemsWithoutTeam.length} items without team field set.`);
+    
+    // 4. Process each item, check labels and update team field
+    let updatedCount = 0;
+    for (const item of itemsWithoutTeam) {
+      // Ensure the item is an issue or pull request with labels
+      if (!item.content ||
+          !item.content.labels ||
+          !item.content.labels.nodes) {
+        continue;
+      }
+      
+      // Look for a team label (e.g., "team/honeybadger")
+      const teamLabels = item.content.labels.nodes.filter(label => 
+        label.name.toLowerCase().startsWith('team/')
+      );
+      
+      if (teamLabels.length === 0) continue;
+      if (teamLabels.length > 1) continue;
+      
+      // Use the first team label
+      const teamLabel = teamLabels[0];
+      var teamName = teamLabel.name.substring(5); // remove 'team/'
+
+      if (teamName === "honeybadger") {
+        teamName = "honey badger";
+      }
+      if (teamName === "team") {
+        teamName = "up";
+      }
+      
+      // Find matching team option in the single select field
+      const teamOption = teamField.options.find(option => {
+        const optionNameLower = option.name.toLowerCase().replace(/[^\x00-\x7F]/g, '').trim();
+        const teamNameLower = teamName.toLowerCase().trim();
+        return optionNameLower.includes(teamNameLower) || teamNameLower.includes(optionNameLower);
+      });
+      
+      if (!teamOption) {
+        console.log(`Could not find matching team option for label "${teamLabel.name}" on issue #${item.content.number}`);
+        continue;
+      }
+      
+      // Update team field with the found team option ID
+      try {
+        await graphQLWithAuth(UPDATE_ITEM_FIELD_MUTATION, {
+          projectId: options.id,
+          itemId: item.id,
+          fieldId: teamField.id,
+          value: { singleSelectOptionId: teamOption.id }
+        });
+        
+        updatedCount++;
+        console.log(`Updated team for issue #${item.content.number} to "${teamOption.name}"`);
+      } catch (error) {
+        console.error(`Error updating team for issue #${item.content.number}:`, error.message);
+      }
+    }
+    
+    console.log(`Updated team field for ${updatedCount} issues.`);
+    
+  } catch (error) {
+    console.error('Error fixing team fields:', error.message);
+  }
+}
+
+//---------------------------------------------------------------------
+// CLI command registration using extracted handlers
+
+program
+  .command('list')
+  .description('List all GitHub Project v2 boards for a repository or organization')
+  .requiredOption('--owner <owner>', 'GitHub repository owner or organization login')
+  .option('--repo <repo>', 'GitHub repository name (omit for organization projects)')
+  .action(listProjects);
+
 program
   .command('create')
   .description('Create a new GitHub Project v2 board')
   .requiredOption('--owner <owner>', 'GitHub repository owner')
   .requiredOption('--repo <repo>', 'GitHub repository name')
   .requiredOption('--title <title>', 'Title of the project board')
-  .action(async (options) => {
-    // First, fetch the repository ID
-    const repoQuery = `
-      query ($owner: String!, $repo: String!) {
-        repository(owner: $owner, name: $repo) {
-          id
-        }
-      }
-    `;
-    try {
-      const repoResult = await graphQLWithAuth(repoQuery, {
-        owner: options.owner,
-        repo: options.repo
-      });
+  .action(createProject);
 
-      const repositoryId = repoResult.repository.id;
-      if (!repositoryId) {
-        console.error('Repository not found.');
-        return;
-      }
-
-      const mutation = `
-        mutation ($repositoryId: ID!, $title: String!) {
-          createProjectV2(input: { repositoryId: $repositoryId, title: $title }) {
-            projectV2 {
-              id
-              title
-            }
-          }
-        }
-      `;
-
-      const result = await graphQLWithAuth(mutation, {
-        repositoryId,
-        title: options.title
-      });
-
-      const project = result.createProjectV2.projectV2;
-      console.log(`Created Project v2 board: [ID: ${project.id}] ${project.title}`);
-
-    } catch (error) {
-      console.error('Error creating Project v2 board:', error.message);
-    }
-  });
-
-// Updated command to delete a GitHub Project v2 board
 program
   .command('delete')
   .description('Delete a GitHub Project v2 board')
   .requiredOption('--id <id>', 'Project board ID')
-  .action(async (options) => {
-    const mutation = `
-      mutation ($projectId: ID!) {
-        deleteProjectV2(input: { projectId: $projectId }) {
-          projectV2 {
-            id
-          }
-        }
-      }
-    `;
+  .action(deleteProject);
 
-    try {
-      await graphQLWithAuth(mutation, { projectId: options.id });
-      console.log(`Deleted Project v2 board with ID ${options.id}`);
-    } catch (error) {
-      console.error('Error deleting Project v2 board:', error.message);
-    }
-  });
-
-// Updated command to update a GitHub Project v2 board title
 program
   .command('update')
   .description('Update a GitHub Project v2 board title')
   .requiredOption('--id <id>', 'Project board ID')
   .requiredOption('--title <title>', 'New title for the project board')
-  .action(async (options) => {
-    const mutation = `
-      mutation ($projectId: ID!, $title: String!) {
-        updateProjectV2(input: { projectId: $projectId, title: $title }) {
-          projectV2 {
-            id
-            title
-          }
-        }
-      }
-    `;
+  .action(updateProject);
 
-    try {
-      const result = await graphQLWithAuth(mutation, {
-        projectId: options.id,
-        title: options.title
-      });
-
-      const project = result.updateProjectV2.projectV2;
-      console.log(`Updated Project v2 board: [ID: ${project.id}] ${project.title}`);
-    } catch (error) {
-      console.error('Error updating Project v2 board:', error.message);
-    }
-  });
-
-// New command to list all items in a GitHub Project v2 board
 program
   .command('list-items')
   .description('List all items in a GitHub Project v2 board')
   .requiredOption('--id <id>', 'Project board ID')
-  .option('--limit <limit>', 'Number of items to fetch per page', '10')
-  .option('--cursor <cursor>', 'Pagination cursor to start from')
-  .action(async (options) => {
-    const first = parseInt(options.limit, 10);
-    let after = options.cursor || null;
-    let allItems = [];
+  .action(listItems);
 
-    const query = `
-      query ($projectId: ID!, $first: Int!, $after: String) {
-        node(id: $projectId) {
-          ... on ProjectV2 {
-            items(first: $first, after: $after) {
-              nodes {
-                id
-                type
-                content {
-                  __typename
-                  ... on Issue {
-                    title
-                    url
-                  }
-                  ... on DraftIssue {
-                    title
-                  }
-                }
-              }
-              pageInfo {
-                endCursor
-                hasNextPage
-              }
-            }
-          }
-        }
-      }
-    `;
-
-    try {
-      do {
-        const result = await graphQLWithAuth(query, {
-          projectId: options.id,
-          first,
-          after
-        });
-        const itemsData = result.node.items;
-        allItems.push(...itemsData.nodes);
-        after = itemsData.pageInfo.hasNextPage ? itemsData.endCursor : null;
-      } while (after);
-
-      if (allItems.length === 0) {
-        console.log(`No items found in board with ID ${options.id}`);
-      } else {
-        console.log(`Items in board [ID: ${options.id}]:`);
-        allItems.forEach(item => {
-          // Determine a title representation based on content type
-          let title = 'No title';
-          if (item.content) {
-            if (item.content.__typename === 'Issue' || item.content.__typename === 'DraftIssue') {
-              title = item.content.title;
-            } else {
-              title = item.content.__typename;
-            }
-          }
-          console.log(`- [${item.id}] Type: ${item.type}, Title: ${title}`);
-        });
-        console.log(`Fetched a total of ${allItems.length} item(s).`);
-      }
-    } catch (error) {
-      console.error('Error fetching items for board:', error.message);
-    }
-  });
-
-// Updated command to list all fields in a GitHub Project v2 board using the provided query with fixed pagination
 program
   .command('list-fields')
   .description('List all fields in a GitHub Project v2 board')
   .requiredOption('--id <id>', 'Project board ID')
-  .option('--limit <limit>', 'Number of fields to fetch per page', '10')
-  .option('--cursor <cursor>', 'Pagination cursor to start from')
-  .action(async (options) => {
-    const first = parseInt(options.limit, 10);
-    let after = options.cursor || "";
-    let allFields = [];
+  .action(listFields);
 
-    const query = `
-      query ($projectId: ID!, $first: Int!, $after: String!) {
-        node(id: $projectId) {
-          ... on ProjectV2 {
-            fields(first: $first, after: $after) {
-              totalCount
-              pageInfo {
-                endCursor
-                hasNextPage
-                startCursor
-              }
-              nodes {
-                __typename
-                ... on ProjectV2Field {
-                  id
-                  name
-                  dataType
-                }
-                ... on ProjectV2SingleSelectField {
-                  id
-                  name
-                  dataType
-                  options {
-                    color
-                    description
-                    id
-                    name
-                  }
-                }
-                ... on ProjectV2IterationField {
-                  id
-                  name
-                  dataType
-                  configuration {
-                    iterations {
-                      duration
-                      id
-                      startDate
-                      title
-                    }
-                    duration
-                    startDay
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    `;
-
-    try {
-      do {
-        const result = await graphQLWithAuth(query, {
-          projectId: options.id,
-          first,
-          after: after || ""
-        });
-        const fieldsData = result.node.fields;
-        allFields.push(...fieldsData.nodes);
-        after = fieldsData.pageInfo.hasNextPage ? fieldsData.endCursor : "";
-      } while (after);
-
-      if (allFields.length === 0) {
-        console.log(`No fields found in board with ID ${options.id}`);
-      } else {
-        console.log(`Fields in board [ID: ${options.id}]:`);
-        allFields.forEach(field => {
-          let fieldInfo = `Type: ${field.__typename}`;
-          if (field.id && field.name) {
-            fieldInfo += `, Name: ${field.name}`;
-          }
-          if (field.dataType) {
-            fieldInfo += `, DataType: ${field.dataType}`;
-          }
-          if (field.__typename === 'ProjectV2SingleSelectField' && field.options) {
-            fieldInfo += `, Options: ${field.options.map(o => o.name).join(', ')}`;
-          }
-          console.log(`- [${field.id || 'N/A'}] ${fieldInfo}`);
-        });
-        console.log(`Fetched a total of ${allFields.length} field(s).`);
-      }
-    } catch (error) {
-      console.error('Error fetching fields for board:', error.message);
-    }
-  });
-
-// Updated 'show-field' command to use null as initial cursor and loop until after is null
 program
   .command('show-field')
   .description('Show details of a specific field from a GitHub Project v2 board')
   .requiredOption('--project <projectId>', 'Project board ID')
   .requiredOption('--field <fieldId>', 'Field ID to show')
-  .option('--limit <limit>', 'Number of fields to fetch per page', '10')
-  .option('--cursor <cursor>', 'Pagination cursor to start from')
-  .action(async (options) => {
-    const first = parseInt(options.limit, 10);
-    let after = options.cursor ? options.cursor : null;
-    let allFields = [];
+  .action(showField);
 
-    const query = `
-      query ($projectId: ID!, $first: Int!, $after: String) {
-        node(id: $projectId) {
-          ... on ProjectV2 {
-            fields(first: $first, after: $after) {
-              totalCount
-              pageInfo {
-                endCursor
-                hasNextPage
-                startCursor
-              }
-              nodes {
-                __typename
-                ... on ProjectV2Field {
-                  id
-                  name
-                  dataType
-                }
-                ... on ProjectV2SingleSelectField {
-                  id
-                  name
-                  dataType
-                  options {
-                    color
-                    description
-                    id
-                    name
-                  }
-                }
-                ... on ProjectV2IterationField {
-                  id
-                  name
-                  dataType
-                  configuration {
-                    iterations {
-                      duration
-                      id
-                      startDate
-                      title
-                    }
-                    duration
-                    startDay
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    `;
+program
+  .command('filter-items')
+  .description('List items in a GitHub Project v2 board filtered by kind, status, function, team, sig or wg')
+  .requiredOption('--id <id>', 'Project board ID')
+  .option('--kind <kind>', 'Filter by Kind')
+  .option('--status <status>', 'Filter by Status')
+  .option('--function <function>', 'Filter by Function')
+  .option('--team <team>', 'Filter by Team')
+  .option('--sig <sig>', 'Filter by SIG')
+  .option('--wg <wg>', 'Filter by Working Group')
+  .option('--no-team', 'Filter items with an empty Team field')
+  .action(filterItems);
 
-    try {
-      do {
-        const result = await graphQLWithAuth(query, {
-          projectId: options.project,
-          first,
-          after
-        });
-        const fieldsData = result.node.fields;
-        allFields.push(...fieldsData.nodes);
-        after = fieldsData.pageInfo.hasNextPage ? fieldsData.pageInfo.endCursor : null;
-      } while (after !== null);
+program
+  .command('fix-team-field')
+  .description('Fix team field values based on team labels')
+  .requiredOption('--id <id>', 'Project board ID')
+  .action(fixTeamField);
 
-      // Find the specific field
-      const field = allFields.find(f => f.id === options.field);
-      if (!field) {
-        console.log(`Field with ID ${options.field} not found in project ${options.project}.`);
-        return;
-      }
+// Execute the program if run directly
+if (require.main === module) {
+  program.parse(process.argv);
+}
 
-      console.log(`Details for field [ID: ${field.id}]:`);
-      console.log(`- Type: ${field.__typename}`);
-      console.log(`- Name: ${field.name}`);
-      console.log(`- DataType: ${field.dataType}`);
-      if (field.__typename === 'ProjectV2SingleSelectField' && field.options) {
-        console.log(`- Options:`);
-        field.options.forEach(option => {
-          console.log(`   - [${option.id}] ${option.name} (Color: ${option.color}, Description: ${option.description})`);
-        });
-      } else if (field.__typename === 'ProjectV2IterationField' && field.configuration) {
-        console.log(`- Configuration:`);
-        console.log(`   - Duration: ${field.configuration.duration}`);
-        console.log(`   - Start Day: ${field.configuration.startDay}`);
-        if (field.configuration.iterations) {
-          console.log(`   - Iterations:`);
-          field.configuration.iterations.forEach(iteration => {
-            console.log(`      - [${iteration.id}] ${iteration.title} (Duration: ${iteration.duration}, Start: ${iteration.startDate})`);
-          });
-        }
-      }
-
-    } catch (error) {
-      console.error('Error fetching field details:', error.message);
-    }
-  });
-
-program.parse(process.argv);
+// Export handlers for testing
+module.exports = {
+  fetchPaginated,
+  listProjects,
+  createProject,
+  deleteProject,
+  updateProject,
+  listItems,
+  listFields,
+  showField,
+  filterItems,
+  fixTeamField
+};
