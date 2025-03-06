@@ -27,8 +27,154 @@ if (!GITHUB_TOKEN) {
 // Extracted command handlers for testability
 
 // Added helper function to create ANSI clickable hyperlink for issues
-function makeIssueLink(repo, number, title) {
-  return `\u001b]8;;http://github.com/giantswarm/${repo}/issues/${number}\u0007${title}\u001b]8;;\u0007`;
+function makeIssueLink(url, title) {
+  return `\u001b]8;;${url}\u0007${title}\u001b]8;;\u0007`;
+}
+
+// OpenAI integration:
+const OpenAI = require('openai');
+const { read } = require('fs');
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const assistantId = "asst_5mbphHI9WYRAKzFqhtbJGqc9";
+
+// Helper functions for OpenAI Assistant based on provided example code
+
+// NEW: Add query to fetch full issue details
+const ISSUE_DETAIL_QUERY = `
+  query($id: ID!) {
+    node(id: $id) {
+      ... on ProjectV2Item {
+        content {
+          ... on Issue {
+            bodyText
+            comments (first: 100) {
+              nodes {
+                bodyText
+              }
+            }
+            projectsV2 (first: 10) {
+              nodes {
+                title
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+`;
+
+async function getTeamSuggestionForIssue(item) {
+	// Attempt to extract details from the fetched item first
+	let title = item.content.title || '';
+  let body = '';
+  let comments = '';
+  let teamSuggestion = '';
+	
+	// If details are missing and an issue id exists, re-fetch from GitHub
+  try {
+    const issueDetails = await graphQLWithAuth(ISSUE_DETAIL_QUERY, { id: item.id });
+    if (issueDetails && issueDetails.node && issueDetails.node.content) {
+      body = issueDetails.node.content.bodyText || '';
+      comments = 'None';
+      if (issueDetails.node.content.comments && issueDetails.node.content.comments.nodes) {
+        comments = issueDetails.node.content.comments.nodes.map(c => c.bodyText).join('\n');
+      } 
+    } else {
+      console.error("Error: Issue details are incomplete.");
+      return '';
+    }
+
+    // check if one of the projects contains the word "team"
+    let teamProjects = [];
+    if (issueDetails.node.content.projectsV2 && issueDetails.node.content.projectsV2.nodes) {
+      teamProjects = issueDetails.node.content.projectsV2.nodes.filter(project => project.title.toLowerCase().includes('team'));
+    }
+
+    if (teamProjects.length === 1) {
+      console.log(`Found team project: ${teamProjects[0].title}`);
+      // replace special characters in the project title, lowercase it and trim it
+      teamSuggestion = teamProjects[0].title.toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\bteam\b/g, '').trim();
+      return teamSuggestion;
+    } else if (teamProjects.length > 1) {
+      // append team projects to comments
+      comments += '\n\nTeam projects: ' + teamProjects.map(p => p.title).join(', ');
+    }
+
+    if (comments.includes('#iamarobot')) {
+      console.log("Issue already has a comment from the bot.");
+      return 'skip';
+    }
+  } catch (err) {
+    console.error("Error fetching issue details:", err.message);
+  }
+
+  if (!title) {
+    console.error("Error: Missing title for issue.");
+    return '';
+  }
+	
+  if (!body) {
+    body = "TBD"
+  }
+  
+	const prompt = `Determine the appropriate team for the following issue:
+Title: ${title}
+Content: ${body}
+Comments: ${comments}
+
+Reply with the team name that should handle this issue.
+`;
+
+  try {
+		const thread = await openai.beta.threads.create({
+			messages: [
+				{
+					role: 'user',
+					content: prompt
+				}
+			],
+		});
+		let threadId = thread.id;
+		const run = await openai.beta.threads.runs.createAndPoll(threadId, {
+			assistant_id: assistantId,
+			additional_instructions: 'The format of the response is only the team name (e.g., "team/honeybadger"). If you dont know the team respond with "team/null".',
+		});
+		if (run.status === 'completed') {
+			const messages = await openai.beta.threads.messages.list(threadId);
+			const assistantResponse = messages.getPaginatedItems().find(msg => msg.role === 'assistant') || {};
+
+      if (!assistantResponse.content) {
+        console.warn("Warning: No assistant response found.");
+        return '';
+      }
+
+      for (const content of assistantResponse.content) {
+        if (content.type === "text" && content.text && content.text.value) {
+          // filter out the references in square brackets about the teams.md file "team/honeybadger【4:0†teams.md】"
+          const filteredContent = content.text.value.replace(/【\d+:\d+†teams\.md】/g, '').trim();
+          teamSuggestion += filteredContent;
+        }
+      }
+
+			if (!teamSuggestion || !teamSuggestion.toLowerCase().startsWith('team/')) {
+				console.warn("Warning: No team suggestion received.");
+        return '';
+			}
+
+      console.log("Assistant response: " + teamSuggestion);
+      
+			return teamSuggestion.substring(5);
+		} else {
+      console.warn('Warning: Run finished with status: ' + run.status);
+			console.warn("Warning: Team suggestion not completed.");
+      return '';
+		}
+
+	} catch (error) {
+		console.error('Error getting team suggestion from OpenAI:', error.message);
+		return '';
+	}
 }
 
 async function listProjects(options) {
@@ -135,19 +281,9 @@ async function listItems(options) {
         let output = `- [${item.id}] `;
         if (item.content && item.content.__typename === 'Issue') {
           const title = item.content.title || 'No title';
-          let number = '';
-          let repo = '';
-          if (item.fieldValues && item.fieldValues.nodes) {
-            item.fieldValues.nodes.forEach(fv => {
-              if ('number' in fv && fv.number) {
-                number = fv.number;
-              }
-              if (fv.repository && fv.repository.name) {
-                repo = fv.repository.name;
-              }
-            });
-          }
-          output += `${makeIssueLink(repo, number, title)} ${number ? `#${number}` : ''} (${repo})`;
+          let number = item.content.number;
+          let url = item.content.url || '';
+          output += `${makeIssueLink(url, title)} ${number ? `#${number}` : ''}`;
         } else {
           const title = (item.content && item.content.title) ? item.content.title : 'No title';
           output += title;
@@ -315,9 +451,9 @@ async function filterItems(options) {
         if (item.content && Object.keys(item.content).length > 0) {
           const title = item.content.title || 'No title';
           const number = item.content.number || '';
-          const repo = item.content.repository.name || '';
+          const url = item.content.url || '';
 
-          output += `${makeIssueLink(repo, number, title)} ${number ? `#${number}` : ''} (${repo})`;
+          output += `${makeIssueLink(url, title)} ${number ? `#${number}` : ''}`;
         } else {
           const title = (item.content && item.content.title) ? item.content.title : 'No title';
           output += title;
@@ -332,17 +468,37 @@ async function filterItems(options) {
 }
 
 // Function to fix team fields based on team labels
+const POST_ISSUE_COMMENT_MUTATION = `
+  mutation($issueId: ID!, $body: String!) {
+    addComment(input: { subjectId: $issueId, body: $body }) {
+      commentEdge {
+        node {
+          id
+        }
+      }
+    }
+  }
+`;
+
+async function postIssueComment(issueId, commentBody) {
+  try {
+    const response = await graphQLWithAuth(POST_ISSUE_COMMENT_MUTATION, { issueId, body: commentBody });
+  } catch (error) {
+    console.error(`Error posting comment on issue ${issueId}:`, error.message);
+  }
+}
+
 async function fixTeamField(options) {
   const first = 100; // Always use pagination limit 100
   try {
-    // 1. Get all project items with labels
+    // Get all project items with labels
     const allItems = await fetchPaginated(
       LIST_ITEMS_WITH_LABELS_QUERY,
       { projectId: options.id, first },
       result => result.node.items
     );
     
-    // 2. Get team field and its options
+    // Get team field and its options
     const allFields = await fetchPaginated(
       LIST_FIELDS_QUERY,
       { projectId: options.id, first },
@@ -359,9 +515,7 @@ async function fixTeamField(options) {
       return;
     }
     
-    console.log(`Found team field: ${teamField.id}`);
-    
-    // 3. Filter items that don't have team field set
+    // Filter items that don't have team field set
     const itemsWithoutTeam = allItems.filter(item => {
       if (!item.fieldValues || !item.fieldValues.nodes) return true;
       
@@ -378,6 +532,11 @@ async function fixTeamField(options) {
     
     // 4. Process each item, check labels and update team field
     let updatedCount = 0;
+    const readline = require('readline').createInterface({
+      input: process.stdin,
+      output: process.stdout
+    });
+
     for (const item of itemsWithoutTeam) {
       // Ensure the item is an issue or pull request with labels
       if (!item.content ||
@@ -386,18 +545,73 @@ async function fixTeamField(options) {
         continue;
       }
       
-      // Look for a team label (e.g., "team/honeybadger")
+      // Look for team labels (e.g., "team/honeybadger")
       const teamLabels = item.content.labels.nodes.filter(label => 
         label.name.toLowerCase().startsWith('team/')
       );
       
-      if (teamLabels.length === 0) continue;
-      if (teamLabels.length > 1) continue;
-      
-      // Use the first team label
-      const teamLabel = teamLabels[0];
-      var teamName = teamLabel.name.substring(5); // remove 'team/'
+      // Use existing label if exactly one; otherwise use OpenAI assistant.
+      let teamName = '';
+      if (teamLabels.length === 1) {
+        teamName = teamLabels[0].name.substring(5);
+      } else {
+        const issueLink = makeIssueLink(item.content.url, item.content.title);
+        console.log(`Team suggestion for: ${issueLink}`);
+        teamName = await getTeamSuggestionForIssue(item);
 
+        if (teamName === 'skip') {
+          continue;
+        }
+
+        if (teamName && teamName.toLowerCase() !== 'null') {
+          // ask the user for confirmation (add a clickable link to the issue)
+          await new Promise((resolve) => {
+            readline.question(`Accept "${teamName}"? (yes/no) `, (answer) => {
+              if (answer.toLowerCase() === 'yes' || answer.toLowerCase() === 'y') {
+                resolve(true);
+              } else {
+                teamName = '';
+                resolve(false);
+              }
+            });
+          });
+        } else {
+          teamName = '';
+        }
+      }
+      
+      // Ask the user for a team name if no suggestion is available
+      if (!teamName) {
+        await new Promise((resolve) => {
+          readline.question(`Team name (empty for none): `, (userInput) => {
+            teamName = userInput.trim();
+            resolve();
+          });
+        });
+      }
+
+      // Ask user before posting a comment if no team suggestion found
+      if (!teamName) {
+        await new Promise((resolve) => {
+          readline.question(`Would you like to post a comment asking for the team? (yes/no) `, (answer) => {
+            if (answer.toLowerCase() === 'yes' || answer.toLowerCase() === 'y') {
+              postIssueComment(item.content.id, `We'll keep the inbox of the roadmap board clean and this issue doesn't have a team assigned. Can you help me out by suggesting a team for this issue?
+
+Either:
+ * setting the team field in the roadmap board
+ * adding a team label
+ * adding this issue to a team board
+
+would help.
+
+Thanks! #iamarobot`);
+            }
+            resolve();
+          });
+        });
+        continue;
+      }
+      
       if (teamName === "honeybadger") {
         teamName = "honey badger";
       }
@@ -413,7 +627,7 @@ async function fixTeamField(options) {
       });
       
       if (!teamOption) {
-        console.log(`Could not find matching team option for label "${teamLabel.name}" on issue #${item.content.number}`);
+        console.log(`Could not find matching team option for team "${teamName}"`);
         continue;
       }
       
@@ -427,11 +641,12 @@ async function fixTeamField(options) {
         });
         
         updatedCount++;
-        console.log(`Updated team for issue #${item.content.number} to "${teamOption.name}"`);
+        console.log(`Updated team to "${teamOption.name}"`);
       } catch (error) {
         console.error(`Error updating team for issue #${item.content.number}:`, error.message);
       }
     }
+    readline.close();
     
     console.log(`Updated team field for ${updatedCount} issues.`);
     

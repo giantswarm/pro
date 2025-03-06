@@ -123,33 +123,13 @@ const LIST_ITEMS_QUERY = `
                     }
                   }
                 }
-                ... on ProjectV2ItemFieldNumberValue {
-                  number
-                  field {
-                    ... on ProjectV2FieldCommon {
-                      name
-                    }
-                  }
-                }
-                ... on ProjectV2ItemFieldRepositoryValue {
-                  repository {
-                    name
-                  }
-                  field {
-                    ... on ProjectV2FieldCommon {
-                      name
-                    }
-                  }
-                }
               }
             }
             content {
               ... on Issue {
                 title
                 number
-                repository {
-                  name
-                }
+                url
                 assignees(first: 100) {
                   nodes {
                     login
@@ -196,7 +176,10 @@ query ListProjectItems($projectId: ID!, $first: Int!, $after: String) {
           }
           content {
             ... on Issue {
+              id
               number
+              title
+              url
               labels(first: 100) {
                 nodes {
                   name

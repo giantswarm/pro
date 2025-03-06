@@ -7,7 +7,8 @@
     "github-project": "index.js"
   },
   "dependencies": {
+    "@octokit/graphql": "^4.8.0",
     "commander": "^9.0.0",
-    "@octokit/graphql": "^4.8.0"
+    "openai": "^4.86.1"
   }
 }
