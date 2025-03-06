@@ -1,6 +1,6 @@
-# GitHub Project (v2) CLI Tool
+![Project Logo](./pro.svg)
 
-![Project Logo](./logo pro.svg)
+# GitHub Project (v2) CLI Tool
 
 A command-line tool for managing GitHub Projects (v2) through the GitHub GraphQL API.
 
