@@ -9,7 +9,9 @@
   "type": "module",
   "dependencies": {
     "@octokit/graphql": "^8.2.1",
+    "chalk": "^5.4.1",
     "commander": "^13.1.0",
+    "inquirer": "^12.4.2",
     "openai": "^4.86.2"
   },
   "author": "Timo Derstappen"

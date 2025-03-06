@@ -1,8 +1,9 @@
+import chalk from 'chalk';
 import { fetchPaginated } from '../lib/api.js';
 import { LIST_FIELDS_QUERY } from '../lib/project.js';
 
 export async function listFieldsCommand(options) {
-  const first = 100; // Always use pagination limit 100
+  const first = 100;
   try {
     const allFields = await fetchPaginated(
       LIST_FIELDS_QUERY,
@@ -10,9 +11,9 @@ export async function listFieldsCommand(options) {
       result => result.node.fields
     );
     if (allFields.length === 0) {
-      console.log(`No fields found in board with ID ${options.id}`);
+      console.log(chalk.yellow(`No fields found in board with ID ${options.id}`));
     } else {
-      console.log(`Fields in board [ID: ${options.id}]:`);
+      console.log(chalk.cyan(`Fields in board [ID: ${options.id}]:`));
       allFields.forEach(field => {
         let fieldInfo = `- [${field.id}] Type: ${field.__typename}, Name: ${field.name}, DataType: ${field.dataType}`;
         if (field.__typename === 'ProjectV2SingleSelectField' && field.options) {
@@ -26,11 +27,11 @@ export async function listFieldsCommand(options) {
             fieldInfo += `, Iterations: ${iterations}`;
           }
         }
-        console.log(fieldInfo);
+        console.log(chalk.green(fieldInfo));
       });
-      console.log(`Fetched a total of ${allFields.length} field(s).`);
+      console.log(chalk.blue(`Fetched a total of ${allFields.length} field(s).`));
     }
   } catch (error) {
-    console.error('Error fetching fields for board:', error.message);
+    console.error(chalk.red('Error fetching fields for board:'), chalk.red(error.message));
   }
 }

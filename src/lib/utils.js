@@ -2,17 +2,16 @@ import OpenAI from 'openai';
 import { graphQLWithAuth } from './api.js';
 import { ISSUE_DETAIL_QUERY } from './project.js';
 
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 if (!process.env.OPENAI_API_KEY) {
-    console.error('Error: OPENAI_API_KEY environment variable is not set.');
-    process.exit(1);
+  console.error('Error: OPENAI_API_KEY environment variable is not set.');
+  process.exit(1);
 }
-  
+
 export function makeIssueLink(url, title) {
   return `\u001b]8;;${url}\u0007${title}\u001b]8;;\u0007`;
 }
 
-const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const assistantId = "asst_5mbphHI9WYRAKzFqhtbJGqc9";
 
 export async function getTeamSuggestionForIssue(item) {
@@ -99,7 +98,6 @@ Reply with the team name that should handle this issue.
       }
       for (const content of assistantResponse.content) {
         if (content.type === "text" && content.text && content.text.value) {
-          // filter out any references in square brackets e.g., about teams.md file
           const filteredContent = content.text.value.replace(/【\d+:\d+†teams\.md】/g, '').trim();
           teamSuggestion += filteredContent;
         }

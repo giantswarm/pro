@@ -1,4 +1,5 @@
-import rl from 'readline';
+import chalk from 'chalk';
+import inquirer from 'inquirer';  // replaced readline with inquirer
 import { graphQLWithAuth, fetchPaginated } from '../lib/api.js';
 import {
   LIST_ITEMS_WITH_LABELS_QUERY,
@@ -27,7 +28,7 @@ export async function fixTeamFieldCommand(options) {
       field.name.toLowerCase() === 'team'
     );
     if (!teamField) {
-      console.log('No team field found in this project.');
+      console.log(chalk.yellow('No team field found in this project.'));
       return;
     }
     // Filter items missing a team value
@@ -41,17 +42,10 @@ export async function fixTeamFieldCommand(options) {
         node.name.trim() !== ''
       );
     });
-    console.log(`Found ${itemsWithoutTeam.length} items without team field set.`);
+    console.log(chalk.cyan(`Found ${itemsWithoutTeam.length} items without team field set.`));
     let updatedCount = 0;
-    const readlineInterface = rl.createInterface({
-      input: process.stdin,
-      output: process.stdout
-    });
     for (const item of itemsWithoutTeam) {
-      // ...existing code: ensure item has labels...
       if (!item.content || !item.content.labels || !item.content.labels.nodes) continue;
-      
-      // Look for team labels (e.g., "team/honeybadger")
       const teamLabels = item.content.labels.nodes.filter(label =>
         label.name.toLowerCase().startsWith('team/')
       );
@@ -60,59 +54,51 @@ export async function fixTeamFieldCommand(options) {
         teamName = teamLabels[0].name.substring(5);
       } else {
         const issueLink = makeIssueLink(item.content.url, item.content.title);
-        console.log(`Team suggestion for: ${issueLink}`);
+        console.log(chalk.cyan(`Team suggestion for: ${issueLink}`));
         teamName = await getTeamSuggestionForIssue(item);
         if (teamName === 'skip') continue;
         if (teamName && teamName.toLowerCase() !== 'null') {
-          await new Promise(resolve => {
-            readlineInterface.question(`Accept "${teamName}"? (yes/no) `, answer => {
-              if (answer.toLowerCase() !== 'yes' && answer.toLowerCase() !== 'y') {
-                teamName = '';
-              }
-              resolve();
-            });
-          });
+          const { accept } = await inquirer.prompt([
+            {
+              type: 'confirm',
+              name: 'accept',
+              message: `Accept "${teamName}"?`
+            }
+          ]);
+          if (!accept) {
+            teamName = '';
+          }
         }
       }
-      // Ask for manual input if no team obtained
       if (!teamName) {
-        await new Promise(resolve => {
-          readlineInterface.question(`Team name (empty for none): `, input => {
-            teamName = input.trim();
-            resolve();
-          });
-        });
+        const { inputTeam } = await inquirer.prompt([
+          { type: 'input', name: 'inputTeam', message: 'Team name (empty for none):' }
+        ]);
+        teamName = inputTeam.trim();
       }
-      // Ask for comment posting if still empty
       if (!teamName) {
-        await new Promise(resolve => {
-          readlineInterface.question(`No team provided for issue ${item.content.number}. Post a comment? (yes/no) `, answer => {
-            if (answer.toLowerCase() === 'yes' || answer.toLowerCase() === 'y') {
-              graphQLWithAuth(POST_ISSUE_COMMENT_MUTATION, {
-                issueId: item.content.id,
-                body: "Could not determine the team for this issue. Please suggest a team."
-              }).catch(() => {});
-            }
-            resolve();
-          });
-        });
+        const { postComment } = await inquirer.prompt([
+          { type: 'confirm', name: 'postComment', message: `No team provided for issue ${item.content.number}. Post a comment?` }
+        ]);
+        if (postComment) {
+          graphQLWithAuth(POST_ISSUE_COMMENT_MUTATION, {
+            issueId: item.content.id,
+            body: "Could not determine the team for this issue. Please suggest a team."
+          }).catch(() => {});
+        }
         continue;
       }
-      // Normalize known team names
       if (teamName === "honeybadger") teamName = "honey badger";
       if (teamName === "team") teamName = "up";
-      
-      // Find matching team option
       const teamOption = teamField.options.find(option => {
         const optionNameLower = option.name.toLowerCase().replace(/[^\x00-\x7F]/g, '').trim();
         const teamNameLower = teamName.toLowerCase().trim();
         return optionNameLower.includes(teamNameLower) || teamNameLower.includes(optionNameLower);
       });
       if (!teamOption) {
-        console.log(`Could not find matching team option for team "${teamName}"`);
+        console.log(chalk.yellow(`Could not find matching team option for team "${teamName}"`));
         continue;
       }
-      // Update the team field for the item
       try {
         await graphQLWithAuth(UPDATE_ITEM_FIELD_MUTATION, {
           projectId: options.id,
@@ -121,14 +107,13 @@ export async function fixTeamFieldCommand(options) {
           value: { singleSelectOptionId: teamOption.id }
         });
         updatedCount++;
-        console.log(`Updated team for issue ${item.content.number} to "${teamOption.name}"`);
+        console.log(chalk.green(`Updated team for issue ${item.content.number} to "${teamOption.name}"`));
       } catch (error) {
-        console.error(`Error updating team for issue ${item.content.number}:`, error.message);
+        console.error(chalk.red(`Error updating team for issue ${item.content.number}:`), chalk.red(error.message));
       }
     }
-    readlineInterface.close();
-    console.log(`Updated team field for ${updatedCount} issues.`);
+    console.log(chalk.blue(`Updated team field for ${updatedCount} issues.`));
   } catch (error) {
-    console.error('Error fixing team fields:', error.message);
+    console.error(chalk.red('Error fixing team fields:'), chalk.red(error.message));
   }
 }
