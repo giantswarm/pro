@@ -1,4 +1,4 @@
-const { graphql } = require('@octokit/graphql');
+import { graphql } from '@octokit/graphql';
 
 // Ensure GitHub token is set in environment variables
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
@@ -33,4 +33,4 @@ async function fetchPaginated(query, vars, extractData) {
   return allResults;
 }
 
-module.exports = { graphQLWithAuth, fetchPaginated };
+export { graphQLWithAuth, fetchPaginated };

@@ -1,14 +1,16 @@
 {
-  "name": "github-project-tool",
-  "version": "1.0.0",
+  "name": "pro",
+  "version": "0.1.0",
   "description": "CLI tool that manages GitHub Project v2 boards",
   "main": "index.js",
   "bin": {
-    "github-project": "index.js"
+    "pro": "index.js"
   },
+  "type": "module",
   "dependencies": {
-    "@octokit/graphql": "^4.8.0",
-    "commander": "^9.0.0",
-    "openai": "^4.86.1"
-  }
+    "@octokit/graphql": "^8.2.1",
+    "commander": "^13.1.0",
+    "openai": "^4.86.2"
+  },
+  "author": "Timo Derstappen"
 }

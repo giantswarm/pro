@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
-const { program } = require('commander');
-const { graphQLWithAuth, fetchPaginated } = require('./api');
-const {
+import { program } from 'commander';
+import { graphQLWithAuth, fetchPaginated } from './api.js';
+import {
   LIST_PROJECTS_REPO_QUERY,
   LIST_PROJECTS_ORG_QUERY,
   REPO_ID_QUERY,
@@ -14,7 +14,9 @@ const {
   SHOW_FIELD_QUERY,
   LIST_ITEMS_WITH_LABELS_QUERY,
   UPDATE_ITEM_FIELD_MUTATION
-} = require('./project');
+} from './project.js';
+import OpenAI from 'openai';
+import rl from 'readline';
 
 // Ensure GitHub token is set in environment variables
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
@@ -32,8 +34,6 @@ function makeIssueLink(url, title) {
 }
 
 // OpenAI integration:
-const OpenAI = require('openai');
-const { read } = require('fs');
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const assistantId = "asst_5mbphHI9WYRAKzFqhtbJGqc9";
 
@@ -532,7 +532,7 @@ async function fixTeamField(options) {
     
     // 4. Process each item, check labels and update team field
     let updatedCount = 0;
-    const readline = require('readline').createInterface({
+    const readline = rl.createInterface({
       input: process.stdin,
       output: process.stdout
     });
@@ -657,6 +657,9 @@ Thanks! #iamarobot`);
 
 //---------------------------------------------------------------------
 // CLI command registration using extracted handlers
+program
+  .version('0.1.0')
+  .description('GitHub Project v2 board management tool');
 
 program
   .command('list')
@@ -725,12 +728,10 @@ program
   .action(fixTeamField);
 
 // Execute the program if run directly
-if (require.main === module) {
-  program.parse(process.argv);
-}
+program.parse(process.argv);
 
 // Export handlers for testing
-module.exports = {
+export {
   fetchPaginated,
   listProjects,
   createProject,

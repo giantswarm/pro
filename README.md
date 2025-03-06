@@ -1,5 +1,7 @@
 # GitHub Project (v2) CLI Tool
 
+![Project Logo](./logo pro.svg)
+
 A command-line tool for managing GitHub Projects (v2) through the GitHub GraphQL API.
 
 ## Features
@@ -20,8 +22,9 @@ A command-line tool for managing GitHub Projects (v2) through the GitHub GraphQL
 
 ## Installation
 
+To install as a global CLI tool, run:
 ```bash
-npm install
+npm install -g
 ```
 
 ## Configuration
@@ -34,33 +37,34 @@ export GITHUB_TOKEN=your_github_personal_access_token
 
 ## Usage
 
+Instead of running with "node index.js", use the CLI command "pro":
 ```bash
 # List projects in a repository
-node index.js list --owner organization_name --repo repository_name
+pro list --owner organization_name --repo repository_name
 
 # List projects in an organization
-node index.js list --owner organization_name
+pro list --owner organization_name
 
 # Create a new project
-node index.js create --owner organization_name --repo repository_name --title "Project Title"
+pro create --owner organization_name --repo repository_name --title "Project Title"
 
 # Delete a project
-node index.js delete --id project_id
+pro delete --id project_id
 
 # Update a project
-node index.js update --id project_id --title "New Title"
+pro update --id project_id --title "New Title"
 
 # List items in a project
-node index.js items --id project_id
+pro list-items --id project_id
 
 # List fields in a project
-node index.js fields --id project_id
+pro list-fields --id project_id
 
 # Show field details
-node index.js field --project project_id --field field_id
+pro show-field --project project_id --field field_id
 
 # Fix team field issues
-node index.js fix-team-field --project project_id
+pro fix-team-field --id project_id
 ```
 
 ## Development

@@ -234,7 +234,7 @@ mutation UpdateProjectV2ItemField($projectId: ID!, $itemId: ID!, $fieldId: ID!, 
 }
 `;
 
-module.exports = {
+export {
   LIST_PROJECTS_REPO_QUERY,
   LIST_PROJECTS_ORG_QUERY,
   REPO_ID_QUERY,
