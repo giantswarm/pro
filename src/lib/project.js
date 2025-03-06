@@ -1,4 +1,11 @@
 // Export GraphQL queries and mutations for project operations
+export const ROADMAP_BOARD_ID = 'PVT_kwDOAHNM9M4ABvWx';
+export const TEAM_FIELD_ID = 'PVTSSF_lADOAHNM9M4ABvWxzgBApUw';
+export const KIND_FIELD_ID = 'PVTSSF_lADOAHNM9M4ABvWxzgFLAfM';
+export const FUNCTION_FIELD_ID = 'PVTSSF_lADOAHNM9M4ABvWxzgNtoms';
+export const WORKSTREAM_FIELD_ID = 'PVTSSF_lADOAHNM9M4ABvWxzgN0pGg';
+export const SIG_FIELD_ID = 'PVTSSF_lADOAHNM9M4ABvWxzgNt6n0';
+export const WG_FIELD_ID = 'PVTSSF_lADOAHNM9M4ABvWxzgNpxdA';
 
 // List projects for a repository
 const LIST_PROJECTS_REPO_QUERY = `
@@ -234,6 +241,42 @@ mutation UpdateProjectV2ItemField($projectId: ID!, $itemId: ID!, $fieldId: ID!, 
 }
 `;
 
+const ISSUE_DETAIL_QUERY = `
+  query($id: ID!) {
+    node(id: $id) {
+      ... on ProjectV2Item {
+        content {
+          ... on Issue {
+            bodyText
+            author { login }
+            assignees (first: 10) {
+              nodes { login }
+            }
+            comments (first: 100) {
+              nodes { bodyText }
+            }
+            projectsV2 (first: 10) {
+              nodes { title }
+            }
+          }
+        }
+      }
+    }
+  }
+`;
+
+const POST_ISSUE_COMMENT_MUTATION = `
+  mutation($issueId: ID!, $body: String!) {
+    addComment(input: { subjectId: $issueId, body: $body }) {
+      commentEdge {
+        node {
+          id
+        }
+      }
+    }
+  }
+`;
+
 export {
   LIST_PROJECTS_REPO_QUERY,
   LIST_PROJECTS_ORG_QUERY,
@@ -245,5 +288,7 @@ export {
   LIST_ITEMS_WITH_LABELS_QUERY,
   LIST_FIELDS_QUERY,
   SHOW_FIELD_QUERY,
-  UPDATE_ITEM_FIELD_MUTATION
+  UPDATE_ITEM_FIELD_MUTATION,
+  ISSUE_DETAIL_QUERY,
+  POST_ISSUE_COMMENT_MUTATION
 };

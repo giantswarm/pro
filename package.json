@@ -2,9 +2,9 @@
   "name": "pro",
   "version": "0.1.0",
   "description": "CLI tool that manages GitHub Project v2 boards",
-  "main": "index.js",
+  "main": "bin/index.js",
   "bin": {
-    "pro": "index.js"
+    "pro": "bin/index.js"
   },
   "type": "module",
   "dependencies": {
