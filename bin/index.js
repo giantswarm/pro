@@ -28,7 +28,7 @@ program
 program
   .command('list')
   .description('List all GitHub Project v2 boards for a repository or organization')
-  .requiredOption('--owner <owner>', 'GitHub repository owner or organization login')
+  .option('--owner <owner>', 'GitHub repository owner or organization login', 'giantswarm')
   .option('--repo <repo>', 'GitHub repository name (omit for organization projects)')
   .action(listCommand);
 
