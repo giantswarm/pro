@@ -14,6 +14,7 @@ import { fixTeamFieldCommand } from '../src/commands/fix-team-field.js';
 import { fixFunctionFieldCommand } from '../src/commands/fix-function-field.js';
 import { fixKindFieldCommand } from '../src/commands/fix-kind-field.js';
 import { summarizeIssuesCommand } from '../src/commands/summarize-issues.js';
+import { serverCommand } from '../src/commands/server.js';
 
 import {
     ROADMAP_BOARD_ID, 
@@ -145,6 +146,12 @@ program
   .option('--wg <wg>', 'Filter by Working Group')
   .option('--no-team', 'Filter items with an empty Team field')
   .action(summarizeIssuesCommand);
+
+program
+  .command('server')
+  .description('Start a web server that provides a UI for the CLI')
+  .option('-p, --port <port>', 'Port to run the server on', '3000')
+  .action(serverCommand);
 
 program.parse(process.argv);
 

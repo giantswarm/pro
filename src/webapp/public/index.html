@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pro - GitHub Project Management</title>
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  
+  <!-- Font Awesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <!-- Custom Styles -->
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="logo">
+          <i class="fas fa-project-diagram"></i>
+        </div>
+        <h1>Pro CLI</h1>
+      </div>
+      
+      <div class="theme-toggle">
+        <button id="theme-toggle" aria-label="Toggle dark mode">
+          <i class="fas fa-sun light-icon"></i>
+          <i class="fas fa-moon dark-icon"></i>
+          <span id="theme-toggle-text">Toggle dark mode</span>
+        </button>
+      </div>
+      
+      <nav class="sidebar-nav">
+        <!-- Project Management -->
+        <div class="nav-section">
+          <span class="nav-section-title">Project Management</span>
+          
+          <a href="#" class="nav-link active" data-target="dashboard">
+            <i class="fas fa-home"></i>
+            Dashboard
+          </a>
+          
+          <a href="#" class="nav-link" data-target="projects">
+            <i class="fas fa-clipboard-list"></i>
+            GitHub Projects
+          </a>
+          
+          <a href="#" class="nav-link" data-target="items">
+            <i class="fas fa-list"></i>
+            Board Items
+          </a>
+          
+          <a href="#" class="nav-link" data-target="fields">
+            <i class="fas fa-table"></i>
+            Project Fields
+          </a>
+        </div>
+        
+        <!-- AI Tools -->
+        <div class="nav-section">
+          <span class="nav-section-title">AI-Powered Tools</span>
+          
+          <a href="#" class="nav-link" data-target="fix-team">
+            <i class="fas fa-users-cog"></i>
+            Fix Team Field
+          </a>
+          
+          <a href="#" class="nav-link" data-target="fix-function">
+            <i class="fas fa-code-branch"></i>
+            Fix Function Field
+          </a>
+          
+          <a href="#" class="nav-link" data-target="fix-kind">
+            <i class="fas fa-tags"></i>
+            Fix Kind Field
+          </a>
+          
+          <a href="#" class="nav-link" data-target="summarize">
+            <i class="fas fa-robot"></i>
+            Summarize Issues
+          </a>
+        </div>
+      </nav>
+      
+      <div class="sidebar-footer">
+        <span>Pro CLI Web Interface</span>
+        <span>v1.0.0</span>
+      </div>
+    </aside>
+    
+    <!-- Main Content -->
+    <main class="content">
+      <header class="content-header">
+        <div class="breadcrumb">
+          <span id="current-view">Dashboard</span>
+        </div>
+        <div class="user-info">
+          <button id="mobile-menu-toggle" class="mobile-menu-toggle">
+            <i class="fas fa-bars"></i>
+          </button>
+        </div>
+      </header>
+      
+      <div class="view-container">
+        <!-- Dashboard View -->
+        <div id="dashboard-view" class="view active">
+          <div class="view-header">
+            <h2>Dashboard</h2>
+            <p>Manage your GitHub Projects with AI-powered assistance</p>
+          </div>
+          
+          <div class="welcome-banner">
+            <h2>Welcome to Pro CLI Web UI</h2>
+            <p>Enhance your project management with AI-powered tools and smart filtering</p>
+          </div>
+          
+          <div class="dashboard-cards">
+            <div class="card" onclick="navigateTo('projects')">
+              <div class="card-icon">
+                <i class="fas fa-clipboard-list"></i>
+              </div>
+              <div class="card-content">
+                <h3>Manage Project Boards</h3>
+                <p>List and navigate your GitHub Project boards</p>
+              </div>
+            </div>
+            
+            <div class="card" onclick="navigateTo('items')">
+              <div class="card-icon">
+                <i class="fas fa-list"></i>
+              </div>
+              <div class="card-content">
+                <h3>View Board Items</h3>
+                <p>Browse and filter items in your project boards</p>
+              </div>
+            </div>
+            
+            <div class="card" onclick="navigateTo('fix-function')">
+              <div class="card-icon">
+                <i class="fas fa-code-branch"></i>
+              </div>
+              <div class="card-content">
+                <h3>Fix Function Fields</h3>
+                <p>Use AI to suggest and update function fields</p>
+              </div>
+            </div>
+            
+            <div class="card" onclick="navigateTo('fix-kind')">
+              <div class="card-icon">
+                <i class="fas fa-tags"></i>
+              </div>
+              <div class="card-content">
+                <h3>Fix Kind Fields</h3>
+                <p>Let AI help you categorize issues with proper kind values</p>
+              </div>
+            </div>
+            
+            <div class="card" onclick="navigateTo('summarize')">
+              <div class="card-icon">
+                <i class="fas fa-robot"></i>
+              </div>
+              <div class="card-content">
+                <h3>Summarize Issues</h3>
+                <p>Generate AI-powered summaries of your project issues</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Projects View -->
+        <div id="projects-view" class="view">
+          <div class="view-header">
+            <h2>GitHub Projects</h2>
+            <p>List and select your GitHub Project boards</p>
+          </div>
+          
+          <div class="form-container">
+            <h3>List Projects</h3>
+            <form id="list-projects-form" class="action-form">
+              <div class="form-actions">
+                <button type="submit" class="btn btn-primary">
+                  <i class="fas fa-search"></i> List Projects
+                </button>
+              </div>
+            </form>
+          </div>
+          
+          <div id="projects-results" class="results-container">
+            <div class="results-placeholder">
+              <i class="fas fa-clipboard-list"></i>
+              <p>Submit the form to view projects</p>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Items View -->
+        <div id="items-view" class="view">
+          <div class="view-header">
+            <h2>Board Items</h2>
+            <p>View and filter items in your project boards</p>
+          </div>
+          
+          <div class="form-container">
+            <h3>List Items</h3>
+            <form id="list-items-form" class="action-form">
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="projectId">Project ID</label>
+                  <input type="text" id="projectId" name="projectId" placeholder="Project ID" required>
+                </div>
+              </div>
+              
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="kind">Kind</label>
+                  <input type="text" id="kind" name="kind" placeholder="Filter by kind">
+                </div>
+                
+                <div class="form-group">
+                  <label for="function">Function</label>
+                  <input type="text" id="function" name="function" placeholder="Filter by function">
+                </div>
+              </div>
+              
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="status">Status</label>
+                  <input type="text" id="status" name="status" placeholder="Filter by status">
+                </div>
+                
+                <div class="form-group">
+                  <label for="team">Team</label>
+                  <input type="text" id="team" name="team" placeholder="Filter by team">
+                </div>
+              </div>
+              
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="sig">SIG</label>
+                  <input type="text" id="sig" name="sig" placeholder="Filter by SIG">
+                </div>
+                
+                <div class="form-group">
+                  <label for="wg">WG</label>
+                  <input type="text" id="wg" name="wg" placeholder="Filter by WG">
+                </div>
+              </div>
+              
+              <div class="form-actions">
+                <button type="submit" class="btn btn-primary">
+                  <i class="fas fa-search"></i> List Items
+                </button>
+              </div>
+            </form>
+          </div>
+          
+          <div id="items-results" class="results-container">
+            <div class="results-placeholder">
+              <i class="fas fa-list"></i>
+              <p>Submit the form to view items</p>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Fields View -->
+        <div id="fields-view" class="view">
+          <div class="view-header">
+            <h2>Project Fields</h2>
+            <p>View and inspect fields in your project boards</p>
+          </div>
+          
+          <div class="form-container">
+            <h3>List Fields</h3>
+            <form id="list-fields-form" class="action-form">
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="projectId-fields">Project ID</label>
+                  <input type="text" id="projectId-fields" name="projectId" placeholder="Project ID" required>
+                </div>
+              </div>
+              
+              <div class="form-actions">
+                <button type="submit" class="btn btn-primary">
+                  <i class="fas fa-search"></i> List Fields
+                </button>
+              </div>
+            </form>
+          </div>
+          
+          <div id="fields-results" class="results-container">
+            <div class="results-placeholder">
+              <i class="fas fa-table"></i>
+              <p>Submit the form to view fields</p>
+            </div>
+          </div>
+          
+          <div class="form-container">
+            <h3>Show Field Details</h3>
+            <form id="show-field-form" class="action-form">
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="projectId-field">Project ID</label>
+                  <input type="text" id="projectId-field" name="projectId" placeholder="Project ID" required>
+                </div>
+                
+                <div class="form-group">
+                  <label for="fieldId">Field ID</label>
+                  <input type="text" id="fieldId" name="fieldId" placeholder="Field ID" required>
+                </div>
+              </div>
+              
+              <div class="form-actions">
+                <button type="submit" class="btn btn-primary">
+                  <i class="fas fa-search"></i> Show Field
+                </button>
+              </div>
+            </form>
+          </div>
+          
+          <div id="field-result" class="results-container">
+            <div class="results-placeholder">
+              <i class="fas fa-table"></i>
+              <p>Submit the form to view field details</p>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Fix Team View -->
+        <div id="fix-team-view" class="view">
+          <div class="view-header">
+            <h2>Fix Team Field</h2>
+            <p>Use AI assistance to update team fields in your project</p>
+          </div>
+          
+          <div class="form-container">
+            <h3>Fix Team Fields</h3>
+            <form id="fix-team-field-form" class="action-form">
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="projectId-fix-team">Project ID</label>
+                  <input type="text" id="projectId-fix-team" name="projectId" placeholder="Project ID" required>
+                </div>
+              </div>
+              
+              <div class="form-actions">
+                <button type="submit" class="btn btn-primary">
+                  <i class="fas fa-magic"></i> Fix Team Fields
+                </button>
+              </div>
+            </form>
+          </div>
+          
+          <div id="fix-team-result" class="results-container">
+            <div class="results-placeholder">
+              <i class="fas fa-users-cog"></i>
+              <p>Submit the form to start fixing team fields</p>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Fix Function View -->
+        <div id="fix-function-view" class="view">
+          <div class="view-header">
+            <h2>Fix Function Field</h2>
+            <p>Use AI assistance to update function fields in your project</p>
+          </div>
+          
+          <div class="form-container">
+            <h3>Fix Function Fields</h3>
+            <form id="fix-function-field-form" class="action-form">
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="projectId-fix-function">Project ID</label>
+                  <input type="text" id="projectId-fix-function" name="projectId" placeholder="Project ID" required>
+                </div>
+              </div>
+              
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="team-fix-function">Team Filter (optional)</label>
+                  <input type="text" id="team-fix-function" name="team" placeholder="Filter by team">
+                </div>
+              </div>
+              
+              <div class="form-actions">
+                <button type="submit" class="btn btn-primary">
+                  <i class="fas fa-magic"></i> Fix Function Fields
+                </button>
+              </div>
+            </form>
+          </div>
+          
+          <div id="fix-function-result" class="results-container">
+            <div class="results-placeholder">
+              <i class="fas fa-code-branch"></i>
+              <p>Submit the form to start fixing function fields</p>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Fix Kind View -->
+        <div id="fix-kind-view" class="view">
+          <div class="view-header">
+            <h2>Fix Kind Field</h2>
+            <p>Use AI assistance to update kind fields in your project</p>
+          </div>
+          
+          <div class="form-container">
+            <h3>Fix Kind Fields</h3>
+            <form id="fix-kind-field-form" class="action-form">
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="projectId-fix-kind">Project ID</label>
+                  <input type="text" id="projectId-fix-kind" name="projectId" placeholder="Project ID" required>
+                </div>
+              </div>
+              
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="team-fix-kind">Team Filter (optional)</label>
+                  <input type="text" id="team-fix-kind" name="team" placeholder="Filter by team">
+                </div>
+              </div>
+              
+              <div class="form-actions">
+                <button type="submit" class="btn btn-primary">
+                  <i class="fas fa-magic"></i> Fix Kind Fields
+                </button>
+              </div>
+            </form>
+          </div>
+          
+          <div id="fix-kind-result" class="results-container">
+            <div class="results-placeholder">
+              <i class="fas fa-tags"></i>
+              <p>Submit the form to start fixing kind fields</p>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Summarize View -->
+        <div id="summarize-view" class="view">
+          <div class="view-header">
+            <h2>Summarize Issues</h2>
+            <p>Generate AI-powered summaries of your project issues</p>
+          </div>
+          
+          <div class="form-container">
+            <h3>Summarize Issues</h3>
+            <form id="summarize-issues-form" class="action-form">
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="projectId-summarize">Project ID</label>
+                  <input type="text" id="projectId-summarize" name="projectId" placeholder="Project ID" required>
+                </div>
+              </div>
+              
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="kind-summarize">Kind</label>
+                  <input type="text" id="kind-summarize" name="kind" placeholder="Filter by kind">
+                </div>
+                
+                <div class="form-group">
+                  <label for="function-summarize">Function</label>
+                  <input type="text" id="function-summarize" name="function" placeholder="Filter by function">
+                </div>
+              </div>
+              
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="status-summarize">Status</label>
+                  <input type="text" id="status-summarize" name="status" placeholder="Filter by status">
+                </div>
+                
+                <div class="form-group">
+                  <label for="team-summarize">Team</label>
+                  <input type="text" id="team-summarize" name="team" placeholder="Filter by team">
+                </div>
+              </div>
+              
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="sig-summarize">SIG</label>
+                  <input type="text" id="sig-summarize" name="sig" placeholder="Filter by SIG">
+                </div>
+                
+                <div class="form-group">
+                  <label for="wg-summarize">WG</label>
+                  <input type="text" id="wg-summarize" name="wg" placeholder="Filter by WG">
+                </div>
+              </div>
+              
+              <div class="form-actions">
+                <button type="submit" class="btn btn-primary">
+                  <i class="fas fa-robot"></i> Generate Summary
+                </button>
+              </div>
+            </form>
+          </div>
+          
+          <div id="summarize-result" class="results-container">
+            <div class="results-placeholder">
+              <i class="fas fa-robot"></i>
+              <p>Submit the form to generate an AI summary</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+  
+  <!-- Modals -->
+  <div id="prompt-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="prompt-modal-title">User Input Required</h3>
+        <button class="close-btn" onclick="document.getElementById('prompt-modal').classList.remove('active')">×</button>
+      </div>
+      <div class="modal-body" id="prompt-modal-body">
+        <!-- Prompt content will be inserted here -->
+      </div>
+      <div class="modal-footer" id="prompt-modal-actions">
+        <!-- Action buttons will be inserted here -->
+      </div>
+    </div>
+  </div>
+  
+  <!-- Toast container -->
+  <div id="toast-container"></div>
+  
+  <!-- Scripts -->
+  <script src="script.js"></script>
+</body>
+</html> 
