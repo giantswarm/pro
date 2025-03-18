@@ -13,6 +13,7 @@ import { showFieldCommand } from '../src/commands/show-field.js';
 import { fixTeamFieldCommand } from '../src/commands/fix-team-field.js';
 import { fixFunctionFieldCommand } from '../src/commands/fix-function-field.js';
 import { fixKindFieldCommand } from '../src/commands/fix-kind-field.js';
+import { summarizeIssuesCommand } from '../src/commands/summarize-issues.js';
 
 import {
     ROADMAP_BOARD_ID, 
@@ -132,6 +133,19 @@ program
   .option('--no-team', 'Only include items with no team assigned')
   .action(fixKindFieldCommand);
 
+program
+  .command('summarize-issues')
+  .description('Analyze and summarize issues with AI-generated insights')
+  .option('--id <id>', 'Project board ID', ROADMAP_BOARD_ID)
+  .option('--kind <kind>', 'Filter by Kind')
+  .option('--status <status>', 'Filter by Status')
+  .option('--function <function>', 'Filter by Function')
+  .option('--team <team>', 'Filter by Team')
+  .option('--sig <sig>', 'Filter by SIG')
+  .option('--wg <wg>', 'Filter by Working Group')
+  .option('--no-team', 'Filter items with an empty Team field')
+  .action(summarizeIssuesCommand);
+
 program.parse(process.argv);
 
 // Export commands for testing
@@ -145,3 +159,4 @@ export const showField = showFieldCommand;
 export const fixTeamField = fixTeamFieldCommand;
 export const fixFunctionField = fixFunctionFieldCommand;
 export const fixKindField = fixKindFieldCommand;
+export const summarizeIssues = summarizeIssuesCommand;
