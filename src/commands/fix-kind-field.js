@@ -6,7 +6,8 @@ import {
   LIST_FIELDS_QUERY,
   UPDATE_ITEM_FIELD_MUTATION,
   POST_ISSUE_COMMENT_MUTATION,
-  KIND_FIELD_ID
+  KIND_FIELD_ID,
+  ISSUE_DETAIL_QUERY
 } from '../lib/project.js';
 import { makeIssueLink } from '../lib/utils.js';
 import OpenAI from 'openai';
@@ -46,16 +47,41 @@ function normalizeTeamName(name) {
 async function getKindSuggestionForIssue(item, kindOptions) {
   let title = item.content?.title || '';
   let body = '';
+  let author = '';
+  let assignees = 'None';
+  let comments = 'None';
+  
+  try {
+    // Fetch more detailed issue information
+    const issueDetails = await graphQLWithAuth(ISSUE_DETAIL_QUERY, { id: item.id });
+    if (issueDetails && issueDetails.node && issueDetails.node.content) {
+      author = issueDetails.node.content.author.login || '';
+      body = issueDetails.node.content.bodyText || '';
+      if (issueDetails.node.content.assignees && issueDetails.node.content.assignees.nodes) {
+        assignees = issueDetails.node.content.assignees.nodes.map(a => a.login).join(', ');
+      }
+      if (issueDetails.node.content.comments && issueDetails.node.content.comments.nodes) {
+        comments = issueDetails.node.content.comments.nodes.map(c => c.bodyText).join('\n');
+      }
+    } else {
+      console.log(chalk.yellow("Warning: Could not fetch complete issue details."));
+    }
+  } catch (err) {
+    console.error("Error fetching issue details:", err.message);
+  }
   
   // Create a list of valid kind names
   const validKindNames = kindOptions.map(option => option.name);
   const kindList = validKindNames.join(', ');
   
   try {
-    // Construct a prompt for ChatGPT that includes the valid options
+    // Construct a prompt for ChatGPT that includes the valid options and all issue details
     const prompt = `I have a GitHub issue with the following details:
 Title: ${title}
-Body: ${body || 'No description provided'}
+Content: ${body || 'No description provided'}
+Author: ${author}
+Assignees: ${assignees}
+Comments: ${comments}
 
 Based on this information, which of the following kinds best categorizes this issue?
 Valid kinds: ${kindList}

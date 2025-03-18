@@ -6,7 +6,8 @@ import {
   LIST_FIELDS_QUERY,
   UPDATE_ITEM_FIELD_MUTATION,
   POST_ISSUE_COMMENT_MUTATION,
-  FUNCTION_FIELD_ID
+  FUNCTION_FIELD_ID,
+  ISSUE_DETAIL_QUERY
 } from '../lib/project.js';
 import { makeIssueLink } from '../lib/utils.js';
 import OpenAI from 'openai';
@@ -20,6 +21,24 @@ if (!process.env.OPENAI_API_KEY) {
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 /**
+ * Helper function to normalize team names for comparison
+ * Converts to lowercase and removes special characters including emojis
+ * @param {string} name - Team name to normalize
+ * @returns {string} - Normalized team name
+ */
+function normalizeTeamName(name) {
+  if (!name) return '';
+  // Convert to lowercase and remove emojis and special characters
+  return name.toLowerCase()
+    // Remove emojis and special unicode characters
+    .replace(/[\u{1F600}-\u{1F64F}|\u{1F300}-\u{1F5FF}|\u{1F680}-\u{1F6FF}|\u{2600}-\u{26FF}|\u{2700}-\u{27BF}|\u{1F900}-\u{1F9FF}|\u{1F1E0}-\u{1F1FF}|\u{1F100}-\u{1F1FF}|\u{E000}-\u{F8FF}]/gu, '')
+    // Remove other special characters but keep alphanumeric and spaces
+    .replace(/[^\w\s]/g, '')
+    // Trim extra whitespace
+    .trim();
+}
+
+/**
  * Get function suggestion from ChatGPT based on issue content and available options
  * @param {Object} item - The project item containing issue details
  * @param {Array} functionOptions - Available function options from the project
@@ -28,16 +47,41 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 async function getFunctionSuggestionForIssue(item, functionOptions) {
   let title = item.content?.title || '';
   let body = '';
+  let author = '';
+  let assignees = 'None';
+  let comments = 'None';
+  
+  try {
+    // Fetch more detailed issue information
+    const issueDetails = await graphQLWithAuth(ISSUE_DETAIL_QUERY, { id: item.id });
+    if (issueDetails && issueDetails.node && issueDetails.node.content) {
+      author = issueDetails.node.content.author.login || '';
+      body = issueDetails.node.content.bodyText || '';
+      if (issueDetails.node.content.assignees && issueDetails.node.content.assignees.nodes) {
+        assignees = issueDetails.node.content.assignees.nodes.map(a => a.login).join(', ');
+      }
+      if (issueDetails.node.content.comments && issueDetails.node.content.comments.nodes) {
+        comments = issueDetails.node.content.comments.nodes.map(c => c.bodyText).join('\n');
+      }
+    } else {
+      console.log(chalk.yellow("Warning: Could not fetch complete issue details."));
+    }
+  } catch (err) {
+    console.error("Error fetching issue details:", err.message);
+  }
   
   // Create a list of valid function names
   const validFunctionNames = functionOptions.map(option => option.name);
   const functionList = validFunctionNames.join(', ');
   
   try {
-    // Construct a prompt for ChatGPT that includes the valid options
+    // Construct a prompt for ChatGPT that includes the valid options and all issue details
     const prompt = `I have a GitHub issue with the following details:
 Title: ${title}
-Body: ${body || 'No description provided'}
+Content: ${body || 'No description provided'}
+Author: ${author}
+Assignees: ${assignees}
+Comments: ${comments}
 
 Based on this information, which of the following functions best categorizes this issue?
 Valid functions: ${functionList}
@@ -122,17 +166,28 @@ export async function fixFunctionFieldCommand(options) {
     
     // Apply team filter if specified
     if (options.team) {
+      const normalizedTeamFilter = normalizeTeamName(options.team);
       console.log(chalk.cyan(`Filtering issues by team: ${options.team}`));
+      console.log(chalk.cyan(`(Using normalized name: "${normalizedTeamFilter}" for matching)`));
+      
       itemsWithoutFunction = itemsWithoutFunction.filter(item => {
         // Check if the item has team field
-        const hasTeamField = item.fieldValues && item.fieldValues.nodes && item.fieldValues.nodes.some(node =>
-          node.field &&
-          node.field.name &&
-          node.field.name.toLowerCase() === 'team' &&
-          typeof node.name === 'string' &&
-          node.name.toLowerCase() === options.team.toLowerCase()
-        );
-        return hasTeamField;
+        return item.fieldValues &&
+               item.fieldValues.nodes &&
+               item.fieldValues.nodes.some(node => {
+                 if (!node.field ||
+                     !node.field.name ||
+                     node.field.name.toLowerCase() !== 'team' ||
+                     typeof node.name !== 'string') {
+                   return false;
+                 }
+                 
+                 const normalizedTeamName = normalizeTeamName(node.name);
+                 
+                 // Check if the normalized team names match or contain each other
+                 return normalizedTeamName.includes(normalizedTeamFilter) ||
+                        normalizedTeamFilter.includes(normalizedTeamName);
+               });
       });
     } else if (options.team === false) {
       // Handle --no-team option
