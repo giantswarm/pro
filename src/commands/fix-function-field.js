@@ -9,7 +9,7 @@ import {
   FUNCTION_FIELD_ID,
   ISSUE_DETAIL_QUERY
 } from '../lib/project.js';
-import { makeIssueLink } from '../lib/utils.js';
+import { makeIssueLink, normalizeFieldValue } from '../lib/utils.js';
 import OpenAI from 'openai';
 
 // Setup OpenAI client
@@ -19,24 +19,6 @@ if (!process.env.OPENAI_API_KEY) {
 }
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
-/**
- * Helper function to normalize team names for comparison
- * Converts to lowercase and removes special characters including emojis
- * @param {string} name - Team name to normalize
- * @returns {string} - Normalized team name
- */
-function normalizeTeamName(name) {
-  if (!name) return '';
-  // Convert to lowercase and remove emojis and special characters
-  return name.toLowerCase()
-    // Remove emojis and special unicode characters
-    .replace(/[\u{1F600}-\u{1F64F}|\u{1F300}-\u{1F5FF}|\u{1F680}-\u{1F6FF}|\u{2600}-\u{26FF}|\u{2700}-\u{27BF}|\u{1F900}-\u{1F9FF}|\u{1F1E0}-\u{1F1FF}|\u{1F100}-\u{1F1FF}|\u{E000}-\u{F8FF}]/gu, '')
-    // Remove other special characters but keep alphanumeric and spaces
-    .replace(/[^\w\s]/g, '')
-    // Trim extra whitespace
-    .trim();
-}
 
 /**
  * Get function suggestion from ChatGPT based on issue content and available options
@@ -166,7 +148,7 @@ export async function fixFunctionFieldCommand(options) {
     
     // Apply team filter if specified
     if (options.team) {
-      const normalizedTeamFilter = normalizeTeamName(options.team);
+      const normalizedTeamFilter = normalizeFieldValue(options.team);
       console.log(chalk.cyan(`Filtering issues by team: ${options.team}`));
       console.log(chalk.cyan(`(Using normalized name: "${normalizedTeamFilter}" for matching)`));
       
@@ -182,7 +164,7 @@ export async function fixFunctionFieldCommand(options) {
                    return false;
                  }
                  
-                 const normalizedTeamName = normalizeTeamName(node.name);
+                 const normalizedTeamName = normalizeFieldValue(node.name);
                  
                  // Check if the normalized team names match or contain each other
                  return normalizedTeamName.includes(normalizedTeamFilter) ||
@@ -234,9 +216,10 @@ export async function fixFunctionFieldCommand(options) {
       
       // Find matching function option
       const functionOption = functionField.options.find(option => {
-        const optionNameLower = option.name.toLowerCase().replace(/[^\x00-\x7F]/g, '').trim();
-        const functionNameLower = functionName.toLowerCase().trim();
-        return optionNameLower.includes(functionNameLower) || functionNameLower.includes(optionNameLower);
+        const normalizedOptionName = normalizeFieldValue(option.name);
+        const normalizedSuggestion = normalizeFieldValue(functionName);
+        return normalizedOptionName.includes(normalizedSuggestion) || 
+               normalizedSuggestion.includes(normalizedOptionName);
       });
       
       if (!functionOption) {

@@ -1,7 +1,7 @@
 import chalk from 'chalk';
 import { fetchPaginated } from '../lib/api.js';
 import { LIST_ITEMS_QUERY } from '../lib/project.js';
-import { makeIssueLink } from '../lib/utils.js';
+import { makeIssueLink, normalizeFieldValue } from '../lib/utils.js';
 
 export async function listItemsCommand(options) {
   const first = 100;
@@ -10,20 +10,26 @@ export async function listItemsCommand(options) {
     const filters = {};
     ['kind', 'status', 'function', 'sig', 'wg'].forEach(key => {
       if (options[key]) {
-        filters[key === 'wg' ? 'working group' : key] = options[key].toLowerCase();
+        filters[key === 'wg' ? 'working group' : key] = normalizeFieldValue(options[key]);
       }
     });
     if (options.team !== undefined && options.team !== false) {
-      filters['team'] = options.team.toLowerCase();
+      filters['team'] = normalizeFieldValue(options.team);
     }
+
+    console.log(chalk.cyan("Fetching and filtering items..."));
+    
     const allItems = await fetchPaginated(
       LIST_ITEMS_QUERY,
       { projectId: options.id, first },
       result => result.node.items
     );
-    // Apply --no-team filter if specified
+
+    // Apply filters
     const filtered = allItems.filter(item => {
       if (!item.fieldValues || !item.fieldValues.nodes) return false;
+      
+      // Apply --no-team filter if specified
       if (options.team !== undefined && options.team === false) {
         const hasTeam = item.fieldValues.nodes.some(node => 
           node.field &&
@@ -34,15 +40,24 @@ export async function listItemsCommand(options) {
         );
         if (hasTeam) return false;
       }
-      return Object.entries(filters).every(([filterKey, filterValue]) => {
+      
+      // Apply other filters with normalization for case insensitivity and emojis
+      return Object.entries(filters).every(([filterKey, normalizedFilterValue]) => {
         const matchingField = item.fieldValues.nodes.find(node => {
           if (!node.field) return false;
           return node.field.name && node.field.name.toLowerCase() === filterKey;
         });
+        
         if (!matchingField) return false;
-        return matchingField.name.toLowerCase() === filterValue;
+        
+        const normalizedFieldValue = normalizeFieldValue(matchingField.name);
+        
+        // Consider match if either contains the other after normalization
+        return normalizedFieldValue.includes(normalizedFilterValue) || 
+               normalizedFilterValue.includes(normalizedFieldValue);
       });
     });
+    
     if (filtered.length === 0) {
       console.log(chalk.yellow(`No items found matching provided filters.`));
     } else {

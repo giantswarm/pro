@@ -4,7 +4,7 @@ import {
   LIST_ITEMS_QUERY,
   ISSUE_DETAIL_QUERY
 } from '../lib/project.js';
-import { makeIssueLink } from '../lib/utils.js';
+import { makeIssueLink, normalizeFieldValue } from '../lib/utils.js';
 import OpenAI from 'openai';
 
 // Setup OpenAI client
@@ -157,11 +157,11 @@ export async function summarizeIssuesCommand(options) {
     const filters = {};
     ['kind', 'status', 'function', 'sig', 'wg'].forEach(key => {
       if (options[key]) {
-        filters[key === 'wg' ? 'working group' : key] = options[key].toLowerCase();
+        filters[key === 'wg' ? 'working group' : key] = normalizeFieldValue(options[key]);
       }
     });
     if (options.team !== undefined && options.team !== false) {
-      filters['team'] = options.team.toLowerCase();
+      filters['team'] = normalizeFieldValue(options.team);
     }
     
     // Fetch all items
@@ -171,7 +171,7 @@ export async function summarizeIssuesCommand(options) {
       result => result.node.items
     );
     
-    // Apply filters
+    // Apply filters with normalization
     const filtered = allItems.filter(item => {
       if (!item.fieldValues || !item.fieldValues.nodes) return false;
       
@@ -187,14 +187,20 @@ export async function summarizeIssuesCommand(options) {
         if (hasTeam) return false;
       }
       
-      // Apply other filters
-      return Object.entries(filters).every(([filterKey, filterValue]) => {
+      // Apply other filters with normalization for case insensitivity and emojis
+      return Object.entries(filters).every(([filterKey, normalizedFilterValue]) => {
         const matchingField = item.fieldValues.nodes.find(node => {
           if (!node.field) return false;
           return node.field.name && node.field.name.toLowerCase() === filterKey;
         });
+        
         if (!matchingField) return false;
-        return matchingField.name.toLowerCase() === filterValue;
+        
+        const normalizedFieldValue = normalizeFieldValue(matchingField.name);
+        
+        // Consider match if either contains the other after normalization
+        return normalizedFieldValue.includes(normalizedFilterValue) || 
+               normalizedFilterValue.includes(normalizedFieldValue);
       });
     });
     
