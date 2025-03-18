@@ -13,7 +13,11 @@ A command-line tool for managing GitHub Projects (v2) through the GitHub GraphQL
 - List items in a project with optional filtering (merged filter-items)
 - List fields in a project
 - Show field details
-- Fix team field values
+- Fix team field values using AI suggestions
+- Fix function field values using AI suggestions
+- Fix kind field values using AI suggestions
+- Summarize and analyze issues with AI-generated insights
+- Elegant terminal feedback with loading spinners
 
 ## Available Commands
 
@@ -41,6 +45,15 @@ A command-line tool for managing GitHub Projects (v2) through the GitHub GraphQL
 
 - **fix-team-field**  
   Fix team field values based on team labels, using AI suggestions and manual confirmation as needed.
+
+- **fix-function-field**  
+  Fix function field values using ChatGPT suggestions. Supports filtering by team name and items with no team assigned.
+
+- **fix-kind-field**  
+  Fix kind field values using ChatGPT suggestions. Supports filtering by team name and items with no team assigned.
+
+- **summarize-issues**  
+  Analyze and summarize issues with AI-generated insights. Provides a summary of themes, logical grouping by category, suggested priority order, and identifies potential dependencies between issues.
 
 ## Recommended Project Structure
 
@@ -104,6 +117,18 @@ pro show-functions
 # Fix team field values based on team labels, team projects and an AI assistant
 pro fix-team-field
 
+# Fix function field values using AI suggestions
+pro fix-function-field
+
+# Fix function field values for a specific team
+pro fix-function-field --team "Team Name"
+
+# Fix kind field values using AI suggestions
+pro fix-kind-field
+
+# Analyze and summarize issues
+pro summarize-issues --kind feature
+
 # List projects in a repository
 pro list --owner organization_name --repo repository_name
 
@@ -119,6 +144,26 @@ pro delete --id project_id
 # Update a project
 pro update --id project_id --title "New Title"
 ```
+
+## Features
+
+### AI-powered field suggestions
+
+The tool uses OpenAI's models to intelligently suggest values for fields like team, function, and kind based on the issue's content, labels, and context.
+
+### Smart filtering
+
+All commands with filtering options support case-insensitive matching and ignore emojis and special characters. For example, filtering with `--team planeteers` will match fields with value "Planeteers 🪐".
+
+### Enhanced terminal experience
+
+The CLI features elegant loading spinners that provide visual feedback during:
+- Data fetching operations
+- Filtering processes
+- AI analysis
+- Issue updates
+
+This improves the user experience by providing clear progress indicators during longer operations.
 
 ## Development
 
