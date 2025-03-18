@@ -47,24 +47,57 @@ app.post('/api/list-items', (req, res) => {
   if (wg) command += ` --wg "${wg}"`;
   if (noTeam) command += ' --no-team';
   
+  console.log(`Executing command: ${command}`);
+  
   executeCommand(command, (error, stdout) => {
     if (error) {
+      console.error('Command execution error:', error);
       return res.status(500).json(error);
     }
     
     try {
-      // Try to parse the JSON output if the command returns JSON
-      // Otherwise, just send the stdout as text
-      let output;
-      try {
-        output = JSON.parse(stdout);
-      } catch (parseError) {
-        output = { items: [], text: stdout };
+      // The output from list-items is likely plain text with each line representing an item
+      // Let's parse it into a more structured format
+      const lines = stdout.trim().split('\n');
+      
+      // Check if we have results
+      if (lines.length === 0 || lines[0].includes('No items found')) {
+        return res.json({ success: true, items: [], count: 0 });
       }
       
-      res.json({ success: true, ...output });
+      const items = [];
+      const regex = /^(.*?)\s+\((https:\/\/github\.com\/.*?)\)$/;
+      
+      for (const line of lines) {
+        const match = line.match(regex);
+        if (match) {
+          const [_, title, url] = match;
+          
+          // Extract issue ID from URL if possible
+          const urlParts = url.split('/');
+          const id = urlParts[urlParts.length - 1];
+          
+          items.push({ id, title, url });
+        } else if (line.trim()) {
+          // If the line doesn't match our regex but isn't empty,
+          // include it with just a title
+          items.push({ title: line.trim() });
+        }
+      }
+      
+      res.json({
+        success: true,
+        items,
+        count: items.length,
+        text: stdout // Include raw output for debugging
+      });
     } catch (processError) {
-      res.status(500).json({ error: 'Error processing command output', details: processError.message });
+      console.error('Error processing command output:', processError);
+      res.status(500).json({
+        error: 'Error processing command output',
+        details: processError.message,
+        text: stdout // Include raw output for debugging
+      });
     }
   });
 });

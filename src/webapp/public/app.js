@@ -319,8 +319,29 @@ listItemsForm.addEventListener('submit', async (e) => {
     noTeam: document.getElementById('list-no-team').checked
   };
   
-  const result = await simulateApiCall('list-items', formData);
-  displayListItemsResults(result);
+  try {
+    showLoading('Fetching items...');
+    
+    const response = await fetch('/api/list-items', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(formData)
+    });
+    
+    const result = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(result.error || 'Failed to fetch items');
+    }
+    
+    displayListItemsResults(result);
+  } catch (error) {
+    listItemsResults.innerHTML = `<div class="error-message">${error.message}</div>`;
+  } finally {
+    hideLoading();
+  }
 });
 
 fixFunctionFieldForm.addEventListener('submit', async (e) => {
@@ -333,8 +354,29 @@ fixFunctionFieldForm.addEventListener('submit', async (e) => {
     confirm: document.getElementById('function-confirm').checked
   };
   
-  const result = await simulateApiCall('fix-function-field', formData, 3000);
-  displayFixFunctionResults(result);
+  try {
+    showLoading('Processing function fields...');
+    
+    const response = await fetch('/api/fix-function-field', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(formData)
+    });
+    
+    const result = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(result.error || 'Failed to process function fields');
+    }
+    
+    displayFixFunctionResults(result);
+  } catch (error) {
+    fixFunctionFieldResults.innerHTML = `<div class="error-message">${error.message}</div>`;
+  } finally {
+    hideLoading();
+  }
 });
 
 fixKindFieldForm.addEventListener('submit', async (e) => {
@@ -347,8 +389,29 @@ fixKindFieldForm.addEventListener('submit', async (e) => {
     confirm: document.getElementById('kind-confirm').checked
   };
   
-  const result = await simulateApiCall('fix-kind-field', formData, 3000);
-  displayFixKindResults(result);
+  try {
+    showLoading('Processing kind fields...');
+    
+    const response = await fetch('/api/fix-kind-field', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(formData)
+    });
+    
+    const result = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(result.error || 'Failed to process kind fields');
+    }
+    
+    displayFixKindResults(result);
+  } catch (error) {
+    fixKindFieldResults.innerHTML = `<div class="error-message">${error.message}</div>`;
+  } finally {
+    hideLoading();
+  }
 });
 
 summarizeIssuesForm.addEventListener('submit', async (e) => {
@@ -365,8 +428,29 @@ summarizeIssuesForm.addEventListener('submit', async (e) => {
     noTeam: document.getElementById('summarize-no-team').checked
   };
   
-  const result = await simulateApiCall('summarize-issues', formData, 4000);
-  displaySummarizeResults(result);
+  try {
+    showLoading('Generating summary...');
+    
+    const response = await fetch('/api/summarize-issues', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(formData)
+    });
+    
+    const result = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(result.error || 'Failed to generate summary');
+    }
+    
+    displaySummarizeResults(result);
+  } catch (error) {
+    summarizeIssuesResults.innerHTML = `<div class="error-message">${error.message}</div>`;
+  } finally {
+    hideLoading();
+  }
 });
 
 // Result display functions
@@ -376,34 +460,97 @@ function displayListItemsResults(result) {
     return;
   }
   
-  if (result.items.length === 0) {
+  if (!result.items || result.items.length === 0) {
     listItemsResults.innerHTML = `<div class="placeholder-message">No items found matching your criteria</div>`;
     return;
   }
   
-  let html = `<p>Found ${result.count} items:</p><ul style="list-style-type: none; padding: 0; margin-top: 1rem;">`;
+  let html = `<p>Found ${result.count} items:</p>`;
+  
+  // If we have the raw output, show a button to toggle it for debugging
+  if (result.text) {
+    html += `
+      <div style="margin: 10px 0;">
+        <button id="toggle-raw-output" class="btn btn-secondary">Toggle Raw Output</button>
+        <pre id="raw-output" style="display: none; margin-top: 10px; padding: 10px; background: var(--bg-secondary-light); border-radius: 4px; overflow: auto; max-height: 200px;">${result.text}</pre>
+      </div>
+    `;
+  }
+  
+  html += `<ul style="list-style-type: none; padding: 0; margin-top: 1rem;">`;
   
   result.items.forEach(item => {
     html += `
       <li style="margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border-light);">
-        <div><strong><a href="${item.url}" target="_blank">${item.id}: ${item.title}</a></strong></div>
-        <div style="margin-top: 0.5rem; display: flex; flex-wrap: wrap; gap: 0.5rem;">
-          ${item.status ? `<span class="summary-tag">Status: ${item.status}</span>` : ''}
-          ${item.kind ? `<span class="summary-tag">Kind: ${item.kind}</span>` : ''}
-          ${item.function ? `<span class="summary-tag">Function: ${item.function}</span>` : ''}
-          ${item.team ? `<span class="summary-tag">Team: ${item.team}</span>` : '<span class="summary-tag">No Team</span>'}
-        </div>
-      </li>
-    `;
+        <div><strong>${item.url ? `<a href="${item.url}" target="_blank">` : ''}${item.id ? `${item.id}: ` : ''}${item.title}${item.url ? '</a>' : ''}</strong></div>`;
+    
+    // Add tags if they exist
+    if (item.status || item.kind || item.function || item.team) {
+      html += `<div style="margin-top: 0.5rem; display: flex; flex-wrap: wrap; gap: 0.5rem;">`;
+      
+      if (item.status) {
+        html += `<span class="summary-tag">Status: ${item.status}</span>`;
+      }
+      
+      if (item.kind) {
+        html += `<span class="summary-tag">Kind: ${item.kind}</span>`;
+      }
+      
+      if (item.function) {
+        html += `<span class="summary-tag">Function: ${item.function}</span>`;
+      }
+      
+      if (item.team === null) {
+        html += `<span class="summary-tag">No Team</span>`;
+      } else if (item.team) {
+        html += `<span class="summary-tag">Team: ${item.team}</span>`;
+      }
+      
+      html += `</div>`;
+    }
+    
+    html += `</li>`;
   });
   
   html += '</ul>';
   listItemsResults.innerHTML = html;
+  
+  // Add event listener for the raw output toggle if it exists
+  const toggleButton = document.getElementById('toggle-raw-output');
+  if (toggleButton) {
+    toggleButton.addEventListener('click', () => {
+      const rawOutput = document.getElementById('raw-output');
+      if (rawOutput.style.display === 'none') {
+        rawOutput.style.display = 'block';
+        toggleButton.textContent = 'Hide Raw Output';
+      } else {
+        rawOutput.style.display = 'none';
+        toggleButton.textContent = 'Show Raw Output';
+      }
+    });
+  }
 }
 
 function displayFixFunctionResults(result) {
   if (result.error) {
     fixFunctionFieldResults.innerHTML = `<div class="error-message">${result.error}</div>`;
+    return;
+  }
+  
+  // For real API responses, we may just have the raw output
+  if (result.output) {
+    let html = '<div style="margin-bottom: 1rem;">';
+    html += '<h4>Command Output:</h4>';
+    html += `<pre style="background: var(--bg-secondary-light); padding: 10px; border-radius: 4px; overflow: auto; max-height: 400px;">${result.output}</pre>`;
+    html += '</div>';
+    
+    fixFunctionFieldResults.innerHTML = html;
+    return;
+  }
+  
+  // Handle structured responses (similar to the simulation)
+  if (!result.items || result.items.length === 0) {
+    fixFunctionFieldResults.innerHTML = `<div class="placeholder-message">No items were processed</div>`;
     return;
   }
   
@@ -413,7 +560,7 @@ function displayFixFunctionResults(result) {
   result.items.forEach(item => {
     html += `
       <li style="margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border-light);">
-        <div><strong><a href="${item.url}" target="_blank">${item.id}: ${item.title}</a></strong></div>
+        <div><strong>${item.url ? `<a href="${item.url}" target="_blank">` : ''}${item.id ? `${item.id}: ` : ''}${item.title}${item.url ? '</a>' : ''}</strong></div>
         <div style="margin-top: 0.5rem;">
           Original function: <span style="color: var(--text-secondary-light);">${item.originalFunction || '(empty)'}</span>
         </div>
@@ -439,13 +586,30 @@ function displayFixKindResults(result) {
     return;
   }
   
+  // For real API responses, we may just have the raw output
+  if (result.output) {
+    let html = '<div style="margin-bottom: 1rem;">';
+    html += '<h4>Command Output:</h4>';
+    html += `<pre style="background: var(--bg-secondary-light); padding: 10px; border-radius: 4px; overflow: auto; max-height: 400px;">${result.output}</pre>`;
+    html += '</div>';
+    
+    fixKindFieldResults.innerHTML = html;
+    return;
+  }
+  
+  // Handle structured responses (similar to the simulation)
+  if (!result.items || result.items.length === 0) {
+    fixKindFieldResults.innerHTML = `<div class="placeholder-message">No items were processed</div>`;
+    return;
+  }
+  
   let html = `<p>Processed ${result.count} items, applied changes to ${result.appliedCount} items:</p>`;
   html += '<ul style="list-style-type: none; padding: 0; margin-top: 1rem;">';
   
   result.items.forEach(item => {
     html += `
       <li style="margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border-light);">
-        <div><strong><a href="${item.url}" target="_blank">${item.id}: ${item.title}</a></strong></div>
+        <div><strong>${item.url ? `<a href="${item.url}" target="_blank">` : ''}${item.id ? `${item.id}: ` : ''}${item.title}${item.url ? '</a>' : ''}</strong></div>
         <div style="margin-top: 0.5rem;">
           Original kind: <span style="color: var(--text-secondary-light);">${item.originalKind || '(empty)'}</span>
         </div>
@@ -468,6 +632,42 @@ function displayFixKindResults(result) {
 function displaySummarizeResults(result) {
   if (result.error) {
     summarizeIssuesResults.innerHTML = `<div class="error-message">${result.error}</div>`;
+    return;
+  }
+  
+  // For real API responses, we may just have the raw output
+  if (result.output) {
+    let html = '<div style="margin-bottom: 1rem;">';
+    html += '<h4>Command Output:</h4>';
+    html += `<pre style="background: var(--bg-secondary-light); padding: 10px; border-radius: 4px; overflow: auto; max-height: 400px;">${result.output}</pre>`;
+    html += '</div>';
+    
+    summarizeIssuesResults.innerHTML = html;
+    return;
+  }
+  
+  // For responses with just text listing
+  if (result.text && !result.summary) {
+    let html = '<div style="margin-bottom: 1rem;">';
+    html += '<h4>Items Found:</h4>';
+    html += `<pre style="background: var(--bg-secondary-light); padding: 10px; border-radius: 4px; overflow: auto; max-height: 400px;">${result.text}</pre>`;
+    html += '</div>';
+    
+    // Add a note that actual summaries aren't implemented yet
+    html += `
+      <div class="placeholder-message" style="margin-top: 20px;">
+        <p>The summarize-issues command is not yet implemented.</p>
+        <p>This is showing the list of matching items from the list-items command.</p>
+      </div>
+    `;
+    
+    summarizeIssuesResults.innerHTML = html;
+    return;
+  }
+  
+  // Handle structured summary responses
+  if (!result.summary) {
+    summarizeIssuesResults.innerHTML = `<div class="placeholder-message">No summary could be generated</div>`;
     return;
   }
   
