@@ -5,7 +5,6 @@ import { program } from 'commander';
 // Import command handlers from src/commands
 import { listCommand } from '../src/commands/list.js';
 import { createCommand } from '../src/commands/create.js';
-import { deleteCommand } from '../src/commands/delete.js';
 import { updateCommand } from '../src/commands/update.js';
 import { listItemsCommand } from '../src/commands/list-items.js';
 import { listFieldsCommand } from '../src/commands/list-fields.js';
@@ -14,7 +13,6 @@ import { fixTeamFieldCommand } from '../src/commands/fix-team-field.js';
 import { fixFunctionFieldCommand } from '../src/commands/fix-function-field.js';
 import { fixKindFieldCommand } from '../src/commands/fix-kind-field.js';
 import { summarizeIssuesCommand } from '../src/commands/summarize-issues.js';
-import { serverCommand } from '../src/commands/server.js';
 
 import {
     ROADMAP_BOARD_ID, 
@@ -44,12 +42,6 @@ program
   .requiredOption('--repo <repo>', 'GitHub repository name')
   .requiredOption('--title <title>', 'Title of the project board')
   .action(createCommand);
-
-program
-  .command('delete')
-  .description('Delete a GitHub Project v2 board')
-  .requiredOption('--id <id>', 'Project board ID')
-  .action(deleteCommand);
 
 program
   .command('update')
@@ -147,18 +139,11 @@ program
   .option('--no-team', 'Filter items with an empty Team field')
   .action(summarizeIssuesCommand);
 
-program
-  .command('server')
-  .description('Start a web server that provides a UI for the CLI')
-  .option('-p, --port <port>', 'Port to run the server on', '3000')
-  .action(serverCommand);
-
 program.parse(process.argv);
 
 // Export commands for testing
 export const listProjects = listCommand;
 export const createProject = createCommand;
-export const deleteProject = deleteCommand;
 export const updateProject = updateCommand;
 export const listItems = listItemsCommand;
 export const listFields = listFieldsCommand;

@@ -25,11 +25,32 @@ async function fetchPaginated(query, vars, extractData) {
     } else {
       delete callVars.after;
     }
-    const result = await graphQLWithAuth(query, callVars);
-    const { nodes, pageInfo } = extractData(result);
-    allResults.push(...nodes);
-    after = pageInfo.hasNextPage ? pageInfo.endCursor : null;
+
+    try {
+      const result = await graphQLWithAuth(query, callVars);
+      const extracted = extractData(result);
+
+      // Handle different response formats
+      if (extracted && extracted.nodes && extracted.pageInfo) {
+        // Standard format with nodes and pageInfo
+        const { nodes, pageInfo } = extracted;
+        allResults.push(...nodes);
+        after = pageInfo.hasNextPage ? pageInfo.endCursor : null;
+      } else if (Array.isArray(extracted)) {
+        // Direct array of items
+        allResults.push(...extracted);
+        after = null; // No pagination for this format
+      } else {
+        // Unknown format, just store the result as is
+        allResults.push(extracted);
+        after = null;
+      }
+    } catch (error) {
+      console.error('Error fetching data:', error.message);
+      after = null; // Stop pagination on error
+    }
   } while (after);
+
   return allResults;
 }
 

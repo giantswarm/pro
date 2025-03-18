@@ -16,15 +16,9 @@
     "@octokit/graphql": "^8.2.1",
     "chalk": "^5.4.1",
     "commander": "^13.1.0",
-    "cors": "^2.8.5",
-    "dotenv": "^16.4.7",
-    "express": "^4.21.2",
-    "fontsource-inter": "^4.0.0",
     "inquirer": "^12.4.2",
-    "morgan": "^1.10.0",
     "openai": "^4.86.2",
-    "ora": "^8.2.0",
-    "uuid": "^11.1.0"
+    "ora": "^8.2.0"
   },
   "devDependencies": {
     "jest": "^29.7.0"
