@@ -118,6 +118,8 @@ program
   .command('fix-function-field')
   .description('Fix function field values using ChatGPT suggestions')
   .option('--id <id>', 'Project board ID', ROADMAP_BOARD_ID)
+  .option('--team <team>', 'Filter by team name')
+  .option('--no-team', 'Only include items with no team assigned')
   .action(fixFunctionFieldCommand);
 
 program.parse(process.argv);

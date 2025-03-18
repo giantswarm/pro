@@ -109,7 +109,7 @@ export async function fixFunctionFieldCommand(options) {
     );
     
     // Filter items missing a function value
-    const itemsWithoutFunction = allItems.filter(item => {
+    let itemsWithoutFunction = allItems.filter(item => {
       if (!item.fieldValues || !item.fieldValues.nodes) return true;
       return !item.fieldValues.nodes.some(node =>
         node.field &&
@@ -119,6 +119,35 @@ export async function fixFunctionFieldCommand(options) {
         node.name.trim() !== ''
       );
     });
+    
+    // Apply team filter if specified
+    if (options.team) {
+      console.log(chalk.cyan(`Filtering issues by team: ${options.team}`));
+      itemsWithoutFunction = itemsWithoutFunction.filter(item => {
+        // Check if the item has team field
+        const hasTeamField = item.fieldValues && item.fieldValues.nodes && item.fieldValues.nodes.some(node =>
+          node.field &&
+          node.field.name &&
+          node.field.name.toLowerCase() === 'team' &&
+          typeof node.name === 'string' &&
+          node.name.toLowerCase() === options.team.toLowerCase()
+        );
+        return hasTeamField;
+      });
+    } else if (options.team === false) {
+      // Handle --no-team option
+      console.log(chalk.cyan('Filtering items with no team assigned'));
+      itemsWithoutFunction = itemsWithoutFunction.filter(item => {
+        // Check if the item has no team field or empty team field
+        return !(item.fieldValues && item.fieldValues.nodes && item.fieldValues.nodes.some(node =>
+          node.field &&
+          node.field.name &&
+          node.field.name.toLowerCase() === 'team' &&
+          typeof node.name === 'string' &&
+          node.name.trim() !== ''
+        ));
+      });
+    }
     
     console.log(chalk.cyan(`Found ${itemsWithoutFunction.length} items without function field set.`));
     let updatedCount = 0;
