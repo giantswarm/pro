@@ -280,17 +280,41 @@ body.dark-mode .section-header p {
 }
 
 .app-footer {
-  padding: var(--spacing-lg) var(--spacing-xl);
-  background-color: var(--surface-light);
+  margin-top: auto;
+  padding: 1rem;
+  font-size: 0.875rem;
+  color: var(--text-secondary-light);
   border-top: 1px solid var(--border-light);
   text-align: center;
-  color: var(--text-secondary-light);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 body.dark-mode .app-footer {
   background-color: var(--surface-dark);
   border-top-color: var(--border-dark);
   color: var(--text-secondary-dark);
+}
+
+.footer-links {
+  margin-top: 0.5rem;
+}
+
+.diagnostic-link {
+  color: var(--primary-light);
+  text-decoration: none;
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--primary-light);
+  border-radius: 4px;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.diagnostic-link:hover {
+  background-color: var(--primary-light);
+  color: white;
 }
 
 /* Cards */

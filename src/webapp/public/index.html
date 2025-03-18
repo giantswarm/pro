@@ -9,6 +9,59 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script>
+    // Error tracking
+    window.onerror = function(message, source, lineno, colno, error) {
+      console.error('Error caught:', message, error);
+      
+      // Create an error notification in the UI
+      const errorLog = document.getElementById('error-log') || document.createElement('div');
+      if (!errorLog.id) {
+        errorLog.id = 'error-log';
+        errorLog.style.position = 'fixed';
+        errorLog.style.bottom = '10px';
+        errorLog.style.right = '10px';
+        errorLog.style.backgroundColor = '#ffebee';
+        errorLog.style.color = '#b71c1c';
+        errorLog.style.padding = '10px';
+        errorLog.style.borderRadius = '4px';
+        errorLog.style.maxWidth = '80%';
+        errorLog.style.maxHeight = '30%';
+        errorLog.style.overflow = 'auto';
+        errorLog.style.boxShadow = '0 2px 5px rgba(0,0,0,0.2)';
+        errorLog.style.zIndex = '9999';
+        document.body.appendChild(errorLog);
+      }
+      
+      const errorItem = document.createElement('div');
+      errorItem.style.marginBottom = '8px';
+      errorItem.style.paddingBottom = '8px';
+      errorItem.style.borderBottom = '1px solid #ef9a9a';
+      errorItem.innerHTML = `<strong>${message}</strong> at ${source}:${lineno}:${colno}`;
+      
+      if (error && error.stack) {
+        const stack = document.createElement('pre');
+        stack.style.fontSize = '0.8em';
+        stack.style.marginTop = '5px';
+        stack.style.maxHeight = '100px';
+        stack.style.overflow = 'auto';
+        stack.textContent = error.stack;
+        errorItem.appendChild(stack);
+      }
+      
+      errorLog.insertBefore(errorItem, errorLog.firstChild);
+      
+      return false;
+    };
+    
+    // Additionally catch unhandled promise rejections
+    window.addEventListener('unhandledrejection', function(event) {
+      console.error('Unhandled rejection:', event.reason);
+      
+      window.onerror('Unhandled Promise: ' + (event.reason?.message || String(event.reason)), 
+                    'promise', 0, 0, event.reason);
+    });
+  </script>
 </head>
 <body>
   <div class="app-container">
@@ -293,6 +346,9 @@
 
     <footer class="app-footer">
       <p>© 2025 Roadmap Board Manager</p>
+      <div class="footer-links">
+        <a href="/api/diagnostics" target="_blank" class="diagnostic-link">Run Diagnostics</a>
+      </div>
     </footer>
   </div>
 

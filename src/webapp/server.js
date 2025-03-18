@@ -11,17 +11,29 @@ const ROADMAP_BOARD_ID = 'PVT_kwDOAHNM9M4ABvWx';
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Helper function to execute CLI commands
+// For debugging HTTP requests
+app.use((req, res, next) => {
+  console.log(`${req.method} ${req.path}`);
+  next();
+});
+
+// Error logging endpoint
+app.post('/api/log-error', (req, res) => {
+  console.error('Client-side error:', JSON.stringify(req.body, null, 2));
+  res.sendStatus(200);
+});
+
+// Helper function to execute command
 function executeCommand(command, callback) {
-  exec(command, { maxBuffer: 1024 * 1024 * 5 }, (error, stdout, stderr) => {
+  exec(command, { maxBuffer: 1024 * 1024 * 10 }, (error, stdout, stderr) => {
     if (error) {
-      console.error(`Command execution error: ${error}`);
-      return callback({ error: error.message, stderr });
+      console.error(`Error executing command: ${command}`);
+      console.error(error);
+      return callback(error);
     }
     
-    if (stderr && !stdout) {
-      console.error(`Command stderr: ${stderr}`);
-      return callback({ error: stderr });
+    if (stderr) {
+      console.warn(`Command produced stderr: ${stderr}`);
     }
     
     callback(null, stdout);
@@ -191,6 +203,44 @@ app.post('/api/summarize-issues', (req, res) => {
         summary: `This collection of issues focuses on improving the API and fixing critical bugs. 
                  There are some high-priority security concerns that should be addressed first.`
       }
+    });
+  });
+});
+
+// Diagnostic endpoint
+app.get('/api/diagnostics', (req, res) => {
+  const diagnostics = {
+    node_version: process.version,
+    platform: process.platform,
+    memory: process.memoryUsage(),
+    uptime: process.uptime(),
+    env: {
+      PATH: process.env.PATH,
+      NODE_ENV: process.env.NODE_ENV,
+      // Don't include sensitive info like tokens
+    },
+    cwd: process.cwd()
+  };
+  
+  // Test command execution
+  executeCommand('node -v', (error, stdout) => {
+    diagnostics.command_test = {
+      command: 'node -v',
+      success: !error,
+      output: stdout,
+      error: error ? error.message : null
+    };
+    
+    // Test CLI tool
+    executeCommand('node bin/index.js --help', (cliError, cliStdout) => {
+      diagnostics.cli_test = {
+        command: 'node bin/index.js --help',
+        success: !cliError,
+        output: cliStdout ? cliStdout.substring(0, 500) : null, // Limit output length
+        error: cliError ? cliError.message : null
+      };
+      
+      res.json(diagnostics);
     });
   });
 });
