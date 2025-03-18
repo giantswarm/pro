@@ -36,15 +36,14 @@ Body: ${body || 'No description provided'}
 
 Based on this information, what would be an appropriate function name (like "DevOps", "Development", "Design", "Product Management", etc.) for categorizing this issue? Please just respond with the function name, nothing else.`;
 
-    // Call ChatGPT API
+    // Call ChatGPT API - o3-mini doesn't support temperature or max_tokens parameters
     const response = await openai.chat.completions.create({
       model: "o3-mini",
       messages: [
         { role: "system", content: "You are a helpful assistant that provides concise, direct answers. Only respond with the function name, no explanation or additional text." },
         { role: "user", content: prompt }
       ],
-      temperature: 0.3, // Lower temperature for more focused responses
-      max_completion_tokens: 20, // Keep response short
+      // No temperature or max_completion_tokens parameters for o3-mini
     });
     
     // Extract the suggested function name
@@ -101,8 +100,8 @@ export async function fixFunctionFieldCommand(options) {
     for (const item of itemsWithoutFunction) {
       if (!item.content) continue;
       
-      const issueLink = makeIssueLink(item.content.url, item.content.title);
-      console.log(chalk.cyan(`Function suggestion for: ${issueLink}`));
+      // Fix for terminal links - use a safer approach for console output
+      console.log(chalk.cyan(`Function suggestion for: ${item.content.title || 'Untitled'} (#${item.content.number || 'N/A'})`));
       
       // Get function suggestion from ChatGPT
       const functionName = await getFunctionSuggestionForIssue(item);
