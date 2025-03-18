@@ -194,8 +194,13 @@ const ISSUE_DETAIL_QUERY = `
   query($id: ID!) {
     node(id: $id) {
       ... on ProjectV2Item {
+        id
         content {
           ... on Issue {
+            id
+            title
+            number
+            url
             bodyText
             author { login }
             assignees (first: 10) {
@@ -206,6 +211,11 @@ const ISSUE_DETAIL_QUERY = `
             }
             projectsV2 (first: 10) {
               nodes { title }
+            }
+            labels(first: 100) {
+              nodes {
+                name
+              }
             }
           }
         }

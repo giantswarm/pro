@@ -12,6 +12,7 @@
 - 🏷️ Automatically categorize issues by team, function, and kind
 - 📈 Generate AI summaries and insights for issues
 - 🎨 Beautiful terminal output with colors and spinners
+- 🌐 Web interface with all features accessible via browser
 
 > ⚠️ **Note on Terminal Links**: This tool uses ANSI escape sequences for clickable links in the terminal. For the best experience, use a modern terminal that supports hyperlinks such as iTerm2, VS Code's integrated terminal, or recent versions of GNOME Terminal. If links don't display properly, you may need to enable them in your terminal settings.
 
@@ -110,6 +111,18 @@ pro summarize-issues --kind "Feature"
 pro summarize-issues --function "Development"
 ```
 
+### Web Server
+
+```bash
+# Start the web server with default port (3000)
+pro server
+
+# Start the web server with a custom port
+pro server --port 8080
+```
+
+After starting the server, open your browser and navigate to http://localhost:3000 (or your custom port) to access the web interface.
+
 ## 🧩 How It Works
 
 Pro connects to GitHub's GraphQL API to interact with your project board. It can:
@@ -131,6 +144,9 @@ npm run test:watch
 
 # Generate test coverage
 npm run test:coverage
+
+# Start the web server in development mode
+npm run start
 ```
 
 ## 📚 Contributing

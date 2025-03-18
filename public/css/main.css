@@ -1,0 +1,20 @@
+/**
+ * Main CSS
+ * Imports all CSS files for the application
+ */
+
+/* Import base styles */
+@import 'base.css';
+
+/* Import component styles */
+@import 'components.css';
+
+/* Import modal styles */
+@import 'modal.css';
+
+/* Animation utils */
+.rotate {
+  animation: spinner-border .75s linear infinite;
+}
+
+/* Any additional overrides can go here */ 

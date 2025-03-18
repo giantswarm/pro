@@ -10,15 +10,20 @@
   "scripts": {
     "test": "jest --config=jest.config.js",
     "test:watch": "jest --watch --config=jest.config.js",
-    "test:coverage": "jest --coverage --config=jest.config.js"
+    "test:coverage": "jest --coverage --config=jest.config.js",
+    "start": "node bin/index.js server"
   },
   "dependencies": {
     "@octokit/graphql": "^8.2.1",
     "chalk": "^5.4.1",
     "commander": "^13.1.0",
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
     "inquirer": "^12.4.2",
     "openai": "^4.86.2",
-    "ora": "^8.2.0"
+    "ora": "^8.2.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
   },
   "devDependencies": {
     "jest": "^29.7.0"

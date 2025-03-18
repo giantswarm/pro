@@ -1,0 +1,322 @@
+/**
+ * Components CSS
+ * Contains styling for specific application components
+ */
+
+/* Tab Navigation */
+.nav {
+  display: flex;
+  flex-wrap: wrap;
+  padding-left: 0;
+  margin-bottom: 0;
+  list-style: none;
+  border-bottom: 1px solid #dee2e6;
+}
+
+.nav-link {
+  display: block;
+  padding: 0.5rem 1rem;
+  color: #0d6efd;
+  text-decoration: none;
+  transition: color 0.15s ease-in-out, background-color 0.15s ease-in-out, border-color 0.15s ease-in-out;
+  cursor: pointer;
+}
+
+.nav-link:hover, .nav-link:focus {
+  color: #0a58ca;
+}
+
+.nav-link.active {
+  font-weight: 500;
+  color: #495057;
+  border-bottom: 2px solid #0d6efd;
+}
+
+.tab-content > .tab-pane {
+  display: none;
+}
+
+.tab-content > .active {
+  display: block;
+}
+
+/* Field Badge */
+.field-badge {
+  display: inline-block;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  line-height: 1;
+  background-color: #e9ecef;
+  border-radius: 0.25rem;
+  margin-right: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.field-badge.kind {
+  background-color: #cff4fc;
+  color: #055160;
+}
+
+.field-badge.team {
+  background-color: #d1e7dd;
+  color: #0f5132;
+}
+
+.field-badge.function {
+  background-color: #e2e3e5;
+  color: #41464b;
+}
+
+/* Table Styles */
+.table {
+  width: 100%;
+  margin-bottom: 1rem;
+  color: #212529;
+  vertical-align: top;
+  border-color: #dee2e6;
+  border-collapse: collapse;
+}
+
+.table th, .table td {
+  padding: 0.75rem;
+  vertical-align: top;
+  border-bottom: 1px solid #dee2e6;
+}
+
+.table thead th {
+  vertical-align: bottom;
+  border-bottom: 2px solid #dee2e6;
+  font-weight: 600;
+}
+
+.table tbody tr:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+.table-success {
+  background-color: #d1e7dd !important;
+}
+
+.table-warning {
+  background-color: #fff3cd !important;
+}
+
+.table-danger {
+  background-color: #f8d7da !important;
+}
+
+.table-active {
+  background-color: #e6f2ff !important;
+}
+
+/* Loading overlay */
+.loading-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(255, 255, 255, 0.7);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  flex-direction: column;
+}
+
+.loading-content {
+  background-color: white;
+  padding: 2rem;
+  border-radius: 0.5rem;
+  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+  text-align: center;
+  max-width: 500px;
+}
+
+.loading-spinner {
+  width: 3rem;
+  height: 3rem;
+  margin-bottom: 1rem;
+}
+
+.loading-message {
+  font-weight: 500;
+  margin-bottom: 0.5rem;
+}
+
+.loading-steps {
+  list-style-type: none;
+  padding-left: 0;
+  text-align: left;
+  margin-top: 1rem;
+}
+
+.loading-steps li {
+  margin-bottom: 0.5rem;
+  padding-left: 1.5rem;
+  position: relative;
+}
+
+.loading-steps li:before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.25rem;
+  width: 1rem;
+  height: 1rem;
+  background-color: #e9ecef;
+  border-radius: 50%;
+}
+
+.loading-steps li.active:before {
+  background-color: #0dcaf0;
+}
+
+.loading-steps li.done:before {
+  background-color: #198754;
+}
+
+.loading-steps li.error:before {
+  background-color: #dc3545;
+}
+
+/* Suggestion Status Message */
+.suggestion-status {
+  display: flex;
+  align-items: center;
+  margin-bottom: 1rem;
+  padding: 0.5rem;
+  background-color: #f8f9fa;
+  border-radius: 0.25rem;
+}
+
+.suggestion-status .spinner-icon {
+  display: inline-block;
+  margin-right: 0.5rem;
+}
+
+/* Fix Progress */
+.fix-progress-container {
+  margin-top: 1rem;
+  padding: 1rem;
+  background-color: #f8f9fa;
+  border-radius: 0.25rem;
+  border: 1px solid #dee2e6;
+}
+
+.current-issue-info {
+  margin-bottom: 1rem;
+  padding: 0.75rem;
+  background-color: #e9ecef;
+  border-radius: 0.25rem;
+}
+
+.progress {
+  display: flex;
+  height: 1rem;
+  overflow: hidden;
+  font-size: 0.75rem;
+  background-color: #e9ecef;
+  border-radius: 0.25rem;
+}
+
+.progress-bar {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  overflow: hidden;
+  color: #fff;
+  text-align: center;
+  white-space: nowrap;
+  background-color: #0d6efd;
+  transition: width 0.6s ease;
+}
+
+.fix-results {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 0.5rem;
+}
+
+.stats-badge {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  border-radius: 0.25rem;
+}
+
+.stats-fixed {
+  background-color: #d1e7dd;
+  color: #0f5132;
+}
+
+.stats-skipped {
+  background-color: #fff3cd;
+  color: #664d03;
+}
+
+.stats-total {
+  background-color: #cfe2ff;
+  color: #084298;
+}
+
+/* Fix Now Button */
+.fix-now-btn {
+  white-space: nowrap;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.875rem;
+}
+
+/* AI Analysis Results */
+.ai-analysis-results {
+  padding: 1rem;
+  background-color: #fff;
+  border-radius: 0.25rem;
+  border: 1px solid #dee2e6;
+  margin-top: 1rem;
+}
+
+.ai-analysis-summary {
+  line-height: 1.6;
+}
+
+.ai-analysis-summary h1 {
+  font-size: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.ai-analysis-summary h2 {
+  font-size: 1.3rem;
+  margin-top: 1.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.ai-analysis-summary h3 {
+  font-size: 1.1rem;
+  margin-top: 1.25rem;
+  margin-bottom: 0.5rem;
+}
+
+.ai-analysis-summary ul, .ai-analysis-summary ol {
+  margin-bottom: 1rem;
+  padding-left: 1.5rem;
+}
+
+.ai-analysis-summary pre {
+  background-color: #f8f9fa;
+  padding: 1rem;
+  border-radius: 0.25rem;
+  overflow-x: auto;
+  margin-bottom: 1rem;
+  font-family: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.ai-analysis-summary code {
+  font-family: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  padding: 0.2rem 0.4rem;
+  font-size: 87.5%;
+  color: #d63384;
+  background-color: #f8f9fa;
+  border-radius: 0.2rem;
+} 

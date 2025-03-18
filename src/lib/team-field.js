@@ -1,31 +1,183 @@
 import chalk from 'chalk';
-import inquirer from 'inquirer';
+import OpenAI from 'openai';
 import { graphQLWithAuth, fetchPaginated } from './api.js';
 import {
   ROADMAP_BOARD_ID,
-  LIST_ITEMS_WITH_LABELS_QUERY,
   LIST_FIELDS_QUERY,
   UPDATE_ITEM_FIELD_MUTATION,
-  POST_ISSUE_COMMENT_MUTATION
+  ISSUE_DETAIL_QUERY
 } from './project.js';
-import { makeIssueLink, getTeamSuggestionForIssue } from './utils.js';
+import { 
+  fixSingleItemField,
+  batchFixFields
+} from './fields.js';
+
+if (!process.env.OPENAI_API_KEY) {
+  console.error('Error: OPENAI_API_KEY environment variable is not set.');
+  process.exit(1);
+}
+
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const assistantId = "asst_5mbphHI9WYRAKzFqhtbJGqc9";
 
 /**
- * Fix team field values based on team labels
- * @returns {Promise<number>} - Number of updated items
+ * Normalize team names for consistent matching
+ * @param {string} teamName - The team name to normalize
+ * @returns {string} - Normalized team name
  */
-export async function fixTeamField() {
-  const first = 100;
-  try {
-    const allItems = await fetchPaginated(
-      LIST_ITEMS_WITH_LABELS_QUERY,
-      { projectId: ROADMAP_BOARD_ID, first },
-      result => result.node.items
+function normalizeTeamName(teamName) {
+  if (!teamName) return '';
+  
+  let normalized = teamName;
+  if (normalized === "honeybadger") normalized = "honey badger";
+  if (normalized === "team") normalized = "up";
+  
+  return normalized;
+}
+
+/**
+ * Get team suggestion for a single item
+ * @param {Object} item - The item object
+ * @returns {Promise<string>} - The suggested team name
+ */
+async function getTeamSuggestion(item, options) {
+  // First try to get team from labels
+  if (item.content && item.content.labels && item.content.labels.nodes) {
+    const teamLabels = item.content.labels.nodes.filter(label =>
+      label.name.toLowerCase().startsWith('team/')
     );
     
+    if (teamLabels.length === 1) {
+      return teamLabels[0].name.substring(5);
+    }
+  }
+  
+  // If no team label found, use AI to suggest a team
+  return await getTeamSuggestionForIssue(item);
+}
+
+export async function getTeamSuggestionForIssue(item) {
+  let teamSuggestion = '';
+
+  if (item && item.projects) {
+      teamProjects = item.projects.filter(project =>
+        project.toLowerCase().includes('team')
+      );
+    }
+    if (teamProjects.length === 1) {
+      console.log(`Found team project: ${teamProjects[0]}`);
+      teamSuggestion = teamProjects[0].toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\bteam\b/g, '').trim();
+      return teamSuggestion;
+    }
+    if (item.comments.join(', ').includes('#iamarobot')) {
+      console.log("Issue already has a comment from the bot.");
+      return 'skip';
+    }
+  
+  if (!title) {
+    console.error("Error: Missing title for issue.");
+    return '';
+  }
+  if (!body) {
+    body = "TBD";
+  }
+  
+  const prompt = `Determine the appropriate team for the following issue:
+Title: ${item.title}
+Content: ${item.body}
+Author: ${item.author}
+Comments: ${item.comments.join(', ')}
+Assignees: ${item.assignees.join(', ')}
+Labels: ${item.labels.join(', ')}
+Projects: ${item.projects.join(', ')}
+
+Reply with the team name that should handle this issue.
+`;
+ 
+  try {
+    const thread = await openai.beta.threads.create({
+      messages: [
+        { role: 'user', content: prompt }
+      ],
+    });
+    const threadId = thread.id;
+    const run = await openai.beta.threads.runs.createAndPoll(threadId, {
+      assistant_id: assistantId,
+      additional_instructions: 'The format of the response is only the team name (e.g., "team/honeybadger"). If you dont know the team respond with "team/null".',
+    });
+    if (run.status === 'completed') {
+      const messages = await openai.beta.threads.messages.list(threadId);
+      const assistantResponse = messages.getPaginatedItems().find(msg => msg.role === 'assistant') || {};
+      if (!assistantResponse.content) {
+        console.warn("Warning: No assistant response found.");
+        return '';
+      }
+      for (const content of assistantResponse.content) {
+        if (content.type === "text" && content.text && content.text.value) {
+          const filteredContent = content.text.value.replace(/【\d+:\d+†teams\.md】/g, '').trim();
+          teamSuggestion += filteredContent;
+        }
+      }
+      if (!teamSuggestion || !teamSuggestion.toLowerCase().startsWith('team/')) {
+        console.warn("Warning: No team suggestion received.");
+        return '';
+      }
+      console.log("Assistant response: " + teamSuggestion);
+      return teamSuggestion.substring(5);
+    } else {
+      console.warn('Warning: Run finished with status: ' + run.status);
+      return '';
+    }
+  } catch (error) {
+    console.error('Error getting team suggestion from OpenAI:', error.message);
+    return '';
+  }
+}
+
+/**
+ * Fix team field value for a specific item
+ * @param {Object} options - Options containing the item ID
+ * @returns {Promise<Object|number>} - Result with status and suggested team or count of updated items
+ */
+export async function fixTeamField(options) {
+  try {
+    // If itemId is provided, fix a single item
+    if (options.itemId) {
+      return await fixSingleItemField(
+        options.itemId, 
+        'team', 
+        getTeamSuggestion, 
+        normalizeTeamName
+      );
+    }
+    
+    // For team fields, we need more complex handling with comment support
+    // so we use a custom batch implementation instead of the shared one
+    const result = await batchFixFields(options, 'team', getTeamSuggestion, normalizeTeamName);
+    
+    // Additional team-specific processing could be added here if needed
+    
+    return result;
+  } catch (error) {
+    console.error(chalk.red('Error fixing team fields:'), chalk.red(error.message));
+    throw error;
+  }
+}
+
+/**
+ * Fix team field for a single item
+ * @param {string} itemId - The ID of the item to fix
+ * @returns {Promise<Object>} - Result with status and suggested team
+ */
+async function fixSingleItemTeamField(itemId) {
+  try {
+    // Fetch the specific item directly
+    const item = await getItemByID(itemId);
+    
+    // Fetch all fields to find the team field
     const allFields = await fetchPaginated(
       LIST_FIELDS_QUERY,
-      { projectId: ROADMAP_BOARD_ID, first },
+      { projectId: ROADMAP_BOARD_ID, first: 100 },
       result => result.node.fields
     );
     
@@ -36,112 +188,61 @@ export async function fixTeamField() {
     );
     
     if (!teamField) {
-      console.log(chalk.yellow('No team field found in this project.'));
-      return 0;
+      throw new Error('No team field found in this project.');
     }
     
-    // Filter items missing a team value
-    const itemsWithoutTeam = allItems.filter(item => {
-      if (!item.fieldValues || !item.fieldValues.nodes) return true;
-      return !item.fieldValues.nodes.some(node =>
-        node.field &&
-        node.field.name &&
-        node.field.name.toLowerCase() === 'team' &&
-        typeof node.name === 'string' &&
-        node.name.trim() !== ''
-      );
-    });
-    
-    console.log(chalk.cyan(`Found ${itemsWithoutTeam.length} items without team field set.`));
-    let updatedCount = 0;
-    
-    for (const item of itemsWithoutTeam) {
-      if (!item.content || !item.content.labels || !item.content.labels.nodes) continue;
-      
-      const teamLabels = item.content.labels.nodes.filter(label =>
+    // Get team suggestion
+    let teamName;
+    if (labels !== "None" && labels) {
+      const teamLabels = labels.nodes.filter(label =>
         label.name.toLowerCase().startsWith('team/')
       );
       
-      let teamName = '';
       if (teamLabels.length === 1) {
         teamName = teamLabels[0].name.substring(5);
-      } else {
-        const issueLink = makeIssueLink(item.content.url, item.content.title);
-        console.log(chalk.cyan(`Team suggestion for: ${issueLink}`));
-        teamName = await getTeamSuggestionForIssue(item);
-        
-        if (teamName === 'skip') continue;
-        
-        if (teamName && teamName.toLowerCase() !== 'null') {
-          const { accept } = await inquirer.prompt([
-            {
-              type: 'confirm',
-              name: 'accept',
-              message: `Accept "${teamName}"?`
-            }
-          ]);
-          
-          if (!accept) {
-            teamName = '';
-          }
-        }
-      }
-      
-      if (!teamName) {
-        const { inputTeam } = await inquirer.prompt([
-          { type: 'input', name: 'inputTeam', message: 'Team name (empty for none):' }
-        ]);
-        teamName = inputTeam.trim();
-      }
-      
-      if (!teamName) {
-        const { postComment } = await inquirer.prompt([
-          { type: 'confirm', name: 'postComment', message: `No team provided for issue ${item.content.number}. Post a comment?` }
-        ]);
-        
-        if (postComment) {
-          await graphQLWithAuth(POST_ISSUE_COMMENT_MUTATION, {
-            issueId: item.content.id,
-            body: "Could not determine the team for this issue. Please suggest a team."
-          }).catch(() => {});
-        }
-        continue;
-      }
-      
-      // Normalize team names
-      if (teamName === "honeybadger") teamName = "honey badger";
-      if (teamName === "team") teamName = "up";
-      
-      // Find matching team option
-      const teamOption = teamField.options.find(option => {
-        // Direct string comparison - require exact match
-        return option.name === teamName;
-      });
-      
-      if (!teamOption) {
-        console.log(chalk.yellow(`Could not find matching team option for team "${teamName}"`));
-        continue;
-      }
-      
-      try {
-        await graphQLWithAuth(UPDATE_ITEM_FIELD_MUTATION, {
-          projectId: ROADMAP_BOARD_ID,
-          itemId: item.id,
-          fieldId: teamField.id,
-          value: { singleSelectOptionId: teamOption.id }
-        });
-        
-        updatedCount++;
-        console.log(chalk.green(`Updated team for issue ${item.content.number} to "${teamOption.name}"`));
-      } catch (error) {
-        console.error(chalk.red(`Error updating team for issue ${item.content.number}:`), chalk.red(error.message));
       }
     }
     
-    console.log(chalk.blue(`Updated team field for ${updatedCount} issues.`));
-    return updatedCount;
+    // If no team label found, use AI to suggest a team
+    if (!teamName) {
+      teamName = await getTeamSuggestionForIssue(item);
+    }
+    
+    // Normalize team names
+    if (teamName === "honeybadger") teamName = "honey badger";
+    if (teamName === "team") teamName = "up";
+    
+    // Find matching team option
+    const teamOption = teamField.options.find(option => {
+      // Direct string comparison - require exact match
+      return option.name === teamName;
+    });
+    
+    if (!teamOption) {
+      return {
+        status: 'error',
+        message: `Could not find matching team option for suggested team "${teamName}"`
+      };
+    }
+    
+    // Update the item's team field
+    await graphQLWithAuth(UPDATE_ITEM_FIELD_MUTATION, {
+      projectId: ROADMAP_BOARD_ID,
+      itemId: item.id,
+      fieldId: teamField.id,
+      value: { singleSelectOptionId: teamOption.id }
+    });
+    
+    return {
+      status: 'success',
+      message: `Updated team for issue ${item.content.number} to "${teamOption.name}"`,
+      suggestion: teamOption.name
+    };
   } catch (error) {
-    console.error(chalk.red('Error fixing team fields:'), chalk.red(error.message));
-    throw error;
+    console.error('Error fixing team field for item:', error.message);
+    return {
+      status: 'error',
+      message: error.message
+    };
   }
 } 
