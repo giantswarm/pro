@@ -11,6 +11,7 @@ import { listItemsCommand } from '../src/commands/list-items.js';
 import { listFieldsCommand } from '../src/commands/list-fields.js';
 import { showFieldCommand } from '../src/commands/show-field.js';
 import { fixTeamFieldCommand } from '../src/commands/fix-team-field.js';
+import { fixFunctionFieldCommand } from '../src/commands/fix-function-field.js';
 
 import {
     ROADMAP_BOARD_ID, 
@@ -113,4 +114,21 @@ program
   .option('--id <id>', 'Project board ID', ROADMAP_BOARD_ID)
   .action(fixTeamFieldCommand);
 
+program
+  .command('fix-function-field')
+  .description('Fix function field values using ChatGPT suggestions')
+  .option('--id <id>', 'Project board ID', ROADMAP_BOARD_ID)
+  .action(fixFunctionFieldCommand);
+
 program.parse(process.argv);
+
+// Export commands for testing
+export const listProjects = listCommand;
+export const createProject = createCommand;
+export const deleteProject = deleteCommand;
+export const updateProject = updateCommand;
+export const listItems = listItemsCommand;
+export const listFields = listFieldsCommand;
+export const showField = showFieldCommand;
+export const fixTeamField = fixTeamFieldCommand;
+export const fixFunctionField = fixFunctionFieldCommand;

@@ -10,6 +10,7 @@ import {
   listFields,
   showField,
   fixTeamField,
+  fixFunctionField,
 } from "./index.js";
 const api = require("../src/lib/api");
 
