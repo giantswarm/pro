@@ -38,13 +38,13 @@ Based on this information, what would be an appropriate function name (like "Dev
 
     // Call ChatGPT API
     const response = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
+      model: "o3-mini",
       messages: [
         { role: "system", content: "You are a helpful assistant that provides concise, direct answers. Only respond with the function name, no explanation or additional text." },
         { role: "user", content: prompt }
       ],
       temperature: 0.3, // Lower temperature for more focused responses
-      max_tokens: 20, // Keep response short
+      max_completion_tokens: 20, // Keep response short
     });
     
     // Extract the suggested function name
