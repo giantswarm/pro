@@ -1,5 +1,6 @@
 import chalk from 'chalk';
 import inquirer from 'inquirer';
+import ora from 'ora';
 import { graphQLWithAuth, fetchPaginated } from '../lib/api.js';
 import {
   LIST_ITEMS_WITH_LABELS_QUERY,
@@ -33,6 +34,9 @@ async function getKindSuggestionForIssue(item, kindOptions) {
   let assignees = 'None';
   let comments = 'None';
   
+  // Create a spinner for fetching issue details
+  const detailSpinner = ora('Fetching issue details...').start();
+  
   try {
     // Fetch more detailed issue information
     const issueDetails = await graphQLWithAuth(ISSUE_DETAIL_QUERY, { id: item.id });
@@ -45,16 +49,20 @@ async function getKindSuggestionForIssue(item, kindOptions) {
       if (issueDetails.node.content.comments && issueDetails.node.content.comments.nodes) {
         comments = issueDetails.node.content.comments.nodes.map(c => c.bodyText).join('\n');
       }
+      detailSpinner.succeed('Issue details fetched successfully');
     } else {
-      console.log(chalk.yellow("Warning: Could not fetch complete issue details."));
+      detailSpinner.warn('Could not fetch complete issue details');
     }
   } catch (err) {
-    console.error("Error fetching issue details:", err.message);
+    detailSpinner.fail(`Error fetching issue details: ${err.message}`);
   }
   
   // Create a list of valid kind names
   const validKindNames = kindOptions.map(option => option.name);
   const kindList = validKindNames.join(', ');
+  
+  // Create a spinner for the AI suggestion
+  const aiSpinner = ora('Getting kind suggestion from ChatGPT...').start();
   
   try {
     // Construct a prompt for ChatGPT that includes the valid options and all issue details
@@ -82,7 +90,7 @@ Please respond ONLY with the exact name of one of the valid kinds listed above, 
     
     // Extract the suggested kind name
     let kindSuggestion = response.choices[0]?.message?.content?.trim() || '';
-    console.log("ChatGPT suggestion:", kindSuggestion);
+    aiSpinner.succeed(`ChatGPT suggestion: ${kindSuggestion}`);
     
     // Verify the suggestion is in the list of valid kinds
     if (!validKindNames.some(name => 
@@ -95,7 +103,7 @@ Please respond ONLY with the exact name of one of the valid kinds listed above, 
     
     return kindSuggestion;
   } catch (error) {
-    console.error('Error getting kind suggestion from ChatGPT:', error.message);
+    aiSpinner.fail(`Error getting kind suggestion: ${error.message}`);
     return '';
   }
 }
@@ -103,7 +111,11 @@ Please respond ONLY with the exact name of one of the valid kinds listed above, 
 export async function fixKindFieldCommand(options) {
   const first = 100;
   try {
+    // Create main spinner for the command
+    const mainSpinner = ora('Starting kind field fix process...').start();
+    
     // First, get all fields to find the kind field and its options
+    mainSpinner.text = 'Fetching project fields...';
     const allFields = await fetchPaginated(
       LIST_FIELDS_QUERY,
       { projectId: options.id, first },
@@ -117,15 +129,18 @@ export async function fixKindFieldCommand(options) {
     );
     
     if (!kindField) {
-      console.log(chalk.yellow('No kind field found in this project.'));
+      mainSpinner.fail('No kind field found in this project.');
       return;
     }
     
-    console.log(chalk.cyan(`Found kind field with ${kindField.options.length} options.`));
+    mainSpinner.succeed(`Found kind field with ${kindField.options.length} options.`);
     console.log('Available kinds:');
     kindField.options.forEach(option => {
       console.log(chalk.blue(`- ${option.name}`));
     });
+    
+    // Create a new spinner for fetching items
+    const itemsSpinner = ora('Fetching items from GitHub project...').start();
     
     // Now get the items
     const allItems = await fetchPaginated(
@@ -133,6 +148,8 @@ export async function fixKindFieldCommand(options) {
       { projectId: options.id, first },
       result => result.node.items
     );
+    
+    itemsSpinner.text = 'Filtering items missing kind field...';
     
     // Filter items missing a kind value
     let itemsWithoutKind = allItems.filter(item => {
@@ -148,8 +165,8 @@ export async function fixKindFieldCommand(options) {
     
     // Apply team filter if specified
     if (options.team) {
+      itemsSpinner.text = `Filtering issues by team: ${options.team}`;
       const normalizedTeamFilter = normalizeFieldValue(options.team);
-      console.log(chalk.cyan(`Filtering issues by team: ${options.team}`));
       console.log(chalk.cyan(`(Using normalized name: "${normalizedTeamFilter}" for matching)`));
       
       itemsWithoutKind = itemsWithoutKind.filter(item => {
@@ -173,7 +190,7 @@ export async function fixKindFieldCommand(options) {
       });
     } else if (options.team === false) {
       // Handle --no-team option
-      console.log(chalk.cyan('Filtering items with no team assigned'));
+      itemsSpinner.text = 'Filtering items with no team assigned';
       itemsWithoutKind = itemsWithoutKind.filter(item => {
         // Check if the item has no team field or empty team field
         return !(item.fieldValues && item.fieldValues.nodes && item.fieldValues.nodes.some(node =>
@@ -186,7 +203,7 @@ export async function fixKindFieldCommand(options) {
       });
     }
     
-    console.log(chalk.cyan(`Found ${itemsWithoutKind.length} items without kind field set.`));
+    itemsSpinner.succeed(`Found ${itemsWithoutKind.length} items without kind field set.`);
     let updatedCount = 0;
     
     for (const item of itemsWithoutKind) {
@@ -206,10 +223,16 @@ export async function fixKindFieldCommand(options) {
         ]);
         
         if (postComment) {
-          graphQLWithAuth(POST_ISSUE_COMMENT_MUTATION, {
-            issueId: item.content.id,
-            body: "Could not determine the kind for this issue. Please suggest an appropriate kind (Feature, Bug, Documentation, etc.)."
-          }).catch(() => {});
+          const commentSpinner = ora('Posting comment to issue...').start();
+          try {
+            await graphQLWithAuth(POST_ISSUE_COMMENT_MUTATION, {
+              issueId: item.content.id,
+              body: "Could not determine the kind for this issue. Please suggest an appropriate kind (Feature, Bug, Documentation, etc.)."
+            });
+            commentSpinner.succeed('Comment posted successfully');
+          } catch (error) {
+            commentSpinner.fail(`Failed to post comment: ${error.message}`);
+          }
         }
         continue;
       }
@@ -242,6 +265,9 @@ export async function fixKindFieldCommand(options) {
         continue;
       }
       
+      // Create spinner for the update process
+      const updateSpinner = ora(`Updating kind field for issue #${item.content.number}...`).start();
+      
       try {
         await graphQLWithAuth(UPDATE_ITEM_FIELD_MUTATION, {
           projectId: options.id,
@@ -251,14 +277,16 @@ export async function fixKindFieldCommand(options) {
         });
         
         updatedCount++;
-        console.log(chalk.green(`Updated kind for issue ${item.content.number} to "${kindOption.name}"`));
+        updateSpinner.succeed(`Updated kind for issue ${item.content.number} to "${kindOption.name}"`);
       } catch (error) {
-        console.error(chalk.red(`Error updating kind for issue ${item.content.number}:`), chalk.red(error.message));
+        updateSpinner.fail(`Error updating kind for issue ${item.content.number}: ${error.message}`);
       }
     }
     
     console.log(chalk.blue(`Updated kind field for ${updatedCount} issues.`));
   } catch (error) {
+    // Stop any active spinner on error
+    ora().fail('Error fixing kind fields');
     console.error(chalk.red('Error fixing kind fields:'), chalk.red(error.message));
   }
 } 

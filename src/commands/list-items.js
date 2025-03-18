@@ -1,4 +1,5 @@
 import chalk from 'chalk';
+import ora from 'ora';
 import { fetchPaginated } from '../lib/api.js';
 import { LIST_ITEMS_QUERY } from '../lib/project.js';
 import { makeIssueLink, normalizeFieldValue } from '../lib/utils.js';
@@ -17,14 +18,18 @@ export async function listItemsCommand(options) {
       filters['team'] = normalizeFieldValue(options.team);
     }
 
-    console.log(chalk.cyan("Fetching and filtering items..."));
+    // Create a spinner with a message
+    const spinner = ora('Fetching items from GitHub project...').start();
     
+    // Fetch all items
     const allItems = await fetchPaginated(
       LIST_ITEMS_QUERY,
       { projectId: options.id, first },
       result => result.node.items
     );
 
+    spinner.text = 'Applying filters to items...';
+    
     // Apply filters
     const filtered = allItems.filter(item => {
       if (!item.fieldValues || !item.fieldValues.nodes) return false;
@@ -58,6 +63,9 @@ export async function listItemsCommand(options) {
       });
     });
     
+    // Stop the spinner
+    spinner.succeed(`Found ${filtered.length} matching items`);
+    
     if (filtered.length === 0) {
       console.log(chalk.yellow(`No items found matching provided filters.`));
     } else {
@@ -77,6 +85,8 @@ export async function listItemsCommand(options) {
       console.log(chalk.blue(`Fetched a total of ${filtered.length} filtered item(s).`));
     }
   } catch (error) {
+    // If there's an error, make sure to stop any active spinner
+    ora().fail('Error fetching items');
     console.error(chalk.red('Error fetching items for board:'), chalk.red(error.message));
   }
 }

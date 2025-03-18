@@ -1,4 +1,5 @@
 import chalk from 'chalk';
+import ora from 'ora';
 import { graphQLWithAuth, fetchPaginated } from '../lib/api.js';
 import {
   LIST_ITEMS_QUERY,
@@ -151,7 +152,8 @@ Please format your response with clear headings for each section.`;
 export async function summarizeIssuesCommand(options) {
   const first = 100;
   try {
-    console.log(chalk.cyan("Fetching and filtering issues..."));
+    // Create a main spinner
+    const mainSpinner = ora('Starting issue summarization process...').start();
     
     // Build filter criteria based on provided options
     const filters = {};
@@ -164,12 +166,16 @@ export async function summarizeIssuesCommand(options) {
       filters['team'] = normalizeFieldValue(options.team);
     }
     
+    mainSpinner.text = 'Fetching issues from GitHub project...';
+    
     // Fetch all items
     const allItems = await fetchPaginated(
       LIST_ITEMS_QUERY,
       { projectId: options.id, first },
       result => result.node.items
     );
+    
+    mainSpinner.text = 'Applying filters to issues...';
     
     // Apply filters with normalization
     const filtered = allItems.filter(item => {
@@ -205,12 +211,14 @@ export async function summarizeIssuesCommand(options) {
     });
     
     if (filtered.length === 0) {
-      console.log(chalk.yellow(`No issues found matching provided filters.`));
+      mainSpinner.fail('No issues found matching provided filters.');
       return;
     }
     
-    console.log(chalk.cyan(`Found ${filtered.length} issues matching the filters.`));
-    console.log(chalk.cyan("Fetching detailed information for each issue..."));
+    mainSpinner.succeed(`Found ${filtered.length} issues matching the filters.`);
+    
+    // Create a new spinner for the detailed fetch phase
+    const detailSpinner = ora('Fetching detailed information for issues...').start();
     
     // Fetch detailed information for each issue
     const issuesWithDetails = [];
@@ -218,15 +226,20 @@ export async function summarizeIssuesCommand(options) {
     
     for (const item of filtered) {
       counter++;
-      console.log(chalk.blue(`Fetching details for issue ${counter}/${filtered.length}`));
+      detailSpinner.text = `Fetching details for issue ${counter}/${filtered.length}`;
       const issueDetails = await fetchIssueDetails(item);
       issuesWithDetails.push(issueDetails);
     }
     
-    console.log(chalk.cyan("Analyzing issues with AI..."));
+    detailSpinner.succeed('Fetched detailed information for all matching issues.');
+    
+    // Create a new spinner for the analysis phase
+    const analysisSpinner = ora('Analyzing issues with AI...').start();
     
     // Generate analysis
     const analysis = await analyzeIssues(issuesWithDetails);
+    
+    analysisSpinner.succeed('AI analysis completed.');
     
     console.log("\n" + chalk.green("Issue Analysis:"));
     console.log(chalk.white("=".repeat(80)));
@@ -234,6 +247,8 @@ export async function summarizeIssuesCommand(options) {
     console.log(chalk.white("=".repeat(80)));
     
   } catch (error) {
+    // If there's an error, make sure to stop any active spinner
+    ora().fail('Error during summarization process');
     console.error(chalk.red('Error summarizing issues:'), chalk.red(error.message));
   }
 } 
