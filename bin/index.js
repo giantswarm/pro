@@ -12,13 +12,15 @@ import { listFieldsCommand } from '../src/commands/list-fields.js';
 import { showFieldCommand } from '../src/commands/show-field.js';
 import { fixTeamFieldCommand } from '../src/commands/fix-team-field.js';
 import { fixFunctionFieldCommand } from '../src/commands/fix-function-field.js';
+import { fixKindFieldCommand } from '../src/commands/fix-kind-field.js';
 
 import {
     ROADMAP_BOARD_ID, 
     TEAM_FIELD_ID, 
     FUNCTION_FIELD_ID,
     SIG_FIELD_ID,
-    WG_FIELD_ID
+    WG_FIELD_ID,
+    KIND_FIELD_ID
 } from '../src/lib/project.js';
 
 // Register commands using Commander
@@ -122,6 +124,14 @@ program
   .option('--no-team', 'Only include items with no team assigned')
   .action(fixFunctionFieldCommand);
 
+program
+  .command('fix-kind-field')
+  .description('Fix kind field values using ChatGPT suggestions')
+  .option('--id <id>', 'Project board ID', ROADMAP_BOARD_ID)
+  .option('--team <team>', 'Filter by team name')
+  .option('--no-team', 'Only include items with no team assigned')
+  .action(fixKindFieldCommand);
+
 program.parse(process.argv);
 
 // Export commands for testing
@@ -134,3 +144,4 @@ export const listFields = listFieldsCommand;
 export const showField = showFieldCommand;
 export const fixTeamField = fixTeamFieldCommand;
 export const fixFunctionField = fixFunctionFieldCommand;
+export const fixKindField = fixKindFieldCommand;
