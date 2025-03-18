@@ -1,19 +1,22 @@
 import chalk from 'chalk';
 import { fetchPaginated } from '../lib/api.js';
-import { LIST_FIELDS_QUERY } from '../lib/project.js';
+import {
+  ROADMAP_BOARD_ID,
+  LIST_FIELDS_QUERY
+} from '../lib/project.js';
 
 export async function listFieldsCommand(options) {
   const first = 100;
   try {
     const allFields = await fetchPaginated(
       LIST_FIELDS_QUERY,
-      { projectId: options.id, first },
+      { projectId: ROADMAP_BOARD_ID, first },
       result => result.node.fields
     );
     if (allFields.length === 0) {
-      console.log(chalk.yellow(`No fields found in board with ID ${options.id}`));
+      console.log(chalk.yellow(`No fields found in board with ID ${ROADMAP_BOARD_ID}`));
     } else {
-      console.log(chalk.cyan(`Fields in board [ID: ${options.id}]:`));
+      console.log(chalk.cyan(`Fields in board [ID: ${ROADMAP_BOARD_ID}]:`));
       allFields.forEach(field => {
         let fieldInfo = `- [${field.id}] Type: ${field.__typename}, Name: ${field.name}, DataType: ${field.dataType}`;
         if (field.__typename === 'ProjectV2SingleSelectField' && field.options) {

@@ -1,7 +1,7 @@
 {
   "name": "pro",
   "version": "0.1.0",
-  "description": "CLI tool that manages GitHub Project v2 boards",
+  "description": "CLI tool that manages Giant Swarm's roadmap board",
   "main": "bin/index.js",
   "bin": {
     "pro": "bin/index.js"

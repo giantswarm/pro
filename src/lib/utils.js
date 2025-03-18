@@ -8,7 +8,21 @@ if (!process.env.OPENAI_API_KEY) {
 }
 
 export function makeIssueLink(url, title) {
-  return `\u001b]8;;${url}\u0007${title}\u001b]8;;\u0007`;
+  // Check if the environment supports color/formatting
+  const supportsHyperlinks = process.env.TERM && process.env.TERM !== 'dumb' && process.stdout.isTTY;
+  
+  if (supportsHyperlinks) {
+    try {
+      // Standard terminal hyperlink format
+      return `\u001b]8;;${url}\u0007${title}\u001b]8;;\u0007`;
+    } catch (error) {
+      // Fallback if there's an error
+      return `${title} (${url})`;
+    }
+  } else {
+    // Simple fallback for terminals that don't support hyperlinks
+    return `${title} (${url})`;
+  }
 }
 
 /**

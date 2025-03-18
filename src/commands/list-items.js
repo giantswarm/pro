@@ -1,7 +1,10 @@
 import chalk from 'chalk';
 import ora from 'ora';
 import { fetchPaginated } from '../lib/api.js';
-import { LIST_ITEMS_QUERY } from '../lib/project.js';
+import {
+  ROADMAP_BOARD_ID,
+  LIST_ITEMS_QUERY
+} from '../lib/project.js';
 import { makeIssueLink, normalizeFieldValue } from '../lib/utils.js';
 
 export async function listItemsCommand(options) {
@@ -21,8 +24,8 @@ export async function listItemsCommand(options) {
     // Create a spinner with a message
     const spinner = ora('Fetching items from GitHub project...').start();
     
-    // Use the projectId from options with fallback to options.id for backward compatibility
-    const projectId = options.projectId || options.id;
+    // Use the projectId from options with fallback to ROADMAP_BOARD_ID for backward compatibility
+    const projectId = ROADMAP_BOARD_ID;
     
     if (!projectId) {
       spinner.fail('Project ID is required');

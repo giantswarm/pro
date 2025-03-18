@@ -2,6 +2,7 @@ import chalk from 'chalk';
 import ora from 'ora';
 import { graphQLWithAuth, fetchPaginated } from '../lib/api.js';
 import {
+  ROADMAP_BOARD_ID,
   LIST_ITEMS_QUERY,
   ISSUE_DETAIL_QUERY
 } from '../lib/project.js';
@@ -171,7 +172,7 @@ export async function summarizeIssuesCommand(options) {
     // Fetch all items
     const allItems = await fetchPaginated(
       LIST_ITEMS_QUERY,
-      { projectId: options.id, first },
+      { projectId: ROADMAP_BOARD_ID, first },
       result => result.node.items
     );
     

@@ -2,6 +2,7 @@ import chalk from 'chalk';
 import inquirer from 'inquirer';  // replaced readline with inquirer
 import { graphQLWithAuth, fetchPaginated } from '../lib/api.js';
 import {
+  ROADMAP_BOARD_ID,
   LIST_ITEMS_WITH_LABELS_QUERY,
   LIST_FIELDS_QUERY,
   UPDATE_ITEM_FIELD_MUTATION,
@@ -14,12 +15,12 @@ export async function fixTeamFieldCommand(options) {
   try {
     const allItems = await fetchPaginated(
       LIST_ITEMS_WITH_LABELS_QUERY,
-      { projectId: options.id, first },
+      { projectId: ROADMAP_BOARD_ID, first },
       result => result.node.items
     );
     const allFields = await fetchPaginated(
       LIST_FIELDS_QUERY,
-      { projectId: options.id, first },
+      { projectId: ROADMAP_BOARD_ID, first },
       result => result.node.fields
     );
     // Find team field
@@ -101,7 +102,7 @@ export async function fixTeamFieldCommand(options) {
       }
       try {
         await graphQLWithAuth(UPDATE_ITEM_FIELD_MUTATION, {
-          projectId: options.id,
+          projectId: ROADMAP_BOARD_ID,
           itemId: item.id,
           fieldId: teamField.id,
           value: { singleSelectOptionId: teamOption.id }

@@ -3,12 +3,13 @@ import inquirer from 'inquirer';
 import ora from 'ora';
 import { graphQLWithAuth, fetchPaginated } from '../lib/api.js';
 import {
-  LIST_ITEMS_WITH_LABELS_QUERY,
-  LIST_FIELDS_QUERY,
-  UPDATE_ITEM_FIELD_MUTATION,
-  POST_ISSUE_COMMENT_MUTATION,
-  FUNCTION_FIELD_ID,
-  ISSUE_DETAIL_QUERY
+    ROADMAP_BOARD_ID,
+    LIST_ITEMS_WITH_LABELS_QUERY,
+    LIST_FIELDS_QUERY,
+    UPDATE_ITEM_FIELD_MUTATION,
+    POST_ISSUE_COMMENT_MUTATION,
+    FUNCTION_FIELD_ID,
+    ISSUE_DETAIL_QUERY
 } from '../lib/project.js';
 import { makeIssueLink, normalizeFieldValue } from '../lib/utils.js';
 import OpenAI from 'openai';
@@ -118,7 +119,7 @@ export async function fixFunctionFieldCommand(options) {
     mainSpinner.text = 'Fetching project fields...';
     const allFields = await fetchPaginated(
       LIST_FIELDS_QUERY,
-      { projectId: options.id, first },
+      { projectId: ROADMAP_BOARD_ID, first },
       result => result.node.fields
     );
     
@@ -145,7 +146,7 @@ export async function fixFunctionFieldCommand(options) {
     // Now get the items
     const allItems = await fetchPaginated(
       LIST_ITEMS_WITH_LABELS_QUERY,
-      { projectId: options.id, first },
+      { projectId: ROADMAP_BOARD_ID, first },
       result => result.node.items
     );
     
@@ -270,7 +271,7 @@ export async function fixFunctionFieldCommand(options) {
       
       try {
         await graphQLWithAuth(UPDATE_ITEM_FIELD_MUTATION, {
-          projectId: options.id,
+          projectId: ROADMAP_BOARD_ID,
           itemId: item.id,
           fieldId: functionField.id,
           value: { singleSelectOptionId: functionOption.id }

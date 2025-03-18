@@ -7,62 +7,11 @@ export const WORKSTREAM_FIELD_ID = 'PVTSSF_lADOAHNM9M4ABvWxzgN0pGg';
 export const SIG_FIELD_ID = 'PVTSSF_lADOAHNM9M4ABvWxzgNt6n0';
 export const WG_FIELD_ID = 'PVTSSF_lADOAHNM9M4ABvWxzgNpxdA';
 
-// List projects for a repository
-const LIST_PROJECTS_REPO_QUERY = `
-  query ($owner: String!, $repo: String!, $first: Int!, $after: String) {
-    repository(owner: $owner, name: $repo) {
-      projectsV2(first: $first, after: $after) {
-        nodes { id title number }
-        pageInfo { endCursor hasNextPage }
-      }
-    }
-  }
-`;
-
-// List projects for an organization
-const LIST_PROJECTS_ORG_QUERY = `
-  query ($org: String!, $first: Int!, $after: String) {
-    organization(login: $org) {
-      projectsV2(first: $first, after: $after) {
-        nodes { id title number }
-        pageInfo { endCursor hasNextPage }
-      }
-    }
-  }
-`;
-
 // Fetch repository id
 const REPO_ID_QUERY = `
   query ($owner: String!, $repo: String!) {
     repository(owner: $owner, name: $repo) {
       id
-    }
-  }
-`;
-
-// Create a project
-const CREATE_PROJECT_MUTATION = `
-  mutation ($repositoryId: ID!, $title: String!) {
-    createProjectV2(input: { repositoryId: $repositoryId, title: $title }) {
-      projectV2 { id title }
-    }
-  }
-`;
-
-// Delete a project
-const DELETE_PROJECT_MUTATION = `
-  mutation ($projectId: ID!) {
-    deleteProjectV2(input: { projectId: $projectId }) {
-      projectV2 { id }
-    }
-  }
-`;
-
-// Update a project title
-const UPDATE_PROJECT_MUTATION = `
-  mutation ($projectId: ID!, $title: String!) {
-    updateProjectV2(input: { projectId: $projectId, title: $title }) {
-      projectV2 { id title }
     }
   }
 `;
@@ -278,12 +227,7 @@ const POST_ISSUE_COMMENT_MUTATION = `
 `;
 
 export {
-  LIST_PROJECTS_REPO_QUERY,
-  LIST_PROJECTS_ORG_QUERY,
   REPO_ID_QUERY,
-  CREATE_PROJECT_MUTATION,
-  DELETE_PROJECT_MUTATION,
-  UPDATE_PROJECT_MUTATION,
   LIST_ITEMS_QUERY,
   LIST_ITEMS_WITH_LABELS_QUERY,
   LIST_FIELDS_QUERY,

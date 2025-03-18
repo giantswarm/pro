@@ -1,13 +1,13 @@
 import chalk from 'chalk';
 import { fetchPaginated } from '../lib/api.js';
-import { SHOW_FIELD_QUERY } from '../lib/project.js';
+import { ROADMAP_BOARD_ID, SHOW_FIELD_QUERY } from '../lib/project.js';
 
 export async function showFieldCommand(options) {
   const first = 100;
   try {
     const allFields = await fetchPaginated(
       SHOW_FIELD_QUERY,
-      { projectId: options.project, first },
+      { projectId: ROADMAP_BOARD_ID, first },
       result => result.node.fields
     );
     const field = allFields.find(f => f.id === options.field);
