@@ -20,27 +20,35 @@ if (!process.env.OPENAI_API_KEY) {
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 /**
- * Get function suggestion from ChatGPT based on issue content
+ * Get function suggestion from ChatGPT based on issue content and available options
  * @param {Object} item - The project item containing issue details
+ * @param {Array} functionOptions - Available function options from the project
  * @returns {Promise<string>} - The suggested function name
  */
-async function getFunctionSuggestionForIssue(item) {
+async function getFunctionSuggestionForIssue(item, functionOptions) {
   let title = item.content?.title || '';
   let body = '';
   
+  // Create a list of valid function names
+  const validFunctionNames = functionOptions.map(option => option.name);
+  const functionList = validFunctionNames.join(', ');
+  
   try {
-    // Construct a prompt for ChatGPT
+    // Construct a prompt for ChatGPT that includes the valid options
     const prompt = `I have a GitHub issue with the following details:
 Title: ${title}
 Body: ${body || 'No description provided'}
 
-Based on this information, what would be an appropriate function name (like "DevOps", "Development", "Design", "Product Management", etc.) for categorizing this issue? Please just respond with the function name, nothing else.`;
+Based on this information, which of the following functions best categorizes this issue?
+Valid functions: ${functionList}
+
+Please respond ONLY with the exact name of one of the valid functions listed above, no explanation or additional text.`;
 
     // Call ChatGPT API - o3-mini doesn't support temperature or max_tokens parameters
     const response = await openai.chat.completions.create({
       model: "o3-mini",
       messages: [
-        { role: "system", content: "You are a helpful assistant that provides concise, direct answers. Only respond with the function name, no explanation or additional text." },
+        { role: "system", content: "You are a helpful assistant that categorizes issues. Only respond with one of the valid function names provided, nothing else." },
         { role: "user", content: prompt }
       ],
       // No temperature or max_completion_tokens parameters for o3-mini
@@ -49,6 +57,15 @@ Based on this information, what would be an appropriate function name (like "Dev
     // Extract the suggested function name
     let functionSuggestion = response.choices[0]?.message?.content?.trim() || '';
     console.log("ChatGPT suggestion:", functionSuggestion);
+    
+    // Verify the suggestion is in the list of valid functions
+    if (!validFunctionNames.some(name => 
+      name.toLowerCase() === functionSuggestion.toLowerCase() || 
+      functionSuggestion.toLowerCase().includes(name.toLowerCase()) ||
+      name.toLowerCase().includes(functionSuggestion.toLowerCase())
+    )) {
+      console.log(chalk.yellow(`Warning: Suggested function "${functionSuggestion}" is not in the list of valid functions.`));
+    }
     
     return functionSuggestion;
   } catch (error) {
@@ -60,11 +77,7 @@ Based on this information, what would be an appropriate function name (like "Dev
 export async function fixFunctionFieldCommand(options) {
   const first = 100;
   try {
-    const allItems = await fetchPaginated(
-      LIST_ITEMS_WITH_LABELS_QUERY,
-      { projectId: options.id, first },
-      result => result.node.items
-    );
+    // First, get all fields to find the function field and its options
     const allFields = await fetchPaginated(
       LIST_FIELDS_QUERY,
       { projectId: options.id, first },
@@ -81,6 +94,19 @@ export async function fixFunctionFieldCommand(options) {
       console.log(chalk.yellow('No function field found in this project.'));
       return;
     }
+    
+    console.log(chalk.cyan(`Found function field with ${functionField.options.length} options.`));
+    console.log('Available functions:');
+    functionField.options.forEach(option => {
+      console.log(chalk.blue(`- ${option.name}`));
+    });
+    
+    // Now get the items
+    const allItems = await fetchPaginated(
+      LIST_ITEMS_WITH_LABELS_QUERY,
+      { projectId: options.id, first },
+      result => result.node.items
+    );
     
     // Filter items missing a function value
     const itemsWithoutFunction = allItems.filter(item => {
@@ -101,10 +127,10 @@ export async function fixFunctionFieldCommand(options) {
       if (!item.content) continue;
       
       // Fix for terminal links - use a safer approach for console output
-      console.log(chalk.cyan(`Function suggestion for: ${item.content.title || 'Untitled'} (#${item.content.number || 'N/A'})`));
+      console.log(chalk.cyan(`\nFunction suggestion for: ${item.content.title || 'Untitled'} (#${item.content.number || 'N/A'})`));
       
-      // Get function suggestion from ChatGPT
-      const functionName = await getFunctionSuggestionForIssue(item);
+      // Get function suggestion from ChatGPT with the list of valid options
+      const functionName = await getFunctionSuggestionForIssue(item, functionField.options);
       
       if (!functionName) {
         console.log(chalk.yellow(`Could not get a function suggestion for issue #${item.content.number}`));
@@ -131,6 +157,21 @@ export async function fixFunctionFieldCommand(options) {
       
       if (!functionOption) {
         console.log(chalk.yellow(`Could not find matching function option for "${functionName}"`));
+        continue;
+      }
+      
+      // Ask for user confirmation before updating
+      const { confirmUpdate } = await inquirer.prompt([
+        {
+          type: 'confirm',
+          name: 'confirmUpdate',
+          message: `Update function for issue #${item.content.number} to "${functionOption.name}"?`,
+          default: true
+        }
+      ]);
+      
+      if (!confirmUpdate) {
+        console.log(chalk.yellow(`Skipping update for issue #${item.content.number}`));
         continue;
       }
       
