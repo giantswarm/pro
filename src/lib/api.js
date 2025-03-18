@@ -1,16 +1,16 @@
 import { graphql } from '@octokit/graphql';
 
 // Ensure GitHub token is set in environment variables
-const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
-if (!GITHUB_TOKEN) {
-  console.error('Error: GITHUB_TOKEN environment variable is not set.');
+const GITHUB_API_TOKEN = process.env.GITHUB_API_TOKEN;
+if (!GITHUB_API_TOKEN) {
+  console.error('Error: GITHUB_API_TOKEN environment variable is not set.');
   process.exit(1);
 }
 
 // Configure graphql client with authentication
 const graphQLWithAuth = graphql.defaults({
   headers: {
-    authorization: `bearer ${GITHUB_TOKEN}`
+    authorization: `bearer ${GITHUB_API_TOKEN}`
   }
 });
 

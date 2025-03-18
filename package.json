@@ -7,12 +7,20 @@
     "pro": "bin/index.js"
   },
   "type": "module",
+  "scripts": {
+    "test": "jest --config=jest.config.js",
+    "test:watch": "jest --watch --config=jest.config.js",
+    "test:coverage": "jest --coverage --config=jest.config.js"
+  },
   "dependencies": {
     "@octokit/graphql": "^8.2.1",
     "chalk": "^5.4.1",
     "commander": "^13.1.0",
     "inquirer": "^12.4.2",
     "openai": "^4.86.2"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
   },
   "author": "Timo Derstappen"
 }
