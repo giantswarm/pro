@@ -1,6 +1,12 @@
-const express = require('express');
-const path = require('path');
-const { exec } = require('child_process');
+import express from 'express';
+import path from 'path';
+import { exec } from 'child_process';
+import { fileURLToPath } from 'url';
+
+// Create __dirname equivalent for ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 const app = express();
 const port = process.env.PORT || 3000;
 
@@ -25,7 +31,14 @@ app.post('/api/log-error', (req, res) => {
 
 // Helper function to execute command
 function executeCommand(command, callback) {
-  exec(command, { maxBuffer: 1024 * 1024 * 10 }, (error, stdout, stderr) => {
+  // Get the project root directory (2 levels up from the server.js file)
+  const projectRoot = path.resolve(__dirname, '..', '..');
+  
+  // Use options to set the cwd to project root
+  exec(command, { 
+    maxBuffer: 1024 * 1024 * 10,
+    cwd: projectRoot
+  }, (error, stdout, stderr) => {
     if (error) {
       console.error(`Error executing command: ${command}`);
       console.error(error);
