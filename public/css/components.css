@@ -483,6 +483,15 @@ label {
 /* Action cell */
 .action-cell {
   white-space: nowrap;
+  text-align: right;
+  min-width: 150px;
+}
+
+/* Ensure action buttons stay in action column */
+.get-suggestion-btn {
+  float: right;
+  display: inline-block;
+  margin-left: auto;
 }
 
 /* Responsive adjustments */

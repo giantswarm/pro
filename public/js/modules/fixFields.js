@@ -314,21 +314,22 @@ function buildIssuesTable(issues) {
     // Suggestion cell (empty by default, will be populated on demand)
     const suggestionCell = document.createElement('td');
     suggestionCell.className = 'suggestion-cell';
-    suggestionCell.style.display = 'none'; // Hidden by default
+    suggestionCell.id = `suggestion-${issue.id}`;
+    // Don't hide by default, just leave it empty
+    suggestionCell.innerHTML = ''; // Empty by default
     
     // Action cell
     const actionCell = document.createElement('td');
-    actionCell.className = 'action-cell text-end';
+    actionCell.className = 'action-cell';
+    actionCell.id = `action-${issue.id}`;
     
     const getSuggestionBtn = document.createElement('button');
-    getSuggestionBtn.className = 'btn btn-sm btn-primary';
+    getSuggestionBtn.className = 'btn btn-sm btn-primary get-suggestion-btn';
+    getSuggestionBtn.id = `get-suggestion-${issue.id}`;
     getSuggestionBtn.innerHTML = '<i class="fas fa-magic me-1"></i> Get Suggestion';
     getSuggestionBtn.addEventListener('click', () => {
-      if (row && issue) {
-        getSuggestionForRow(row, issue);
-      } else {
-        console.error('Missing row or issue data for suggestion');
-      }
+      // Get suggestion for this row
+      getSuggestionForRow(row, issue);
     });
     
     actionCell.appendChild(getSuggestionBtn);
@@ -539,14 +540,17 @@ function getSuggestionForRow(rowOrItem, issueOrIndex, providedFieldType) {
   }
   
   const suggestionCell = row?.querySelector('.suggestion-cell');
+  const actionCell = row?.querySelector('.action-cell');
   
   if (!suggestionCell || !fieldType) {
     console.error('Missing suggestion cell or field type');
     return;
   }
   
+  // Store original action cell content
+  const originalActionContent = actionCell.innerHTML;
+  
   // Show loading in suggestion cell
-  suggestionCell.style.display = 'table-cell';
   suggestionCell.innerHTML = `
     <div class="text-center py-2">
       <div class="spinner-border spinner-border-sm text-primary" role="status">
@@ -554,6 +558,13 @@ function getSuggestionForRow(rowOrItem, issueOrIndex, providedFieldType) {
       </div>
       <small class="d-block mt-1">Getting suggestion...</small>
     </div>
+  `;
+  
+  // Replace action cell with loading state
+  actionCell.innerHTML = `
+    <button class="btn btn-sm btn-secondary" disabled>
+      <i class="fas fa-spinner fa-spin me-1"></i> Loading...
+    </button>
   `;
   
   // Get the field options for this field type from state
@@ -573,14 +584,6 @@ function getSuggestionForRow(rowOrItem, issueOrIndex, providedFieldType) {
   }
   
   console.log(`Using ${fieldOptions.length} options for ${fieldType} field`);
-  
-  // Format options for the suggestion UI
-  const formattedOptions = fieldOptions.map(option => ({
-    value: option.id || option.value,
-    label: option.name || option.text,
-    // Store the complete option data to ensure we have all IDs
-    originalOption: option
-  }));
   
   // Use fetchSuggestion for all field types
   const getSuggestionPromise = () => {
@@ -639,15 +642,95 @@ function getSuggestionForRow(rowOrItem, issueOrIndex, providedFieldType) {
         }
       }
       
-      // Create the suggestion UI
-      createSuggestion(
-        issue,
-        `#row-${issue.id} .suggestion-cell`,
-        formattedOptions,
-        currentFields,
-        suggestion,
-        // Accept callback
-        (selectedValue, originalOption) => {
+      // Format options for the suggestion UI
+      const formattedOptions = fieldOptions.map(option => ({
+        value: option.id || option.value,
+        label: option.name || option.text,
+        // Store the complete option data to ensure we have all IDs
+        originalOption: option
+      }));
+      
+      // Create the suggestion UI in the suggestion cell (without action buttons)
+      const selectId = `suggestion-select-${issue.id}`;
+      suggestionCell.innerHTML = '';
+      suggestionCell.classList.add('suggestion-minimal');
+
+      // Create select element
+      const formGroup = document.createElement('div');
+      formGroup.className = 'form-group';
+      
+      const select = document.createElement('select');
+      select.className = 'form-select';
+      select.id = selectId;
+      
+      // Add empty option
+      const emptyOption = document.createElement('option');
+      emptyOption.value = '';
+      emptyOption.textContent = 'Select field';
+      select.appendChild(emptyOption);
+      
+      // Track if we've matched and selected the AI suggestion
+      let foundMatch = false;
+      
+      // Add options from fieldOptions
+      formattedOptions.forEach(option => {
+        const optionEl = document.createElement('option');
+        optionEl.value = option.value;
+        optionEl.textContent = option.label;
+        
+        // Store the original option data as a data attribute if available
+        if (option.originalOption) {
+          optionEl.dataset.originalOption = JSON.stringify(option.originalOption);
+        }
+        
+        // Check for a match with the AI suggestion
+        const isMatch = 
+          option.value === suggestion || 
+          option.label.toLowerCase() === suggestion.toLowerCase();
+        
+        if (isMatch) {
+          optionEl.selected = true;
+          foundMatch = true;
+        }
+        
+        select.appendChild(optionEl);
+      });
+      
+      // If we didn't find a match but have a suggestion, add it as a custom option
+      if (!foundMatch && suggestion && suggestion.trim() !== '') {
+        const customOption = document.createElement('option');
+        customOption.value = suggestion;
+        customOption.textContent = `${suggestion} (Custom)`;
+        customOption.selected = true;
+        select.appendChild(customOption);
+      }
+      
+      formGroup.appendChild(select);
+      suggestionCell.appendChild(formGroup);
+      
+      // Create actions in the action cell
+      actionCell.innerHTML = '';
+      
+      // Accept button
+      const acceptBtn = document.createElement('button');
+      acceptBtn.className = 'btn btn-sm btn-success me-2';
+      acceptBtn.innerHTML = '<i class="fas fa-check me-1"></i> Accept';
+      acceptBtn.addEventListener('click', () => {
+        const selectedValue = select.value;
+        if (selectedValue) {
+          // Get the selected option element
+          const selectedOptionEl = select.options[select.selectedIndex];
+          
+          // Try to retrieve the original option data from the data attribute
+          let originalOption = null;
+          if (selectedOptionEl.dataset.originalOption) {
+            try {
+              originalOption = JSON.parse(selectedOptionEl.dataset.originalOption);
+            } catch (e) {
+              console.error('Error parsing original option data:', e);
+            }
+          }
+          
           // Update the field cell
           const fieldCell = row.querySelector('.fields-cell');
           let selectedOption;
@@ -655,14 +738,12 @@ function getSuggestionForRow(rowOrItem, issueOrIndex, providedFieldType) {
           // If we received the original option directly, use it
           if (originalOption) {
             selectedOption = originalOption;
-            console.log('Using original option data from selection:', selectedOption);
           } else {
             // Otherwise look it up by value
             selectedOption = fieldOptions.find(opt => 
               (opt.id && opt.id === selectedValue) || 
               (opt.value && opt.value === selectedValue)
             );
-            console.log('Looking up selected option by value:', selectedOption);
           }
           
           if (selectedOption) {
@@ -687,43 +768,21 @@ function getSuggestionForRow(rowOrItem, issueOrIndex, providedFieldType) {
             
             // Determine field ID and option ID for the update
             if (selectedOption.id || selectedOption.optionId) {
-              // Get option ID from the selected option
               metadata.optionId = selectedOption.id || selectedOption.optionId;
               
               // Try to get field ID from the selected option
               if (selectedOption.fieldId) {
                 metadata.fieldId = selectedOption.fieldId;
-                console.log('Using complete metadata from selected option:', metadata);
               }
               // Otherwise fallback to the fieldId from the API response
               else if (fieldId) {
                 metadata.fieldId = fieldId;
-                console.log('Using option ID from selected option and field ID from API:', metadata);
-              }
-              // As a final fallback, try to find the field ID from state
-              else {
-                const field = Object.values(stateObj.fieldOptions || {})
-                  .find(fields => Array.isArray(fields) && fields.find(f => 
-                    f.name === fieldType || f.id === metadata.optionId
-                  ));
-                  
-                if (field && field.id) {
-                  metadata.fieldId = field.id;
-                  console.log('Using field ID from state lookup:', metadata);
-                } else {
-                  console.warn('Could not find field ID for update. Using fallback methods.');
-                }
               }
             } 
             // If we don't have option IDs from the selected option, use the API response
             else if (optionId && fieldId) {
               metadata.optionId = optionId;
               metadata.fieldId = fieldId;
-              console.log('Using metadata from API response:', metadata);
-            } 
-            // Last resort: use the value directly (custom values API)
-            else {
-              console.warn('No option/field IDs available. Will use custom value API.');
             }
             
             // Update issue data in GitHub
@@ -752,25 +811,47 @@ function getSuggestionForRow(rowOrItem, issueOrIndex, providedFieldType) {
                 
                 // Show success message
                 ui.showToast('Field updated successfully!', 'success');
+                
+                // Restore the Get Suggestion button
+                actionCell.innerHTML = originalActionContent;
               })
               .catch(error => {
                 console.error('Error updating field:', error);
                 ui.showToast(`Error: ${error.message}`, 'danger');
+                // Restore the Get Suggestion button
+                actionCell.innerHTML = originalActionContent;
               });
           }
-        },
-        // Cancel callback to hide the suggestion
-        () => {
-          suggestionCell.style.display = 'none';
+        } else {
+          alert('Please select a field value');
         }
-      );
+      });
+      
+      // Cancel button
+      const cancelBtn = document.createElement('button');
+      cancelBtn.className = 'btn btn-sm btn-outline-secondary';
+      cancelBtn.innerHTML = 'Cancel';
+      cancelBtn.addEventListener('click', () => {
+        // Hide suggestion
+        suggestionCell.innerHTML = '';
+        // Restore the Get Suggestion button
+        actionCell.innerHTML = originalActionContent;
+      });
+      
+      actionCell.appendChild(acceptBtn);
+      actionCell.appendChild(cancelBtn);
     })
     .catch(error => {
       console.error('Error getting suggestion:', error);
+      
+      // Show error in suggestion cell
       suggestionCell.innerHTML = `
-        <div class="alert alert-danger mb-0">
-          Error getting suggestion: ${error.message}
+        <div class="alert alert-danger mb-0 py-2">
+          <small>Error: ${error.message || 'Failed to get suggestion'}</small>
         </div>
       `;
+      
+      // Restore the Get Suggestion button
+      actionCell.innerHTML = originalActionContent;
     });
 } 
