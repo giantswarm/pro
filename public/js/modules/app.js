@@ -39,6 +39,7 @@ import * as api from './api.js';
 import * as ui from '../utils/ui.js';
 import * as fixFields from './fixFields.js';
 import * as aiAnalysis from './aiAnalysis.js';
+import * as websocket from '../utils/websocket.js';
 
 /**
  * Initialize the web application
@@ -51,6 +52,9 @@ export async function initApp() {
   
   // Initialize dark mode
   initDarkMode();
+  
+  // Initialize WebSocket connection for real-time logs
+  websocket.initWebSocket();
   
   // Initialize UI components
   initTabs();

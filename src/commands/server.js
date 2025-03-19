@@ -26,12 +26,15 @@ import chalk from 'chalk';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import cors from 'cors';
+import { WebSocketServer } from 'ws';
+import http from 'http';
 import { listItems, updateItemField } from '../lib/items.js';
 import { listFields } from '../lib/fields.js';
 import { fixTeamField } from '../lib/team-field.js';
 import { fixFunctionField } from '../lib/function-field.js';
 import { fixKindField } from '../lib/kind-field.js';
 import { summarizeIssues } from '../lib/summarize.js';
+import { addLogClient, logger } from '../lib/logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -57,13 +60,48 @@ export async function serverCommand(options) {
   const app = express();
   const PORT = options.port || 3000;
   
+  // Create HTTP server for Express and WebSocket to share
+  const server = http.createServer(app);
+  
+  // Set up WebSocket server
+  const wss = new WebSocketServer({ server });
+  
+  // Handle new WebSocket connections
+  wss.on('connection', (ws, req) => {
+    logger.info('WebSocket client connected', { source: 'websocket' });
+    
+    // Register client to receive logs
+    addLogClient(ws);
+    
+    // Handle client messages
+    ws.on('message', (message) => {
+      try {
+        const data = JSON.parse(message);
+        logger.debug(`Received message: ${data.type}`, { source: 'websocket' });
+        
+        // Handle different message types if needed
+      } catch (error) {
+        logger.error(`Error processing WebSocket message: ${error.message}`, { source: 'websocket' });
+      }
+    });
+    
+    // Handle client disconnection
+    ws.on('close', () => {
+      logger.info('WebSocket client disconnected', { source: 'websocket' });
+    });
+    
+    // Handle errors
+    ws.on('error', (error) => {
+      logger.error(`WebSocket error: ${error.message}`, { source: 'websocket' });
+    });
+  });
+  
   // Middleware
   app.use(cors());
   app.use(express.json());
   app.use(express.static(path.join(__dirname, '../../public')));
   
   // Keep track of the server instance so we can close it
-  let server;
   
   // Handle uncaught exceptions
   process.on('uncaughtException', (error) => {
@@ -670,9 +708,16 @@ export async function serverCommand(options) {
    */
   app.post('/api/summarize-issues', async (req, res) => {
     try {
+      // Log the request
+      logger.info('Starting AI analysis of issues', { 
+        filters: req.body,
+        source: 'summarize-issues'
+      });
+      
       const analysis = await summarizeIssues(req.body);
       
-      // The summarizeIssues function returns the formatted analysis text
+      logger.success('AI analysis completed successfully', { source: 'summarize-issues' });
+      
       // Format it correctly for the client
       res.json({ 
         status: 'success', 
@@ -681,6 +726,11 @@ export async function serverCommand(options) {
         }
       });
     } catch (error) {
+      logger.error(`Error generating AI analysis: ${error.message}`, { 
+        source: 'summarize-issues',
+        stack: error.stack
+      });
+      
       res.status(500).json({ status: 'error', error: error.message });
     }
   });
@@ -766,21 +816,21 @@ export async function serverCommand(options) {
   });
   
   // Start server
-  server = app.listen(PORT, () => {
-    console.log(chalk.green(`AI Roadmap Analysis Tool running on http://localhost:${PORT}`));
-    console.log(chalk.cyan('Endpoints available:'));
-    console.log(chalk.yellow('- GET /api/items - List and filter items'));
-    console.log(chalk.yellow('- GET /api/fields - Get field options'));
-    console.log(chalk.yellow('- GET /api/suggestions/:issueId/:fieldType - Get field suggestion for an issue (team only)'));
-    console.log(chalk.yellow('- POST /api/fix-team-field - Get team field suggestion for an issue'));
-    console.log(chalk.yellow('- POST /api/fix-function-field - Get function field suggestion for an issue'));
-    console.log(chalk.yellow('- POST /api/fix-kind-field - Get kind field suggestion for an issue'));
-    console.log(chalk.yellow('- POST /api/apply-suggestion - Apply suggested field value (with user confirmation)'));
-    console.log(chalk.yellow('- POST /api/apply-custom-team - Apply custom team value'));
-    console.log(chalk.yellow('- POST /api/apply-custom-function - Apply custom function value'));
-    console.log(chalk.yellow('- POST /api/apply-custom-kind - Apply custom kind value'));
-    console.log(chalk.yellow('- POST /api/summarize-issues - Analyze issues with AI'));
-    console.log(chalk.cyan('\nPress Ctrl+C to stop the server'));
+  server.listen(PORT, () => {
+    logger.info(`AI Roadmap Analysis Tool running on http://localhost:${PORT}`);
+    logger.info('Endpoints available:');
+    logger.info('- GET /api/items - List and filter items');
+    logger.info('- GET /api/fields - Get field options');
+    logger.info('- GET /api/suggestions/:issueId/:fieldType - Get field suggestion for an issue (team only)');
+    logger.info('- POST /api/fix-team-field - Get team field suggestion for an issue');
+    logger.info('- POST /api/fix-function-field - Get function field suggestion for an issue');
+    logger.info('- POST /api/fix-kind-field - Get kind field suggestion for an issue');
+    logger.info('- POST /api/apply-suggestion - Apply suggested field value (with user confirmation)');
+    logger.info('- POST /api/apply-custom-team - Apply custom team value');
+    logger.info('- POST /api/apply-custom-function - Apply custom function value');
+    logger.info('- POST /api/apply-custom-kind - Apply custom kind value');
+    logger.info('- POST /api/summarize-issues - Analyze issues with AI');
+    logger.info('\nPress Ctrl+C to stop the server');
   });
   
   // Handle graceful shutdown

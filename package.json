@@ -23,7 +23,8 @@
     "openai": "^4.86.2",
     "ora": "^8.2.0",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "ws": "^8.18.1"
   },
   "devDependencies": {
     "jest": "^29.7.0"

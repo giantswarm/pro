@@ -46,10 +46,27 @@ export function toggleLoadingOverlay(show, message = '', type = 'info') {
     if (message) {
       updateLoadingStatus(message, type);
     }
+    
+    // Dispatch event that overlay is shown
+    window.dispatchEvent(new CustomEvent('loadingOverlayShown'));
   } else {
+    // Check if we have a log container that should persist
+    const logContainer = document.getElementById('serverLogContainer');
+    if (logContainer) {
+      // Move the log container outside the overlay so it persists
+      const resultsContainer = document.getElementById('aiAnalysisResults');
+      if (resultsContainer) {
+        logContainer.classList.add('log-container-persistent', 'mt-3', 'mb-3');
+        resultsContainer.insertBefore(logContainer, resultsContainer.firstChild);
+      }
+    }
+    
     // Set a short timeout to ensure user sees the success/error message
     setTimeout(() => {
       overlay.style.display = 'none';
+      
+      // Dispatch event that overlay is hidden
+      window.dispatchEvent(new CustomEvent('loadingOverlayHidden'));
     }, 1000);
   }
 }

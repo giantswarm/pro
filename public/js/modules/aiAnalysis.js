@@ -90,7 +90,7 @@ export async function generateAIAnalysis() {
   const sigValue = document.getElementById('analysisSIG').value;
   const wgValue = document.getElementById('analysisWG').value;
   
-  // Show loading overlay
+  // Show loading overlay - this will trigger the WebSocket logs to appear in the UI
   ui.toggleLoadingOverlay(true, 'Starting AI analysis...');
   
   try {
@@ -126,8 +126,10 @@ export async function generateAIAnalysis() {
       }
     });
     
-    // Generate AI summary
+    // Generate AI summary - WebSocket will automatically stream logs during this process
     ui.updateLoadingStatus('Connecting to GitHub API to fetch issues...', 'info');
+    
+    // Make the API request to generate the summary
     const result = await api.generateSummary(filters);
     
     if (result.status === 'error') {
