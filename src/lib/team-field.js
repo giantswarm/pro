@@ -21,9 +21,8 @@
  */
 
 import OpenAI from 'openai';
-import { 
-  batchFixFields
-} from './fields.js';
+import { batchFixFields } from './fields.js';
+import { getItemByID } from './items.js';
 
 if (!process.env.OPENAI_API_KEY) {
   console.error('Error: OPENAI_API_KEY environment variable is not set.');
@@ -71,16 +70,17 @@ function normalizeTeamName(teamName) {
  *   3. AI analysis (fallback method)
  * - Handles different data structures from API responses
  * 
- * @param {Object} item - The item object
+ * @param {string} itemId - The ID of the project item
  * @returns {Promise<string>} - The suggested team name
  */
-export async function getTeamSuggestion(item, options) {
+export async function getTeamSuggestion(itemId, options) {
   let teamSuggestion = '';
+  const item = await getItemByID(itemId);
 
   // Step 1: Check for team labels first
   // Handle both direct API responses and processed items
   const teamLabels = Array.isArray(item.labels) 
-    ? labels.filter(label => {
+    ? item.labels.filter(label => {
         return typeof label === 'string' && label.toLowerCase().startsWith('team/');
       })
     : [];
@@ -93,7 +93,7 @@ export async function getTeamSuggestion(item, options) {
 
   // Step 2: Check if the issue belongs to team-specific projects
   const teamProjects = Array.isArray(item.projects) 
-    ? projects.filter(project => 
+    ? item.projects.filter(project => 
         typeof project === 'string' && project.toLowerCase().includes('team')
       )
     : [];
@@ -105,13 +105,6 @@ export async function getTeamSuggestion(item, options) {
       .replace(/\bteam\b/g, '')
       .trim();
   }
-  
-  // Check if issue already has a bot comment to avoid duplicate processing
-  const comments = item.comments || [];
-  if (Array.isArray(comments) && comments.length > 0 && comments.join(', ').includes('#iamarobot')) {
-    console.log("Issue already has a comment from the bot.");
-    return 'skip';
-  }
 
   // Step 3: As a last resort, use AI to suggest a team
   
@@ -120,15 +113,15 @@ export async function getTeamSuggestion(item, options) {
     console.error("Error: Missing OpenAI API key or Assistant ID");
     return '';
   }
-  
+  console.log(item);
   const prompt = `Determine the appropriate team for the following issue:
-Title: ${title}
-Content: ${body}
-Author: ${author}
-Comments: ${comments.join(', ')}
-Assignees: ${assignees.join(', ')}
-Labels: ${labels.map(l => l.name || l).join(', ')}
-Projects: ${projects.join(', ')}
+Title: ${item.title}
+Content: ${item.body}
+Author: ${item.author}
+Comments: ${item.comments.join(', ')}
+Assignees: ${item.assignees.join(', ')}
+Labels: ${item.labels.join(', ')}
+Projects: ${item.projects.join(', ')}
 
 Reply with the team name that should handle this issue.
 `;

@@ -35,12 +35,12 @@ import {
  * - Passes issue details and valid kind options to the model
  * - Returns a single recommended kind value
  * 
- * @param {Object} item - The project item
+ * @param {string} itemId - The ID of the project item
  * @param {Array} options - Available kind options
  * @returns {Promise<string>} - Suggested kind name
  */
-async function getKindSuggestion(item, options) {
-  return await getAISuggestion(item, options, 'kind');
+async function getKindSuggestion(itemId, options) {
+  return await getAISuggestion(itemId, options, 'kind');
 }
 
 /**

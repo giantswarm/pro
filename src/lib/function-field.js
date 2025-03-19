@@ -35,12 +35,12 @@ import {
  * - Passes issue details and valid function options to make context-aware suggestions
  * - Returns a single recommended function value
  * 
- * @param {Object} item - The project item
+ * @param {string} itemId - The ID of the project item
  * @param {Array} options - Available function options
  * @returns {Promise<string>} - Suggested function name
  */
-async function getFunctionSuggestion(item, options) {
-  return await getAISuggestion(item, options, 'function');
+async function getFunctionSuggestion(itemId, options) {
+  return await getAISuggestion(itemId, options, 'function');
 }
 
 /**
