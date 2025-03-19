@@ -91,6 +91,70 @@ export function updateOperationStatus(message, type = 'success') {
 }
 
 /**
+ * Shows a toast notification
+ * @param {string} message - The message to display
+ * @param {string} type - The type of message (success, danger, warning, info)
+ * @param {number} duration - How long to show the toast in ms
+ */
+export function showToast(message, type = 'success', duration = 3000) {
+  // Create toast container if it doesn't exist
+  let toastContainer = document.getElementById('toast-container');
+  if (!toastContainer) {
+    toastContainer = document.createElement('div');
+    toastContainer.id = 'toast-container';
+    toastContainer.className = 'position-fixed bottom-0 end-0 p-3';
+    toastContainer.style.zIndex = '1050';
+    document.body.appendChild(toastContainer);
+  }
+  
+  // Create toast element
+  const toastId = `toast-${Date.now()}`;
+  const toast = document.createElement('div');
+  toast.id = toastId;
+  toast.className = `toast show bg-${type} text-white`;
+  toast.setAttribute('role', 'alert');
+  toast.setAttribute('aria-live', 'assertive');
+  toast.setAttribute('aria-atomic', 'true');
+  
+  // Add toast content
+  toast.innerHTML = `
+    <div class="toast-header bg-${type} text-white">
+      <strong class="me-auto">Notification</strong>
+      <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast" aria-label="Close"></button>
+    </div>
+    <div class="toast-body">
+      ${message}
+    </div>
+  `;
+  
+  // Add to container
+  toastContainer.appendChild(toast);
+  
+  // Close button functionality
+  const closeBtn = toast.querySelector('.btn-close');
+  if (closeBtn) {
+    closeBtn.addEventListener('click', () => {
+      toast.classList.remove('show');
+      setTimeout(() => {
+        toastContainer.removeChild(toast);
+      }, 300);
+    });
+  }
+  
+  // Auto-remove after duration
+  setTimeout(() => {
+    if (document.getElementById(toastId)) {
+      toast.classList.remove('show');
+      setTimeout(() => {
+        if (document.getElementById(toastId) && toastContainer.contains(toast)) {
+          toastContainer.removeChild(toast);
+        }
+      }, 300);
+    }
+  }, duration);
+}
+
+/**
  * Populate a select element with options
  * @param {string} selectId - The ID of the select element
  * @param {Array} options - The array of options to add

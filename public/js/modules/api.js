@@ -240,46 +240,6 @@ export async function generateSummary(filters = {}) {
 }
 
 /**
- * Get a suggestion for a specific issue field
- * @param {string} issueId - The ID of the issue
- * @param {string} fieldType - The type of field (team, function, kind)
- * @returns {Promise<Object>} The suggestion data
- */
-export async function getSuggestion(issueId, fieldType) {
-  try {
-    // For function and kind fields, use the specific endpoints that accept team value
-    if (fieldType.toLowerCase() === 'function' || fieldType.toLowerCase() === 'kind') {
-      // These fields require team value, so we should use the other endpoints with POST
-      console.warn(`Using /${fieldType} endpoint requires team value. Consider using fetchSuggestion() instead.`);
-      return { status: 'error', error: `Team value is required for ${fieldType} suggestions.` };
-    }
-    
-    const response = await fetch(`/api/suggestions/${issueId}/${fieldType}`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    });
-    
-    if (!response.ok) {
-      // Check if response is HTML (which would indicate routing to index.html)
-      const contentType = response.headers.get('content-type');
-      if (contentType && contentType.includes('text/html')) {
-        throw new Error('API endpoint not available. Received HTML response.');
-      }
-      
-      throw new Error(`Failed to get suggestion: ${response.statusText}`);
-    }
-    
-    const data = await response.json();
-    return data;
-  } catch (error) {
-    console.error('Error getting suggestion:', error);
-    return { status: 'error', error: error.message };
-  }
-}
-
-/**
  * Update a field value for an issue
  * @param {string} issueId - The ID of the issue
  * @param {string} fieldType - The type of field (team, function, kind)

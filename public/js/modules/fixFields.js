@@ -547,32 +547,26 @@ function getSuggestionForRow(rowOrItem, issueOrIndex, providedFieldType) {
     originalOption: option
   }));
   
-  // Use the appropriate API method based on field type
+  // Use fetchSuggestion for all field types
   const getSuggestionPromise = () => {
-    if (fieldType.toLowerCase() === 'function' || fieldType.toLowerCase() === 'kind') {
-      // For function and kind fields, use fetchSuggestion which supports team value
-      // Get the current team value from the issue fields
-      let teamValue = '';
-      if (issue.fields && Array.isArray(issue.fields)) {
-        const teamField = issue.fields.find(field => 
-          field.name && field.name.toLowerCase() === 'team' && field.value
-        );
-        teamValue = teamField ? teamField.value : '';
-      }
-      
-      // If no team value, check if we have a team filter selected
-      if (!teamValue) {
-        const teamSelect = document.getElementById('fixTeam');
-        if (teamSelect && teamSelect.value) {
-          teamValue = teamSelect.value;
-        }
-      }
-      
-      return api.fetchSuggestion(fieldType, issue.id, teamValue);
-    } else {
-      // For team field, use getSuggestion
-      return api.getSuggestion(issue.id, fieldType);
+    // Get the current team value from the issue fields (for function and kind fields)
+    let teamValue = '';
+    if (issue.fields && Array.isArray(issue.fields)) {
+      const teamField = issue.fields.find(field => 
+        field.name && field.name.toLowerCase() === 'team' && field.value
+      );
+      teamValue = teamField ? teamField.value : '';
     }
+    
+    // If no team value, check if we have a team filter selected
+    if (!teamValue) {
+      const teamSelect = document.getElementById('fixTeam');
+      if (teamSelect && teamSelect.value) {
+        teamValue = teamSelect.value;
+      }
+    }
+    
+    return api.fetchSuggestion(fieldType, issue.id, teamValue);
   };
   
   // Get suggestions from the API
@@ -723,11 +717,6 @@ function getSuggestionForRow(rowOrItem, issueOrIndex, providedFieldType) {
                 
                 // Show success message
                 ui.showToast('Field updated successfully!', 'success');
-                
-                // Refresh issues table if needed
-                if (typeof showFixResults === 'function') {
-                  showFixResults();
-                }
               })
               .catch(error => {
                 console.error('Error updating field:', error);
@@ -749,82 +738,4 @@ function getSuggestionForRow(rowOrItem, issueOrIndex, providedFieldType) {
         </div>
       `;
     });
-}
-
-/**
- * Updates the field badge in the row
- * @param {HTMLElement} row - The table row element
- * @param {string} fieldType - The type of field
- * @param {string} value - The new field value
- */
-function updateFieldBadge(row, fieldType, value) {
-  const fieldsContainer = row.querySelector('.fields-container');
-  if (!fieldsContainer) return;
-  
-  // Check if badge already exists
-  let fieldBadge = Array.from(fieldsContainer.querySelectorAll('.field-badge')).find(
-    badge => badge.classList.contains(fieldType.toLowerCase())
-  );
-  
-  if (fieldBadge) {
-    // Update existing badge
-    fieldBadge.textContent = `${fieldType}: ${value}`;
-  } else {
-    // Create new badge as HTML
-    const badgeHTML = `<span class="field-badge ${fieldType.toLowerCase()}">${fieldType}: ${value}</span>`;
-    fieldsContainer.insertAdjacentHTML('beforeend', badgeHTML);
-  }
-}
-
-/**
- * Updates the fix counts display
- * @param {string} type - The type of count to update ('fixed' or 'skipped')
- */
-function updateFixCounts(type) {
-  const stateObj = state.getState();
-  
-  if (type === 'fixed') {
-    state.updateNestedStateProperty('fixingResults', 'fixed', stateObj.fixingResults.fixed + 1);
-    document.getElementById('fixedCount').textContent = stateObj.fixingResults.fixed + 1;
-  } else if (type === 'skipped') {
-    state.updateNestedStateProperty('fixingResults', 'skipped', stateObj.fixingResults.skipped + 1);
-    document.getElementById('skippedCount').textContent = stateObj.fixingResults.skipped + 1;
-  }
-}
-
-/**
- * Populate select options with data from the API
- * Maintain the "No Team Assigned" option for the fixTeam select
- */
-function populateSelectOptions() {
-  const stateObj = state.getState();
-  if (!stateObj.fieldOptions) return;
-  
-  // Populate team selects differently for the fix team field
-  if (stateObj.fieldOptions.teams) {
-    const fixTeamSelect = document.getElementById('fixTeam');
-    if (fixTeamSelect) {
-      // Keep the existing options (including the no-team option)
-      const existingOptions = Array.from(fixTeamSelect.options).slice(0, 2);
-      fixTeamSelect.innerHTML = '';
-      
-      // Add back the existing options
-      existingOptions.forEach(option => {
-        fixTeamSelect.appendChild(option);
-      });
-      
-      // Add new team options
-      stateObj.fieldOptions.teams.forEach(team => {
-        const option = document.createElement('option');
-        option.value = team.value;
-        option.textContent = team.text;
-        fixTeamSelect.appendChild(option);
-      });
-    }
-  }
-  
-  // Populate field type selects
-  if (stateObj.fieldOptions.fieldTypes) {
-    ui.populateSelectOptions('fixFieldType', stateObj.fieldOptions.fieldTypes, false);
-  }
 } 
