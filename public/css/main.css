@@ -120,7 +120,24 @@ body {
 /* Container with max-width for better readability */
 .container {
   max-width: 1200px;
+  margin: 0 auto;
   padding: 0 1.5rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Ensure consistent alignment across components */
+.container > .nav,
+.container > .tab-content {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Ensure proper alignment between header content and tabs */
+.app-header .d-flex,
+.container > .nav,
+.container > .tab-content {
+  max-width: 100%;
 }
 
 /* Dark mode toggle - updated for Giant Swarm style guide */
@@ -157,6 +174,19 @@ body {
   border-bottom: none;
   margin-bottom: 2rem;
   padding: 0.5rem 0;
+  width: 100%;
+  max-width: 100%;
+}
+
+/* Make sure tab content has same width as header */
+.tab-content {
+  width: 100%;
+  max-width: 100%;
+}
+
+/* Ensure tab panes have consistent width */
+.tab-content > .tab-pane {
+  width: 100%;
 }
 
 /* Card design updates */

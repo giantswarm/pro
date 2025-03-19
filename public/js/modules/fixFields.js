@@ -814,12 +814,28 @@ function getSuggestionForRow(rowOrItem, issueOrIndex, providedFieldType) {
                 
                 // Restore the Get Suggestion button
                 actionCell.innerHTML = originalActionContent;
+                
+                // Re-attach event listener to the restored button
+                const restoredBtn = actionCell.querySelector('.get-suggestion-btn');
+                if (restoredBtn) {
+                  restoredBtn.addEventListener('click', () => {
+                    getSuggestionForRow(row, issue);
+                  });
+                }
               })
               .catch(error => {
                 console.error('Error updating field:', error);
                 ui.showToast(`Error: ${error.message}`, 'danger');
                 // Restore the Get Suggestion button
                 actionCell.innerHTML = originalActionContent;
+                
+                // Re-attach event listener to the restored button
+                const restoredBtn = actionCell.querySelector('.get-suggestion-btn');
+                if (restoredBtn) {
+                  restoredBtn.addEventListener('click', () => {
+                    getSuggestionForRow(row, issue);
+                  });
+                }
               });
           }
         } else {
@@ -836,6 +852,14 @@ function getSuggestionForRow(rowOrItem, issueOrIndex, providedFieldType) {
         suggestionCell.innerHTML = '';
         // Restore the Get Suggestion button
         actionCell.innerHTML = originalActionContent;
+        
+        // Re-attach event listener to the restored button
+        const restoredBtn = actionCell.querySelector('.get-suggestion-btn');
+        if (restoredBtn) {
+          restoredBtn.addEventListener('click', () => {
+            getSuggestionForRow(row, issue);
+          });
+        }
       });
       
       actionCell.appendChild(acceptBtn);
@@ -853,5 +877,13 @@ function getSuggestionForRow(rowOrItem, issueOrIndex, providedFieldType) {
       
       // Restore the Get Suggestion button
       actionCell.innerHTML = originalActionContent;
+      
+      // Re-attach event listener to the restored button
+      const restoredBtn = actionCell.querySelector('.get-suggestion-btn');
+      if (restoredBtn) {
+        restoredBtn.addEventListener('click', () => {
+          getSuggestionForRow(row, issue);
+        });
+      }
     });
 } 
