@@ -1,3 +1,22 @@
+/**
+ * GitHub API Communication Module
+ * 
+ * WHY:
+ * - Need a consistent interface to interact with GitHub's GraphQL API
+ * - GitHub's API often requires pagination to handle large result sets
+ * - Authentication and error handling should be centralized
+ * 
+ * HOW:
+ * - Uses Octokit's GraphQL client to make authenticated API requests
+ * - Implements pagination helpers to handle large result sets
+ * - Verifies API token availability at startup
+ * 
+ * WHAT:
+ * - Exports an authenticated GraphQL client for API operations
+ * - Provides a fetchPaginated helper to handle paginated queries
+ * - Handles different response formats and error conditions
+ */
+
 import { graphql } from '@octokit/graphql';
 
 // Ensure GitHub token is set in environment variables

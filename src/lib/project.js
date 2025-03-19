@@ -1,3 +1,23 @@
+/**
+ * Project Configuration and GraphQL Queries Module
+ * 
+ * WHY:
+ * - GitHub Projects API requires specific GraphQL queries and mutations
+ * - Centralizing these queries improves maintainability and consistency
+ * - Specific project IDs and field IDs need to be accessible throughout the application
+ * 
+ * HOW:
+ * - Defines GraphQL queries and mutations as string constants
+ * - Exports these queries for use by other modules
+ * - Provides project-specific constants (board ID, field IDs)
+ * 
+ * WHAT:
+ * - Contains all GraphQL queries needed for GitHub Projects operations
+ * - Defines constants for project board ID and field IDs
+ * - Includes queries for fetching items, fields, and metadata
+ * - Provides mutations for updating item fields and other operations
+ */
+
 // Export GraphQL queries and mutations for project operations
 export const ROADMAP_BOARD_ID = 'PVT_kwDOAHNM9M4ABvWx';
 export const TEAM_FIELD_ID = 'PVTSSF_lADOAHNM9M4ABvWxzgBApUw';

@@ -1,3 +1,24 @@
+/**
+ * Items Management Module
+ * 
+ * WHY:
+ * - Need to efficiently retrieve and manipulate GitHub Project items
+ * - Need consistent filtering and processing of roadmap items
+ * - Project boards can contain hundreds of items requiring batch operations
+ * 
+ * HOW:
+ * - Uses GitHub's GraphQL API to fetch and update items
+ * - Implements filtering logic for various item attributes
+ * - Provides utilities for extracting relevant information from items
+ * - Handles pagination for large result sets
+ * 
+ * WHAT:
+ * - Exports functions to list, filter, and update project items
+ * - Provides helper functions to extract item details for AI processing
+ * - Implements filtering by team, function, kind, and other criteria
+ * - Manages field updates for project items
+ */
+
 import chalk from 'chalk';
 import ora from 'ora';
 import { fetchPaginated, graphQLWithAuth } from './api.js';

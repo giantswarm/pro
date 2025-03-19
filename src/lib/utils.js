@@ -1,3 +1,38 @@
+/**
+ * Utility Functions Module
+ * 
+ * WHY:
+ * - Need common utility functions that can be used across the application
+ * - Terminal links and field value normalization are used in multiple places
+ * - Centralizing these utilities improves maintainability and consistency
+ * 
+ * HOW:
+ * - Exports standalone utility functions for common operations
+ * - Implements terminal-aware functionality for better user experience
+ * - Provides text normalization helpers for consistent comparison
+ * 
+ * WHAT:
+ * - Includes functions for creating clickable terminal links
+ * - Provides normalization functions for standardizing field values
+ * - Handles terminal capability detection and fallbacks
+ */
+
+/**
+ * Create a clickable hyperlink for terminal output
+ * 
+ * WHY:
+ * - Terminal links improve user experience by making issues directly clickable
+ * - Not all terminals support hyperlinks, so fallbacks are needed
+ * 
+ * HOW:
+ * - Uses ANSI escape sequences to create clickable links in supporting terminals
+ * - Detects terminal capabilities and falls back to text format when unsupported
+ * - Handles errors gracefully
+ * 
+ * @param {string} url - The URL to link to
+ * @param {string} title - The display text for the link
+ * @returns {string} - A formatted hyperlink string or fallback text
+ */
 export function makeIssueLink(url, title) {
   // Check if the environment supports color/formatting
   const supportsHyperlinks = process.env.TERM && process.env.TERM !== 'dumb' && process.stdout.isTTY;
@@ -17,7 +52,18 @@ export function makeIssueLink(url, title) {
 }
 
 /**
- * Normalize a field value by converting to lowercase, removing emojis and special characters
+ * Normalize a field value for consistent comparison
+ * 
+ * WHY:
+ * - Field values may contain inconsistent formatting, emojis, or special characters
+ * - Consistent normalization enables more reliable matching between values
+ * - Case differences should be ignored for matching purposes
+ * 
+ * HOW:
+ * - Converts text to lowercase
+ * - Removes emojis, special Unicode characters, and non-alphanumeric symbols
+ * - Trims extra whitespace
+ * 
  * @param {string} value - Field value to normalize
  * @returns {string} - Normalized field value for comparison
  */

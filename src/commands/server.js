@@ -1,3 +1,26 @@
+/**
+ * Web Server Command Module
+ * 
+ * WHY:
+ * - Need to provide web-based access to roadmap management functionality
+ * - CLI interface is powerful but not accessible to all stakeholders
+ * - Web interfaces enable broader participation in roadmap management
+ * - Enable integration with other web-based systems and dashboards
+ * 
+ * HOW:
+ * - Implements an Express server with REST API endpoints
+ * - Serves static files for a web UI from the public directory
+ * - Wraps core library functions in API endpoints for client access
+ * - Provides error handling and graceful shutdown capabilities
+ * 
+ * WHAT:
+ * - Exports a command handler function for the server command
+ * - Creates REST API endpoints for all major functions (list-items, list-fields, fix-team-field, etc.)
+ * - Serves a web-based UI for roadmap management
+ * - Handles CORS, request parsing, error handling, and process management
+ * - Configurable port via command options
+ */
+
 import express from 'express';
 import chalk from 'chalk';
 import path from 'path';
@@ -5,14 +28,31 @@ import { fileURLToPath } from 'url';
 import cors from 'cors';
 import { listItems, updateItemField } from '../lib/items.js';
 import { listFields } from '../lib/fields.js';
-import { fixTeamField, fixSingleItemTeamField } from '../lib/team-field.js';
+import { fixTeamField } from '../lib/team-field.js';
 import { fixFunctionField } from '../lib/function-field.js';
-import { fixKindField, fixSingleItemKindField } from '../lib/kind-field.js';
+import { fixKindField } from '../lib/kind-field.js';
 import { summarizeIssues } from '../lib/summarize.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+/**
+ * CLI command handler for starting the web server
+ * 
+ * WHY:
+ * - Need a command handler that starts the web server with proper configuration
+ * - Web server requires exception handling, middleware setup, and API endpoints
+ * 
+ * HOW:
+ * - Creates an Express application with middleware and routes
+ * - Configures API endpoints for all core roadmap management functions
+ * - Sets up error handling and process management
+ * - Serves static web UI files from the public directory
+ * 
+ * @param {Object} options - Server options (e.g., port)
+ * @param {number} options.port - The port to run the server on (default: 3000)
+ * @returns {Promise<void>} - Resolves when the server is running
+ */
 export async function serverCommand(options) {
   const app = express();
   const PORT = options.port || 3000;
@@ -51,7 +91,25 @@ export async function serverCommand(options) {
   
   // API Endpoints
   
-  // List items with optional filtering
+  /**
+   * GET /api/items - List and filter roadmap items
+   * 
+   * WHY:
+   * - Web UI needs to retrieve and display roadmap items
+   * - Filtering capabilities are needed to narrow down displayed items
+   * 
+   * PARAMETERS:
+   * - team (optional): Filter items by team name
+   * - function (optional): Filter items by function category
+   * - kind (optional): Filter items by kind category
+   * - status (optional): Filter items by status
+   * - noTeam (optional): If "true", only show items with no team assigned
+   * 
+   * RESPONSE:
+   * - status: "success" or "error"
+   * - data: Array of items with their field values
+   * - error: Error message (if status is "error")
+   */
   app.get('/api/items', async (req, res) => {
     try {
       const result = await listItems(req.query);
@@ -61,7 +119,28 @@ export async function serverCommand(options) {
     }
   });
   
-  // List fields (used to get field options)
+  /**
+   * GET /api/fields - Get all field options for the roadmap board
+   * 
+   * WHY:
+   * - Web UI needs to know all available field options for dropdowns
+   * - Field IDs are required for updating field values
+   * 
+   * PARAMETERS:
+   * - None
+   * 
+   * RESPONSE:
+   * - status: "success" or "error"
+   * - data: Object containing formatted field options:
+   *   - teams: Array of team options
+   *   - functions: Array of function options
+   *   - kinds: Array of kind options
+   *   - statuses: Array of status options
+   *   - sigs: Array of SIG options
+   *   - wgs: Array of working group options
+   *   - fieldTypes: Array of field type objects
+   * - error: Error message (if status is "error")
+   */
   app.get('/api/fields', async (req, res) => {
     try {
       const fields = await listFields(true); // Pass true to return instead of console.log
@@ -124,7 +203,24 @@ export async function serverCommand(options) {
     }
   });
   
-  // Fix team field
+  /**
+   * POST /api/fix-team-field - Get team field suggestion for an issue
+   * 
+   * WHY:
+   * - Web UI needs to get AI-powered team suggestions
+   * - Suggestions need to be reviewed before being applied
+   * 
+   * PARAMETERS:
+   * - itemId (required): The ID of the project item/issue
+   * 
+   * RESPONSE:
+   * - status: "success" or "error"
+   * - data: Object containing:
+   *   - suggestion: The suggested team name
+   *   - optionId: The ID of the suggested team option
+   *   - fieldId: The ID of the team field
+   * - error: Error message (if status is "error")
+   */
   app.post('/api/fix-team-field', async (req, res) => {
     try {
       const itemId = req.body.itemId;
@@ -136,12 +232,28 @@ export async function serverCommand(options) {
     }
   });
   
-  // Fix function field
+  /**
+   * POST /api/fix-function-field - Get function field suggestion for an issue
+   * 
+   * WHY:
+   * - Web UI needs to get AI-powered function suggestions
+   * - Suggestions need to be reviewed before being applied
+   * 
+   * PARAMETERS:
+   * - itemId (required): The ID of the project item/issue
+   * 
+   * RESPONSE:
+   * - status: "success" or "error"
+   * - data: Object containing:
+   *   - suggestion: The suggested function name
+   *   - optionId: The ID of the suggested function option
+   *   - fieldId: The ID of the function field
+   * - error: Error message (if status is "error")
+   */
   app.post('/api/fix-function-field', async (req, res) => {
     try {
       const options = {
-        itemId: req.body.itemId,
-        team: req.body.team
+        itemId: req.body.itemId
       };
       
       // Validate required parameters
@@ -149,14 +261,6 @@ export async function serverCommand(options) {
         return res.status(400).json({ 
           status: 'error', 
           error: 'Missing required parameter: itemId' 
-        });
-      }
-      
-      // Team is required for function field suggestions
-      if (!options.team) {
-        return res.status(400).json({ 
-          status: 'error', 
-          error: 'Team value is required for function suggestions.' 
         });
       }
       
@@ -181,7 +285,25 @@ export async function serverCommand(options) {
     }
   });
   
-  // Fix kind field
+  /**
+   * POST /api/fix-kind-field - Get kind field suggestion for an issue
+   * 
+   * WHY:
+   * - Web UI needs to get AI-powered kind suggestions
+   * - Suggestions need to be reviewed before being applied
+   * 
+   * PARAMETERS:
+   * - itemId (required): The ID of the project item/issue
+   * - team (optional): The team value to use for context
+   * 
+   * RESPONSE:
+   * - status: "success" or "error"
+   * - data: Object containing:
+   *   - suggestion: The suggested kind name
+   *   - optionId: The ID of the suggested kind option
+   *   - fieldId: The ID of the kind field
+   * - error: Error message (if status is "error")
+   */
   app.post('/api/fix-kind-field', async (req, res) => {
     try {
       const options = {
@@ -196,17 +318,9 @@ export async function serverCommand(options) {
           error: 'Missing required parameter: itemId' 
         });
       }
-      
-      // Team is required for kind field suggestions
-      if (!options.team) {
-        return res.status(400).json({ 
-          status: 'error', 
-          error: 'Team value is required for kind suggestions.' 
-        });
-      }
-      
+            
       // Use the specialized single-item function which returns more consistent results
-      const result = await fixSingleItemKindField(options.itemId, options.team);
+      const result = await fixKindField(options, true);
       
       // Format response to ensure consistency
       if (result && (result.status === 'success' || !result.status)) {
@@ -227,7 +341,24 @@ export async function serverCommand(options) {
     }
   });
   
-  // Apply custom team field value
+  /**
+   * POST /api/apply-custom-team - Apply a custom team value to an issue
+   * 
+   * WHY:
+   * - Users need to manually select teams for issues
+   * - Web UI needs a way to apply these selections
+   * 
+   * PARAMETERS:
+   * - itemId (required): The ID of the project item/issue
+   * - customValue (required): The team name to apply
+   * 
+   * RESPONSE:
+   * - status: "success" or "error"
+   * - data: Object containing:
+   *   - updated: true if the update was successful
+   *   - message: Success message
+   * - error: Error message (if status is "error")
+   */
   app.post('/api/apply-custom-team', async (req, res) => {
     try {
       const { itemId, customValue } = req.body;
@@ -293,7 +424,24 @@ export async function serverCommand(options) {
     }
   });
   
-  // Apply custom function field value
+  /**
+   * POST /api/apply-custom-function - Apply a custom function value to an issue
+   * 
+   * WHY:
+   * - Users need to manually select function values for issues
+   * - Web UI needs a way to apply these selections
+   * 
+   * PARAMETERS:
+   * - itemId (required): The ID of the project item/issue
+   * - customValue (required): The function name to apply
+   * 
+   * RESPONSE:
+   * - status: "success" or "error"
+   * - data: Object containing:
+   *   - updated: true if the update was successful
+   *   - message: Success message
+   * - error: Error message (if status is "error")
+   */
   app.post('/api/apply-custom-function', async (req, res) => {
     try {
       const { itemId, customValue } = req.body;
@@ -359,7 +507,24 @@ export async function serverCommand(options) {
     }
   });
   
-  // Apply custom kind field value
+  /**
+   * POST /api/apply-custom-kind - Apply a custom kind value to an issue
+   * 
+   * WHY:
+   * - Users need to manually select kind values for issues
+   * - Web UI needs a way to apply these selections
+   * 
+   * PARAMETERS:
+   * - itemId (required): The ID of the project item/issue
+   * - customValue (required): The kind name to apply
+   * 
+   * RESPONSE:
+   * - status: "success" or "error"
+   * - data: Object containing:
+   *   - updated: true if the update was successful
+   *   - message: Success message
+   * - error: Error message (if status is "error")
+   */
   app.post('/api/apply-custom-kind', async (req, res) => {
     try {
       const { itemId, customValue } = req.body;
@@ -425,7 +590,25 @@ export async function serverCommand(options) {
     }
   });
   
-  // Apply a suggestion (after user confirmation)
+  /**
+   * POST /api/apply-suggestion - Apply a suggested field value with user confirmation
+   * 
+   * WHY:
+   * - Users need to apply AI-suggested field values after review
+   * - Web UI needs a way to confirm and apply these suggestions
+   * 
+   * PARAMETERS:
+   * - itemId (required): The ID of the project item/issue
+   * - fieldId (required): The ID of the field to update
+   * - optionId (required): The ID of the selected option value
+   * 
+   * RESPONSE:
+   * - status: "success" or "error"
+   * - data: Object containing:
+   *   - updated: true if the update was successful
+   *   - message: Success message
+   * - error: Error message (if status is "error")
+   */
   app.post('/api/apply-suggestion', async (req, res) => {
     try {
       const { itemId, fieldId, optionId } = req.body;
@@ -465,7 +648,26 @@ export async function serverCommand(options) {
     }
   });
   
-  // Summarize issues
+  /**
+   * POST /api/summarize-issues - Generate AI analysis of roadmap issues
+   * 
+   * WHY:
+   * - Users need insights and patterns across many roadmap issues
+   * - Manual analysis is time-consuming and may miss important connections
+   * - AI can identify themes, dependencies, and priorities
+   * 
+   * PARAMETERS:
+   * - team (optional): Filter issues by team name
+   * - function (optional): Filter issues by function category
+   * - kind (optional): Filter issues by kind category
+   * - status (optional): Filter issues by status
+   * 
+   * RESPONSE:
+   * - status: "success" or "error"
+   * - data: Object containing:
+   *   - summary: The AI-generated summary text
+   * - error: Error message (if status is "error")
+   */
   app.post('/api/summarize-issues', async (req, res) => {
     try {
       const analysis = await summarizeIssues(req.body);
@@ -483,7 +685,29 @@ export async function serverCommand(options) {
     }
   });
   
-  // Get suggestion for a specific issue field
+  /**
+   * GET /api/suggestions/:issueId/:fieldType - Get field suggestion for a specific issue
+   * 
+   * WHY:
+   * - Web UI needs to get field suggestions in a RESTful way
+   * - Team suggestions can be retrieved without additional context
+   * 
+   * PARAMETERS:
+   * - issueId (required): ID of the issue to get suggestions for
+   * - fieldType (required): Type of field (team, function, kind)
+   * 
+   * RESPONSE:
+   * - status: "success" or "error"
+   * - data: Object containing:
+   *   - suggestion: The suggested field value
+   *   - optionId: The ID of the suggested option
+   *   - fieldId: The ID of the field
+   * - error: Error message (if status is "error")
+   * 
+   * NOTE:
+   * - This endpoint only supports team field currently
+   * - For function and kind fields, use their respective POST endpoints
+   */
   app.get('/api/suggestions/:issueId/:fieldType', async (req, res) => {
     try {
       const { issueId, fieldType } = req.params;

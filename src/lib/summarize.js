@@ -1,3 +1,24 @@
+/**
+ * Issue Summarization Module
+ * 
+ * WHY:
+ * - Large numbers of issues need to be analyzed and summarized for management
+ * - Manual review of all issues is time-consuming and inefficient
+ * - AI-powered insights can reveal patterns and trends in the roadmap
+ * 
+ * HOW:
+ * - Uses OpenAI to generate summaries and insights about issues
+ * - Fetches detailed issue information from GitHub
+ * - Groups and processes issues by team, function, or other criteria
+ * - Generates human-readable summaries with key insights
+ * 
+ * WHAT:
+ * - Exports functions to fetch, analyze, and summarize roadmap issues
+ * - Provides AI-powered analysis of issue content and metadata
+ * - Generates executive summaries for teams and workstreams
+ * - Identifies patterns, blockers, and opportunities across issues
+ */
+
 import chalk from 'chalk';
 import ora from 'ora';
 import { graphQLWithAuth, fetchPaginated } from './api.js';

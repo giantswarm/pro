@@ -1,3 +1,24 @@
+/**
+ * Fields Management Module
+ * 
+ * WHY:
+ * - GitHub Projects fields need to be programmatically managed at scale
+ * - Manual field management is time-consuming and error-prone
+ * - Consistent field values improve roadmap organization and filtering
+ * 
+ * HOW:
+ * - Provides a unified interface for working with GitHub Project fields
+ * - Implements AI-powered suggestions for different field types
+ * - Supports both single item updates and batch processing
+ * - Uses GraphQL queries to interact with GitHub Projects API
+ * 
+ * WHAT:
+ * - Exports functions to list, fetch, and update project fields
+ * - Includes utilities for batch processing of field updates
+ * - Provides AI suggestion capabilities for field values
+ * - Supports different field types (single select, iteration, etc.)
+ */
+
 import chalk from 'chalk';
 import { fetchPaginated, graphQLWithAuth } from './api.js';
 import inquirer from 'inquirer';
