@@ -1,5 +1,34 @@
 /**
- * UI utilities for common UI operations
+ * UI Utilities Module
+ * 
+ * WHY:
+ * This module provides a centralized collection of UI helper functions that are used
+ * throughout the application to create a consistent user experience. By isolating these
+ * common UI operations, we:
+ * - Ensure visual consistency across the application
+ * - Reduce code duplication in component files
+ * - Simplify maintenance by having single implementations for common UI patterns
+ * - Make the codebase more maintainable and testable
+ * - Enable easier UI updates and improvements across the entire application
+ * 
+ * HOW:
+ * The module provides pure utility functions that:
+ * - Manipulate DOM elements directly
+ * - Create and manage UI components like overlays, toasts, and status messages
+ * - Control visual feedback for asynchronous operations
+ * - Handle common UI interactions like confirmations and form controls
+ * 
+ * These utilities accept configuration options for customization while maintaining
+ * consistent styling and behavior aligned with the application's design system.
+ * 
+ * WHAT:
+ * Key functionalities include:
+ * - Loading indicators and overlays for async operations
+ * - Toast notifications for user feedback
+ * - Status message handling and updates
+ * - Form control population and management
+ * - Confirmation dialogs
+ * - Visual feedback for operation status
  */
 
 /**

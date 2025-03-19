@@ -1,6 +1,43 @@
 /**
  * Base CSS
- * Contains basic utility classes needed for layout
+ * 
+ * WHY:
+ * This stylesheet establishes the core visual foundation for the entire application.
+ * It serves several critical purposes:
+ * - Creates a consistent visual language across all UI components
+ * - Establishes responsive layout patterns for different screen sizes
+ * - Standardizes typography, spacing, and basic UI elements
+ * - Reduces code duplication by defining reusable utility classes
+ * - Ensures accessibility through appropriate contrast and focus states
+ * - Creates a predictable DOM styling environment for all other styles
+ * 
+ * HOW:
+ * This stylesheet implements a utility-first approach where:
+ * 1. Global resets ensure consistent rendering across browsers
+ * 2. Base element styles define the default appearance
+ * 3. Utility classes provide composable styling blocks
+ * 4. Basic responsive behaviors are established
+ * 
+ * The file follows a logical organization with progressive specificity:
+ * - Global resets and box model
+ * - Typography and basic element styles
+ * - Layout containers and structures
+ * - Form controls and interactive elements
+ * - Utility classes for spacing, layout, and visual states
+ * 
+ * WHAT:
+ * This stylesheet contains:
+ * - Box-sizing and basic resets
+ * - Typography rules for headings and text
+ * - Form element base styles
+ * - Button and interactive element styling
+ * - Containers and card layouts
+ * - Utility classes for:
+ *   - Margins and padding (m*, p*)
+ *   - Display properties (d-*)
+ *   - Flex behaviors
+ *   - Text alignment and formatting
+ *   - Colors and visibility
  */
 
 /* Reset all margins, paddings and box-sizing */

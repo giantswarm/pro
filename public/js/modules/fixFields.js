@@ -1,6 +1,41 @@
 /**
  * Field Fixing Module
- * Handles the functionality for finding and fixing empty fields
+ * 
+ * WHY:
+ * This module is the core functionality of the "Fix Empty Fields" feature in the application.
+ * It addresses a critical business need to efficiently fill in missing metadata on GitHub issues,
+ * which improves issue categorization, searchability, and team assignment. Properly tagged issues:
+ * - Enable better work distribution and team assignment
+ * - Facilitate accurate reporting and visualization of issue distribution
+ * - Improve search functionality and filtering capabilities
+ * - Ensure consistent metadata across the project repository
+ * - Save developer time by automating manual tagging work
+ * 
+ * HOW:
+ * The module implements a comprehensive workflow that:
+ * 1. Provides user interface controls for selecting field types and filtering criteria
+ * 2. Fetches and filters issues with empty fields from the GitHub API
+ * 3. Displays issues in an interactive UI for review and processing
+ * 4. Leverages AI to generate appropriate suggestions for empty fields
+ * 5. Allows users to review, edit, and apply suggestions
+ * 6. Tracks progress and manages the overall batch processing experience
+ * 
+ * It utilizes the following patterns:
+ * - Event-driven UI updates for real-time feedback
+ * - Batch processing with progressive feedback
+ * - Asynchronous API requests with loading state management
+ * - Conditional UI rendering based on field types
+ * 
+ * WHAT:
+ * The module provides functions for:
+ * - Initializing the fix fields UI and event listeners
+ * - Handling field type selection changes
+ * - Finding issues with specified empty fields
+ * - Displaying filtered issues in a structured format
+ * - Processing batch suggestions from AI
+ * - Applying field values to individual or multiple issues
+ * - Managing the suggestion review workflow
+ * - Updating UI based on operation progress and status
  */
 
 import * as state from './state.js';

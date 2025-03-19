@@ -1,6 +1,41 @@
 /**
- * Giant Swarm Design System
- * Application styling based on Giant Swarm branding
+ * Component Stylesheet
+ * 
+ * WHY:
+ * This stylesheet implements the Giant Swarm design system for UI components,
+ * serving several crucial functions:
+ * - Ensuring brand consistency across all UI elements
+ * - Establishing a cohesive visual language for the application
+ * - Implementing accessibility standards for all interactive components
+ * - Providing reusable component styles that reflect brand identity
+ * - Creating consistent interaction patterns for better user experience
+ * - Supporting both light and dark themes without compromising brand identity
+ * 
+ * HOW:
+ * The stylesheet uses a component-based approach where:
+ * 1. CSS variables define the Giant Swarm color palette and design tokens
+ * 2. Component styles are organized by function and purpose
+ * 3. Components maintain consistent spacing, sizing, and visual rhythm
+ * 4. Interactive states (hover, focus, active) follow consistent patterns
+ * 5. Responsive design principles ensure usability across devices
+ * 
+ * The file establishes a design system based on:
+ * - CSS custom properties for theming and design tokens
+ * - Component-specific classes with consistent naming conventions
+ * - Nested selectors to manage component states and variants
+ * - Media queries for responsive adaptations
+ * 
+ * WHAT:
+ * This stylesheet includes styles for:
+ * - Brand-specific color palette and typography
+ * - Buttons, cards, and form controls
+ * - Navigation components and tabs
+ * - Modal dialogs and overlays
+ * - Status indicators and badges
+ * - Suggestion components for AI interactions
+ * - Loading states and progress indicators
+ * - Tables and data presentation components
+ * - Toast notifications and alerts
  */
 
 /* Import Roboto font from Google Fonts */

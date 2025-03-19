@@ -1,7 +1,39 @@
 /**
- * Main CSS file
- * Imports all the CSS files needed for the application
- * Updated for Giant Swarm 2025 Design
+ * Main Stylesheet
+ * 
+ * WHY:
+ * This stylesheet serves as the entry point for the application's CSS architecture,
+ * with several important purposes:
+ * - Establishing the correct loading order for CSS dependencies
+ * - Coordinating theme variables and application styles
+ * - Creating a unified styling system across the application
+ * - Implementing application-wide animations and transitions
+ * - Managing responsive layout adaptations
+ * - Ensuring visual consistency with Giant Swarm's 2025 design system
+ * 
+ * HOW:
+ * This file uses a structured approach to CSS organization:
+ * 1. First imports theme variables for consistent theming
+ * 2. Loads base utilities for global styling
+ * 3. Imports component-specific styles
+ * 4. Adds specialized UI component styles (modals, etc.)
+ * 5. Defines global animations and transitions
+ * 6. Implements application-specific overrides and styles
+ * 7. Handles responsive adaptations with media queries
+ * 
+ * This cascading structure ensures proper specificity management
+ * and prevents styling conflicts between different parts of the application.
+ * 
+ * WHAT:
+ * This file includes:
+ * - CSS import statements to load other stylesheets
+ * - Typography definitions with Google Font imports
+ * - App-specific layout styles (header, containers, etc.)
+ * - Animation and transition definitions
+ * - Dark mode implementation
+ * - Status indicators and badges
+ * - Responsive adaptations for different screen sizes
+ * - Accessibility enhancements like focus states
  */
 
 /* Import theme variables first */

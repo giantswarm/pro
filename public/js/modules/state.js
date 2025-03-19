@@ -1,6 +1,39 @@
 /**
- * State management module for the application
- * Provides a single source of truth for application state
+ * State Management Module
+ * 
+ * WHY:
+ * This module implements a centralized state management pattern to solve several 
+ * critical challenges in the application:
+ * - Maintaining a single source of truth for application data
+ * - Preventing data duplication and associated synchronization issues
+ * - Simplifying data flow throughout the application
+ * - Facilitating predictable state transitions
+ * - Reducing prop drilling between components
+ * - Enabling more straightforward debugging by centralizing state changes
+ * 
+ * HOW:
+ * The module implements a lightweight state management solution that:
+ * 1. Maintains a private state object with a predefined structure
+ * 2. Exposes controlled getter and setter methods to interact with the state
+ * 3. Prevents direct mutation of state properties from outside the module
+ * 4. Provides utilities for managing both top-level and nested state properties
+ * 5. Includes reset functionality for returning to known state conditions
+ * 
+ * This approach balances simplicity and effectiveness without introducing the 
+ * complexity of larger state management libraries.
+ * 
+ * WHAT:
+ * The module provides functions to:
+ * - Initialize application state with default values
+ * - Retrieve the entire state object or specific properties
+ * - Update individual and nested state properties
+ * - Reset the entire state or specific portions to initial values
+ * 
+ * Key state includes:
+ * - Available field options for form controls
+ * - Current items/issues being processed
+ * - Processing state and progress indicators
+ * - Results tracking for operations
  */
 
 // Initial application state

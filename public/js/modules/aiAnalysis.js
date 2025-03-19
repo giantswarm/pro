@@ -1,6 +1,36 @@
 /**
  * AI Analysis Module
- * Handles the functionality for generating AI analysis and summaries
+ * 
+ * WHY:
+ * This module addresses the need to gain deeper insights from issue data through AI analysis.
+ * The business value it provides includes:
+ * - Extracting actionable intelligence from large sets of issues
+ * - Identifying patterns and trends that may not be immediately obvious
+ * - Saving time by automating manual analysis work
+ * - Supporting data-driven decision making for roadmap planning
+ * - Providing executive-level summaries of development activities
+ * - Identifying potential bottlenecks or problem areas
+ * 
+ * HOW:
+ * The module implements an AI-powered analysis workflow that:
+ * 1. Collects filters and parameters from the user interface
+ * 2. Requests AI analysis through the API
+ * 3. Processes and formats the AI-generated results
+ * 4. Displays the analysis in a structured, readable format
+ * 5. Provides options for copying or exporting the analysis
+ * 
+ * It manages the entire lifecycle from user input to displaying results,
+ * with appropriate loading states and error handling throughout the process.
+ * 
+ * WHAT:
+ * This module provides functionality to:
+ * - Initialize and manage the analysis form controls
+ * - Populate filter dropdowns with available options
+ * - Generate AI analysis based on selected filters
+ * - Format and display AI-generated summaries and insights
+ * - Show loading states during processing
+ * - Handle errors during the analysis process
+ * - Support copying results to clipboard
  */
 
 import * as state from './state.js';

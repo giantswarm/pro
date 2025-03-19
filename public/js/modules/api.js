@@ -1,6 +1,37 @@
 /**
- * API module for handling all server requests
- * Centralizes fetch operations and response handling
+ * API Module
+ * 
+ * WHY:
+ * This module serves as the central point for all server communication in the application.
+ * By centralizing API calls here, we ensure:
+ * - Consistent error handling across the application
+ * - A single place to manage API endpoints
+ * - Standardized response formatting
+ * - Simplified debugging of network operations
+ * 
+ * HOW:
+ * The module implements a collection of async functions that:
+ * - Use the Fetch API for HTTP requests
+ * - Handle common error scenarios
+ * - Format payloads consistently 
+ * - Parse and normalize responses
+ * - Log relevant request/response information for debugging
+ * 
+ * Each function follows a standard pattern:
+ * 1. Build the request (URL, payload, query parameters)
+ * 2. Execute the fetch with appropriate HTTP method
+ * 3. Validate the response status
+ * 4. Parse and return the data with consistent structure
+ * 5. Handle errors and provide meaningful error messages
+ * 
+ * WHAT:
+ * The module contains functions for:
+ * - Fetching field options for form population
+ * - Retrieving filtered lists of issues based on criteria
+ * - Getting AI-generated suggestions for field values
+ * - Applying field values (both suggested and custom)
+ * - Generating AI summaries of issue collections
+ * - Updating specific fields on individual issues
  */
 
 /**

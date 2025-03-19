@@ -1,6 +1,37 @@
 /**
- * Inline Suggestion Component
- * Provides UI for displaying and interacting with field suggestions directly in the page
+ * Suggestion Component Module
+ * 
+ * WHY:
+ * This component addresses the critical need for intuitive user interaction when reviewing 
+ * and applying AI-generated field suggestions. It creates a standardized, inline UI that:
+ * - Presents AI suggestions in a clear, user-friendly format
+ * - Reduces cognitive load by showing suggestions in context with the issues
+ * - Streamlines the review workflow for efficient processing
+ * - Ensures consistent user experience when evaluating suggestions
+ * - Enables quick acceptance, rejection, or modification of suggestions
+ * - Maintains visual coherence with the application's design system
+ * 
+ * HOW:
+ * The module implements a composable component that:
+ * 1. Takes an issue object and suggested value as input
+ * 2. Dynamically generates an interactive UI element
+ * 3. Displays the suggestion with accept/reject/edit controls
+ * 4. Provides form controls for editing suggestions when needed
+ * 5. Executes callback functions when users take action
+ * 
+ * It follows UI best practices by:
+ * - Maintaining focus management for keyboard accessibility
+ * - Providing clear visual cues for different states
+ * - Supporting both mouse and keyboard interaction patterns
+ * - Gracefully handling various edge cases
+ * 
+ * WHAT:
+ * The module exports functions to:
+ * - Create an inline suggestion component within a specified container
+ * - Manage suggestion interaction state (pending, accepted, rejected)
+ * - Handle form controls for editing suggestions
+ * - Process user interactions like accepting, rejecting, or modifying suggestions
+ * - Maintain visual feedback that aligns with the action status
  */
 
 /**

@@ -1,6 +1,42 @@
 /**
- * Inline Suggestions CSS
- * Contains styling for inline suggestion components using Giant Swarm's design system
+ * Suggestion Component Stylesheet
+ * 
+ * WHY:
+ * This stylesheet addresses specific styling needs for the AI suggestion components,
+ * which are a central feature of the application. It:
+ * - Creates a visually distinct UI for AI-powered suggestions
+ * - Establishes a clear hierarchy of information within suggestions
+ * - Provides intuitive interaction patterns for accepting/rejecting suggestions
+ * - Maintains consistent branding while highlighting suggestion content
+ * - Ensures good readability and usability for suggestion reviewing
+ * - Supports both inline and modal presentation contexts
+ * 
+ * HOW:
+ * The stylesheet implements a component-based approach where:
+ * 1. Container elements establish visual boundaries and context
+ * 2. Content sections organize information in a logical hierarchy
+ * 3. Interactive elements follow consistent patterns
+ * 4. Animations provide subtle feedback for state changes
+ * 5. Dark mode support maintains readability in both themes
+ * 
+ * The styling uses:
+ * - Subtle borders and background colors to differentiate suggestions
+ * - Consistent spacing and typography to improve readability
+ * - Carefully chosen accent colors to draw attention to important elements
+ * - Responsive design principles for various screen sizes
+ * 
+ * WHAT:
+ * This stylesheet includes styles for:
+ * - Suggestion containers (standard and minimal variants)
+ * - Section organization within suggestions
+ * - Title and content formatting
+ * - Current field displays
+ * - Custom input controls
+ * - Option lists for selection
+ * - Interactive state styling (hover, focus, selected)
+ * - Animations for state transitions
+ * - Dark mode theme support
+ * - Responsive adaptations
  */
 
 /* Suggestion container */

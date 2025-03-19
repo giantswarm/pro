@@ -1,6 +1,37 @@
 /**
  * Main Application Module
- * Initializes the web application and manages tab navigation
+ * 
+ * WHY:
+ * This module serves as the orchestration layer for the entire application, fulfilling 
+ * several critical roles:
+ * - Providing a central initialization point for all application features
+ * - Managing global application state and configuration
+ * - Coordinating between independent feature modules
+ * - Handling cross-cutting concerns like theme management and navigation
+ * - Ensuring proper load sequence and dependency management
+ * - Creating a consistent user experience across all features
+ * 
+ * HOW:
+ * The module follows an organized initialization pattern where it:
+ * 1. Establishes the application environment (theme, branding, global listeners)
+ * 2. Loads necessary data from APIs
+ * 3. Initializes feature modules in the correct sequence
+ * 4. Sets up navigation and tab management
+ * 5. Handles global events and error conditions
+ * 
+ * This module uses a modular approach where specific functionality is delegated
+ * to specialized sub-modules while maintaining central coordination.
+ * 
+ * WHAT:
+ * The module provides functionality to:
+ * - Bootstrap the entire application
+ * - Initialize the UI and visual components
+ * - Set up tab navigation and content switching
+ * - Load field options and configuration from the server
+ * - Set up dark mode toggle and preferences
+ * - Initialize feature-specific modules
+ * - Apply branding and theme settings
+ * - Handle global error conditions
  */
 
 import * as state from './state.js';

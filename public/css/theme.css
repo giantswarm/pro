@@ -1,7 +1,38 @@
 /**
- * Theme CSS
- * Contains color variables and theme settings for light and dark mode
- * Updated for 2025 design following Giant Swarm brand guidelines
+ * Theme Stylesheet
+ * 
+ * WHY:
+ * This stylesheet is the cornerstone of the application's visual identity, serving to:
+ * - Establish a consistent color system based on Giant Swarm's brand guidelines
+ * - Create a themeable foundation that supports both light and dark modes
+ * - Centralize design tokens to ensure visual coherence across components
+ * - Provide semantic color definitions that convey appropriate meaning
+ * - Implement the 2025 design refresh while maintaining brand consistency
+ * - Support accessibility by ensuring sufficient contrast in all themes
+ * 
+ * HOW:
+ * The stylesheet implements a comprehensive theming approach through:
+ * 1. CSS custom properties (variables) to define all color and style tokens
+ * 2. A data-attribute based theme switching mechanism
+ * 3. Semantic grouping of colors by purpose and function
+ * 4. Careful management of color derivatives with consistent opacity variations
+ * 5. Component-specific theme adaptations
+ * 
+ * The file is structured to provide:
+ * - Clear separation between brand colors and functional colors
+ * - Consistent naming patterns for all variables
+ * - Specific overrides for themed components
+ * - Integration with the Giant Swarm 2025 design system
+ * 
+ * WHAT:
+ * This stylesheet contains:
+ * - Giant Swarm's official brand color palette
+ * - Semantic color assignments for UI elements
+ * - Dark mode color definitions and component-specific adaptations
+ * - State-specific colors (hover, active, disabled)
+ * - Component theme definitions for cards, buttons, forms, tables, etc.
+ * - Accessibility-enhancing color adjustments
+ * - Brand-compliant UI element styling
  */
 
 :root {
