@@ -34,7 +34,7 @@ import { fixTeamField } from '../lib/team-field.js';
 import { fixFunctionField } from '../lib/function-field.js';
 import { fixKindField } from '../lib/kind-field.js';
 import { summarizeIssues } from '../lib/summarize.js';
-import { addLogClient, logger } from '../lib/logger.js';
+import { addLogClient, logger, closeAllConnections } from '../lib/logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -833,30 +833,34 @@ export async function serverCommand(options) {
     logger.info('\nPress Ctrl+C to stop the server');
   });
   
-  // Handle graceful shutdown
-  process.on('SIGINT', () => {
-    console.log(chalk.yellow('\nGracefully shutting down server...'));
+  // Handle process signals for graceful shutdown
+  process.on('SIGINT', async () => {
+    logger.info('Received SIGINT signal. Shutting down server...');
     
-    // Set a timeout to force close after 10 seconds
-    const forceCloseTimeout = setTimeout(() => {
-      console.log(chalk.red('Server shutdown timed out, forcing exit.'));
+    try {
+      // Close WebSocket connections first
+      const closedConnections = closeAllConnections();
+      logger.info(`Closed ${closedConnections} WebSocket connections`);
+      
+      // Then close the HTTP server
+      if (server) {
+        server.close(() => {
+          logger.info('Server shut down successfully');
+          process.exit(0);
+        });
+        
+        // Force exit after timeout in case connections are hanging
+        setTimeout(() => {
+          logger.warn('Forcing server shutdown after timeout');
+          process.exit(1);
+        }, 5000);
+      } else {
+        process.exit(0);
+      }
+    } catch (error) {
+      logger.error(`Error during shutdown: ${error.message}`);
       process.exit(1);
-    }, 10000);
-    
-    // Close the server
-    server.close(() => {
-      console.log(chalk.green('Server shutdown complete.'));
-      clearTimeout(forceCloseTimeout);
-      process.exit(0);
-    });
-    
-    // For Express servers, we need to handle existing connections
-    // This code will destroy idle sockets to allow the server to close
-    server.on('connection', socket => {
-      socket.on('close', () => {
-        // Socket closed
-      });
-    });
+    }
   });
   
   // Return the server instance for testing purposes

@@ -147,4 +147,35 @@ export const logger = {
  */
 export function getClientCount() {
   return wsClients.size;
+}
+
+/**
+ * Close all WebSocket connections
+ * @returns {number} Number of connections closed
+ */
+export function closeAllConnections() {
+  const count = wsClients.size;
+  
+  // Send a close message to all clients
+  for (const client of wsClients) {
+    try {
+      if (client.readyState === 1) { // WebSocket.OPEN
+        // Send a graceful close message
+        client.send(JSON.stringify({
+          type: 'server-shutdown',
+          message: 'Server is shutting down'
+        }));
+        
+        // Close the connection
+        client.close(1000, 'Server shutting down');
+      }
+    } catch (error) {
+      console.error('Error closing WebSocket connection:', error);
+    }
+  }
+  
+  // Clear the clients set
+  wsClients.clear();
+  
+  return count;
 } 

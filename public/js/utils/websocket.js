@@ -3,19 +3,19 @@
  * 
  * WHY:
  * - Need real-time communication between server and client
- * - Console logs from server should be visible in web UI
+ * - Console logs from server should be visible in browser console
  * - Provides better user feedback during long-running operations
  * 
  * HOW:
  * - Creates and maintains WebSocket connection to server
  * - Handles connection state and automatic reconnection
  * - Processes incoming log messages
- * - Updates UI with received logs
+ * - Outputs server logs to browser console
  * 
  * WHAT:
  * - Exports functions to initialize WebSocket connection
  * - Provides handlers for log messages
- * - Manages loading overlay and console integration
+ * - Manages console integration of server logs
  */
 
 import * as ui from './ui.js';
@@ -27,8 +27,8 @@ const MAX_RECONNECT_ATTEMPTS = 5;
 const RECONNECT_INTERVAL = 3000;
 let isLoadingOverlayVisible = false;
 
-// Log container reference
-let logContainer = null;
+let serverShutdownDetected = false;
+let reconnectInterval = null;
 
 /**
  * Initialize the WebSocket connection
@@ -46,6 +46,30 @@ export function initWebSocket() {
   
   window.addEventListener('loadingOverlayHidden', () => {
     isLoadingOverlayVisible = false;
+  });
+  
+  // Add handler for page unload to close connection properly
+  window.addEventListener('beforeunload', () => {
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      // Send a close message to let server know this is intentional
+      try {
+        socket.send(JSON.stringify({
+          type: 'client-disconnect',
+          reason: 'page-unload'
+        }));
+      } catch (e) {
+        // Ignore errors during page unload
+      }
+      
+      // Close connection
+      socket.close(1000, 'Page unload');
+    }
+    
+    // Clear any active reconnection intervals
+    if (reconnectInterval) {
+      clearInterval(reconnectInterval);
+      reconnectInterval = null;
+    }
   });
 }
 
@@ -95,6 +119,25 @@ function handleSocketMessage(event) {
       handleLogMessage(data.log);
     } else if (data.type === 'log-history') {
       handleLogHistory(data.logs);
+    } else if (data.type === 'server-shutdown') {
+      // Handle server shutdown notification
+      console.warn('Server is shutting down:', data.message);
+      
+      // Show a notification to the user if they're actively using the app
+      if (document.visibilityState === 'visible') {
+        ui.showToast('The server is shutting down. You may need to refresh the page when it restarts.', 'warning', 10000);
+      }
+      
+      // Mark as server shutdown to change reconnection behavior
+      serverShutdownDetected = true;
+      
+      // Close the WebSocket connection cleanly from our side
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.close(1000, 'Server shutting down');
+      }
+      
+      // Set up periodic reconnection attempts for when server comes back
+      scheduleServerRestartCheck();
     }
   } catch (error) {
     console.error('Error processing WebSocket message:', error);
@@ -111,29 +154,30 @@ function handleLogMessage(log) {
   // Format the timestamp
   const time = new Date(timestamp).toLocaleTimeString();
   
-  // Determine if we should show in UI or just console
-  if (isLoadingOverlayVisible) {
-    displayLogInUI(time, level, message, source);
-  } else {
-    // Log to console based on level
-    const consoleMessage = `[${time}] [${source}] ${message}`;
-    
-    switch (level) {
-      case 'error':
-        console.error(consoleMessage, metadata || '');
-        break;
-      case 'warn':
-        console.warn(consoleMessage, metadata || '');
-        break;
-      case 'success':
-        console.log('%c' + consoleMessage, 'color: green', metadata || '');
-        break;
-      case 'debug':
-        console.debug(consoleMessage, metadata || '');
-        break;
-      default:
-        console.info(consoleMessage, metadata || '');
-    }
+  // Log to console based on level
+  const consoleMessage = `[${time}] [${source}] ${message}`;
+  
+  switch (level) {
+    case 'error':
+      console.error(consoleMessage, metadata || '');
+      break;
+    case 'warn':
+      console.warn(consoleMessage, metadata || '');
+      break;
+    case 'success':
+      console.log('%c' + consoleMessage, 'color: green', metadata || '');
+      break;
+    case 'debug':
+      console.debug(consoleMessage, metadata || '');
+      break;
+    default:
+      console.info(consoleMessage, metadata || '');
+  }
+  
+  // If this is a progress message, update the loading status
+  if (isLoadingOverlayVisible && source === 'summarize') {
+    ui.updateLoadingStatus(message, level === 'error' ? 'error' : 
+                                  level === 'success' ? 'success' : 'info');
   }
 }
 
@@ -142,100 +186,18 @@ function handleLogMessage(log) {
  * @param {Array} logs - Array of log messages
  */
 function handleLogHistory(logs) {
-  if (!logs || logs.length === 0 || !isLoadingOverlayVisible) {
+  if (!logs || logs.length === 0) {
     return;
   }
   
-  // Clear existing logs in UI
-  ensureLogContainerExists();
-  logContainer.innerHTML = '<h6 class="mb-2">Server Logs:</h6>';
+  console.groupCollapsed('Server Log History');
   
-  // Add each log to the UI
+  // Log each message to the console
   logs.forEach(log => {
     handleLogMessage(log);
   });
-}
-
-/**
- * Make sure the log container exists in the DOM
- */
-function ensureLogContainerExists() {
-  if (!logContainer) {
-    logContainer = document.getElementById('serverLogContainer');
-    
-    if (!logContainer) {
-      logContainer = document.createElement('div');
-      logContainer.id = 'serverLogContainer';
-      logContainer.className = 'server-log-container mt-3';
-      
-      const loadingContent = document.querySelector('.loading-overlay > div') || document.querySelector('.loading-overlay');
-      if (loadingContent) {
-        loadingContent.appendChild(logContainer);
-      }
-    }
-    
-    // Make sure there's a header
-    if (logContainer.children.length === 0) {
-      logContainer.innerHTML = '<h6 class="mb-2">Server Logs:</h6>';
-    }
-  }
   
-  return logContainer;
-}
-
-/**
- * Display a log message in the UI
- * @param {string} time - Formatted timestamp
- * @param {string} level - Log level
- * @param {string} message - The log message
- * @param {string} source - Source of the log message
- */
-function displayLogInUI(time, level, message, source) {
-  ensureLogContainerExists();
-  
-  // Create log entry element
-  const logEntry = document.createElement('div');
-  logEntry.className = 'log-entry';
-  
-  // Style based on level
-  let levelClass = '';
-  let icon = '';
-  
-  switch (level) {
-    case 'error':
-      levelClass = 'text-danger';
-      icon = '<i class="bi bi-exclamation-triangle-fill"></i>';
-      break;
-    case 'warn':
-      levelClass = 'text-warning';
-      icon = '<i class="bi bi-exclamation-triangle"></i>';
-      break;
-    case 'success':
-      levelClass = 'text-success';
-      icon = '<i class="bi bi-check-circle"></i>';
-      break;
-    default:
-      levelClass = 'text-primary';
-      icon = '<i class="bi bi-info-circle"></i>';
-  }
-  
-  // Build log entry HTML
-  logEntry.innerHTML = `
-    <span class="log-time">[${time}]</span>
-    <span class="${levelClass}">${icon} ${message}</span>
-  `;
-  
-  // Add to container
-  logContainer.appendChild(logEntry);
-  
-  // Auto-scroll to bottom
-  logContainer.scrollTop = logContainer.scrollHeight;
-  
-  // If this is a progress message, also update the loading status
-  if (source === 'summarize') {
-    ui.updateLoadingStatus(message, level === 'error' ? 'error' : 
-                                    level === 'success' ? 'success' : 'info');
-  }
+  console.groupEnd();
 }
 
 /**
@@ -245,8 +207,17 @@ function displayLogInUI(time, level, message, source) {
 function handleSocketClose(event) {
   if (event.wasClean) {
     console.info(`WebSocket connection closed cleanly, code=${event.code}, reason=${event.reason}`);
+    
+    // If this was a server shutdown, don't try normal reconnection
+    if (serverShutdownDetected) {
+      return;
+    }
   } else {
     console.warn('WebSocket connection died');
+  }
+  
+  // Only do normal reconnection if it wasn't a server shutdown
+  if (!serverShutdownDetected) {
     scheduleReconnect();
   }
 }
@@ -279,4 +250,56 @@ function scheduleReconnect() {
   } else {
     console.error('Maximum reconnection attempts reached. Please refresh the page.');
   }
+}
+
+/**
+ * Schedule periodic checks for when the server comes back after a restart
+ */
+function scheduleServerRestartCheck() {
+  // Clear any existing reconnect interval
+  if (reconnectInterval) {
+    clearInterval(reconnectInterval);
+  }
+  
+  console.info('Starting periodic checks for server restart...');
+  
+  // Try to reconnect every 3 seconds
+  reconnectInterval = setInterval(() => {
+    // If we already have a socket and it's open or connecting, don't try again
+    if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
+      clearInterval(reconnectInterval);
+      reconnectInterval = null;
+      return;
+    }
+    
+    console.info('Checking if server has restarted...');
+    
+    // Try to connect
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}`;
+    
+    // Create a new socket just to test connection
+    const testSocket = new WebSocket(wsUrl);
+    
+    testSocket.onopen = () => {
+      console.info('Server is back online, reconnecting...');
+      
+      // Server is back, clear interval and reset flag
+      clearInterval(reconnectInterval);
+      reconnectInterval = null;
+      serverShutdownDetected = false;
+      
+      // Close test socket (we'll create a proper one via connectWebSocket)
+      testSocket.close();
+      
+      // Connect properly
+      connectWebSocket(wsUrl);
+      
+      // Notify user
+      ui.showToast('Connection to server restored!', 'success');
+    };
+    
+    // Handle errors silently - we expect errors while the server is down
+    testSocket.onerror = () => {};
+  }, 3000);
 } 

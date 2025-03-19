@@ -90,7 +90,7 @@ export async function generateAIAnalysis() {
   const sigValue = document.getElementById('analysisSIG').value;
   const wgValue = document.getElementById('analysisWG').value;
   
-  // Show loading overlay - this will trigger the WebSocket logs to appear in the UI
+  // Show loading overlay - WebSocket will handle log display
   ui.toggleLoadingOverlay(true, 'Starting AI analysis...');
   
   try {
