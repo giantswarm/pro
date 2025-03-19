@@ -453,16 +453,7 @@ export async function startFixingEmptyFields() {
   state.updateNestedStateProperty('fixingResults', 'total', stateObj.emptyFieldItems.length);
   state.updateNestedStateProperty('fixingResults', 'fixed', 0);
   state.updateNestedStateProperty('fixingResults', 'skipped', 0);
-  
-  // Show progress container
-  document.getElementById('fixProgressContainer').style.display = 'block';
-  document.getElementById('fixProgress').style.display = 'block';
-  document.getElementById('fixProgressBar').style.width = '0%';
-  document.getElementById('fixResults').style.display = 'block';
-  document.getElementById('totalCount').textContent = stateObj.emptyFieldItems.length;
-  document.getElementById('fixedCount').textContent = 0;
-  document.getElementById('skippedCount').textContent = 0;
-  
+    
   // Update the button text
   const startFixingBtn = document.getElementById('startFixingBtn');
   if (startFixingBtn) {
@@ -759,10 +750,7 @@ function getSuggestionForRow(rowOrItem, issueOrIndex, providedFieldType) {
                 fieldBadges.appendChild(badge);
               }
             }
-            
-            // Hide suggestion cell
-            suggestionCell.style.display = 'none';
-            
+                        
             // Store metadata for the update
             const metadata = {};
             
@@ -812,8 +800,10 @@ function getSuggestionForRow(rowOrItem, issueOrIndex, providedFieldType) {
                 // Show success message
                 ui.showToast('Field updated successfully!', 'success');
                 
-                // Restore the Get Suggestion button
-                actionCell.innerHTML = originalActionContent;
+                // Remove suggestion 
+                suggestionCell.innerHTML = '';
+                // Add a checkmark icon to the action cell
+                actionCell.innerHTML = '<i class="fas fa-check me-1"></i> Accepted';
                 
                 // Re-attach event listener to the restored button
                 const restoredBtn = actionCell.querySelector('.get-suggestion-btn');

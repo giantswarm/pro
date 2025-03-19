@@ -42,15 +42,6 @@
 /* Import base utilities */
 @import 'base.css';
 
-/* Import component styles */
-@import 'components.css';
-
-/* Import Inline Suggestions styling */
-@import 'modal.css';
-
-/* Import Google Fonts - Inter for modern UI */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-
 /* Animation utils */
 .rotate {
   animation: spinner-border .75s linear infinite;
@@ -63,58 +54,6 @@
 .theme-transition *:after {
   transition: all 0.3s ease !important;
   transition-delay: 0 !important;
-}
-
-/* 2025 Design - Base Styles */
-html {
-  scroll-behavior: smooth;
-}
-
-body {
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  background-color: var(--gs-bg-color) !important;
-  color: var(--gs-text-color);
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  line-height: 1.6;
-  font-weight: 400;
-  margin: 0;
-  padding: 0;
-}
-
-/* Dark mode selection styles - for better readability */
-[data-theme="dark"] ::selection {
-  background-color: var(--gs-vivid-blue);
-  color: white;
-}
-
-/* Ensure the footer stays at the bottom */
-.app-footer {
-  margin-top: auto;
-  padding: 2rem 0;
-}
-
-/* Header styling for 2025 design */
-.app-header {
-  padding: 1.5rem 0;
-  position: sticky;
-  top: 0;
-  z-index: 1000;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-}
-
-.app-header h1 {
-  font-weight: 600;
-  font-size: 1.75rem;
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.app-header h1 i {
-  color: var(--gs-vivid-blue);
 }
 
 /* Container with max-width for better readability */
@@ -141,62 +80,38 @@ body {
 }
 
 /* Dark mode toggle - updated for Giant Swarm style guide */
-.dark-mode-toggle {
+.theme-toggle {
   cursor: pointer;
   display: flex;
   align-items: center;
-  margin-left: auto;
-  padding: 0.75rem 1rem;
+  justify-content: center;
+  padding: 0.75rem;
   background-color: rgba(111, 138, 159, 0.1);
-  border-radius: 8px;
-  transition: background-color 0.3s ease, transform 0.2s ease;
+  border-radius: 50%;
+  border: none;
+  transition: background-color 0.3s ease, transform 0.2s ease, box-shadow 0.3s ease;
+  color: var(--gs-text-color);
+  width: 42px;
+  height: 42px;
 }
 
-.dark-mode-toggle:hover {
+.theme-toggle:hover {
   background-color: rgba(111, 138, 159, 0.2);
-  transform: translateY(-1px);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
 }
 
-.dark-mode-toggle:active {
-  transform: translateY(1px);
+.theme-toggle:active {
+  transform: translateY(0);
 }
 
-.dark-mode-toggle i {
+.theme-toggle:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(0, 159, 255, 0.3);
+}
+
+.theme-toggle i {
   font-size: 1.25rem;
-  margin-right: 0.5rem;
-  color: var(--gs-vivid-blue);
-}
-
-/* Modern tab navigation */
-.nav {
-  display: flex;
-  gap: 0.5rem;
-  border-bottom: none;
-  margin-bottom: 2rem;
-  padding: 0.5rem 0;
-  width: 100%;
-  max-width: 100%;
-}
-
-/* Make sure tab content has same width as header */
-.tab-content {
-  width: 100%;
-  max-width: 100%;
-}
-
-/* Ensure tab panes have consistent width */
-.tab-content > .tab-pane {
-  width: 100%;
-}
-
-/* Card design updates */
-.card {
-  margin-bottom: 2rem;
-}
-
-.card-header h2 {
-  font-size: 1.5rem;
-  font-weight: 600;
   margin: 0;
 }
 
@@ -205,21 +120,9 @@ body {
   margin-bottom: 1.25rem;
 }
 
-/* Dark mode focus styles for better accessibility */
-[data-theme="dark"] .form-control:focus,
-[data-theme="dark"] .form-select:focus {
-  box-shadow: 0 0 0 3px rgba(0, 159, 255, 0.3);
-}
-
 /* Buttons with icons */
 .btn i {
   margin-right: 0.5rem;
-}
-
-/* Dark mode button hover effects */
-[data-theme="dark"] .btn-primary:hover {
-  background-color: rgba(0, 159, 255, 0.8);
-  box-shadow: 0 4px 10px rgba(0, 159, 255, 0.2);
 }
 
 /* Stats badges */
@@ -248,22 +151,6 @@ body {
   background-color: var(--gs-vivid-blue-20);
 }
 
-/* Dark mode stats badges */
-[data-theme="dark"] .stats-fixed {
-  color: white;
-  background-color: rgba(67, 220, 103, 0.2);
-}
-
-[data-theme="dark"] .stats-skipped {
-  color: white;
-  background-color: rgba(232, 109, 0, 0.2);
-}
-
-[data-theme="dark"] .stats-total {
-  color: white;
-  background-color: rgba(0, 159, 255, 0.2);
-}
-
 /* Progress bar styling */
 .progress {
   height: 0.75rem;
@@ -277,42 +164,6 @@ body {
   transition: width 0.3s ease;
 }
 
-/* Loading overlay with backdrop blur */
-.loading-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 9999;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  backdrop-filter: blur(8px);
-}
-
-.loading-content {
-  background-color: var(--gs-card-bg);
-  border-radius: var(--gs-border-radius);
-  padding: 2rem;
-  box-shadow: var(--gs-card-shadow);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1rem;
-}
-
-.loading-spinner {
-  color: var(--gs-vivid-blue);
-  width: 3rem;
-  height: 3rem;
-}
-
-.loading-message {
-  font-weight: 500;
-  color: var(--gs-text-color);
-}
-
 /* AI Analysis results section */
 .ai-analysis-results {
   background-color: rgba(111, 138, 159, 0.05);
@@ -322,28 +173,11 @@ body {
   border-left: 4px solid var(--gs-vivid-blue);
 }
 
-[data-theme="dark"] .ai-analysis-results {
-  background-color: rgba(0, 159, 255, 0.05);
-}
-
 .ai-analysis-results h3 {
   font-size: 1.25rem;
   font-weight: 600;
   margin-bottom: 1rem;
   color: var(--gs-shadow-blue);
-}
-
-[data-theme="dark"] .ai-analysis-results h3 {
-  color: rgba(255, 255, 255, 0.9);
-}
-
-/* Links in dark mode */
-[data-theme="dark"] a {
-  color: var(--gs-vivid-blue);
-}
-
-[data-theme="dark"] a:hover {
-  color: rgba(0, 159, 255, 0.8);
 }
 
 /* Media queries for responsive design */
@@ -352,7 +186,7 @@ body {
     font-size: 1.5rem;
   }
   
-  .dark-mode-toggle span {
+  .theme-toggle span {
     display: none;
   }
   
@@ -406,17 +240,6 @@ body {
   font-weight: 600;
 }
 
-/* Dark mode enhancements */
-[data-theme="dark"] .badge.bg-secondary {
-  background-color: rgba(111, 138, 159, 0.35) !important;
-  color: rgba(255, 255, 255, 0.95);
-}
-
-[data-theme="dark"] .badge.bg-danger {
-  background-color: rgba(220, 53, 69, 0.9) !important;
-  color: #ffffff;
-}
-
 /* Field badges container enhancement */
 .field-badges {
   display: flex;
@@ -431,4 +254,7 @@ body {
   margin-right: 0.25rem;
   margin-bottom: 0.25rem;
   display: inline-block;
-} 
+}
+
+/* Import component styles */
+@import 'components.css';
