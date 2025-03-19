@@ -175,14 +175,22 @@ Please format your response with clear headings for each section.`;
 /**
  * Summarize issues with AI-generated analysis
  * @param {Object} options - Filtering options
+ * @param {boolean} [isCliMode=false] - Whether running in CLI mode
  * @returns {Promise<string>} - The analysis result
  */
-export async function summarizeIssues(options) {
+export async function summarizeIssues(options, isCliMode = false) {
   const first = 100;
   try {
-    // Create a main spinner (keep for CLI usage)
-    const mainSpinner = ora('Starting issue summarization process...').start();
-    logger.info('Starting issue summarization process...', { source: 'summarize' });
+    // Create spinners only in CLI mode
+    let mainSpinner = null;
+    let detailSpinner = null;
+    let analysisSpinner = null;
+    
+    if (isCliMode) {
+      mainSpinner = ora('Starting issue summarization process...').start();
+    } else {
+      logger.info('Starting issue summarization process...', { source: 'summarize' });
+    }
     
     // Build filter criteria based on provided options
     const filters = {};
@@ -195,8 +203,11 @@ export async function summarizeIssues(options) {
       filters['team'] = normalizeFieldValue(options.team);
     }
     
-    mainSpinner.text = 'Fetching issues from GitHub project...';
-    logger.info('Fetching issues from GitHub project...', { source: 'summarize' });
+    if (isCliMode) {
+      mainSpinner.text = 'Fetching issues from GitHub project...';
+    } else {
+      logger.info('Fetching issues from GitHub project...', { source: 'summarize' });
+    }
     
     // Fetch all items
     const allItems = await fetchPaginated(
@@ -205,8 +216,11 @@ export async function summarizeIssues(options) {
       result => result.node.items
     );
     
-    mainSpinner.text = 'Applying filters to issues...';
-    logger.info('Applying filters to issues...', { source: 'summarize' });
+    if (isCliMode) {
+      mainSpinner.text = 'Applying filters to issues...';
+    } else {
+      logger.info('Applying filters to issues...', { source: 'summarize' });
+    }
     
     // Apply filters with normalization
     const filtered = allItems.filter(item => {
@@ -242,20 +256,29 @@ export async function summarizeIssues(options) {
     });
     
     if (filtered.length === 0) {
-      mainSpinner.fail('No issues found matching provided filters.');
-      logger.warn('No issues found matching provided filters.', { source: 'summarize' });
+      if (isCliMode) {
+        mainSpinner.fail('No issues found matching provided filters.');
+      } else {
+        logger.warn('No issues found matching provided filters.', { source: 'summarize' });
+      }
       return "No issues found matching provided filters.";
     }
     
-    mainSpinner.succeed(`Found ${filtered.length} issues matching the filters.`);
-    logger.info(`Found ${filtered.length} issues matching the filters.`, { 
-      source: 'summarize', 
-      count: filtered.length 
-    });
+    if (isCliMode) {
+      mainSpinner.succeed(`Found ${filtered.length} issues matching the filters.`);
+    } else {
+      logger.info(`Found ${filtered.length} issues matching the filters.`, { 
+        source: 'summarize', 
+        count: filtered.length 
+      });
+    }
     
     // Create a new spinner for the detailed fetch phase
-    const detailSpinner = ora('Fetching detailed information for issues...').start();
-    logger.info('Fetching detailed information for issues...', { source: 'summarize' });
+    if (isCliMode) {
+      detailSpinner = ora('Fetching detailed information for issues...').start();
+    } else {
+      logger.info('Fetching detailed information for issues...', { source: 'summarize' });
+    }
     
     // Fetch detailed information for each issue
     const issuesWithDetails = [];
@@ -263,43 +286,59 @@ export async function summarizeIssues(options) {
     
     for (const item of filtered) {
       counter++;
-      detailSpinner.text = `Fetching details for issue ${counter}/${filtered.length}`;
-      logger.info(`Fetching details for issue ${counter}/${filtered.length}`, { 
-        source: 'summarize',
-        progress: { current: counter, total: filtered.length }
-      });
+      
+      if (isCliMode) {
+        detailSpinner.text = `Fetching details for issue ${counter}/${filtered.length}`;
+      } else {
+        logger.info(`Fetching details for issue ${counter}/${filtered.length}`, { 
+          source: 'summarize',
+          progress: { current: counter, total: filtered.length }
+        });
+      }
       
       const issueDetails = await fetchIssueDetails(item);
       issuesWithDetails.push(issueDetails);
     }
     
-    detailSpinner.succeed('Fetched detailed information for all matching issues.');
-    logger.info('Fetched detailed information for all matching issues.', { source: 'summarize' });
+    if (isCliMode) {
+      detailSpinner.succeed('Fetched detailed information for all matching issues.');
+    } else {
+      logger.info('Fetched detailed information for all matching issues.', { source: 'summarize' });
+    }
     
     // Create a new spinner for the analysis phase
-    const analysisSpinner = ora('Analyzing issues with AI...').start();
-    logger.info('Analyzing issues with AI...', { source: 'summarize' });
+    if (isCliMode) {
+      analysisSpinner = ora('Analyzing issues with AI...').start();
+    } else {
+      logger.info('Analyzing issues with AI...', { source: 'summarize' });
+    }
     
     // Generate analysis
     const analysis = await analyzeIssues(issuesWithDetails);
     
-    analysisSpinner.succeed('AI analysis completed.');
-    logger.success('AI analysis completed.', { source: 'summarize' });
-    
-    console.log("\n" + chalk.green("Issue Analysis:"));
-    console.log(chalk.white("=".repeat(80)));
-    console.log(analysis);
-    console.log(chalk.white("=".repeat(80)));
+    if (isCliMode) {
+      analysisSpinner.succeed('AI analysis completed.');
+      
+      console.log("\n" + chalk.green("Issue Analysis:"));
+      console.log(chalk.white("=".repeat(80)));
+      console.log(analysis);
+      console.log(chalk.white("=".repeat(80)));
+    } else {
+      logger.success('AI analysis completed.', { source: 'summarize' });
+    }
     
     return analysis;
   } catch (error) {
     // If there's an error, make sure to stop any active spinner
-    ora().fail('Error during summarization process');
-    logger.error(`Error summarizing issues: ${error.message}`, { 
-      source: 'summarize',
-      stack: error.stack 
-    });
-    console.error(chalk.red('Error summarizing issues:'), chalk.red(error.message));
+    if (isCliMode) {
+      ora().fail('Error during summarization process');
+      console.error(chalk.red('Error summarizing issues:'), chalk.red(error.message));
+    } else {
+      logger.error(`Error summarizing issues: ${error.message}`, { 
+        source: 'summarize',
+        stack: error.stack 
+      });
+    }
     throw error;
   }
 } 

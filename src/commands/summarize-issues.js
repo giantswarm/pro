@@ -27,5 +27,6 @@ import { summarizeIssues } from '../lib/summarize.js';
  * @returns {Promise<void>} - Resolves when the operation is complete
  */
 export async function summarizeIssuesCommand(options) {
-  await summarizeIssues(options);
+  // Pass isCliMode=true for proper console output formatting
+  await summarizeIssues(options, true);
 } 
