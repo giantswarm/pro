@@ -1,9 +1,11 @@
 import chalk from 'chalk';
 import ora from 'ora';
-import { fetchPaginated } from './api.js';
+import { fetchPaginated, graphQLWithAuth } from './api.js';
 import {
   ROADMAP_BOARD_ID,
-  LIST_ITEMS_QUERY
+  LIST_ITEMS_QUERY,
+  ISSUE_DETAIL_QUERY,
+  UPDATE_ITEM_FIELD_MUTATION
 } from './project.js';
 import { makeIssueLink, normalizeFieldValue } from './utils.js';
 
@@ -171,10 +173,14 @@ export async function listItems(options) {
         title: item.content?.title || 'No title',
         number: item.content?.number,
         url: item.content?.url,
-        fields: item.fieldValues?.nodes?.map(node => ({
-          name: node.field?.name,
-          value: node.name
-        })) || []
+        html_url: item.content?.url,
+        repository_url: item.content?.repository ? item.content.repository.url : null,
+        fields: item.fieldValues?.nodes
+          ?.filter(node => node.field && node.field.name)
+          ?.map(node => ({
+            name: node.field.name,
+            value: node.name || ''
+          })) || []
       }))
     };
     

@@ -1,129 +1,60 @@
 /**
- * Modal CSS
- * Contains styling for modal components
+ * Inline Suggestions CSS
+ * Contains styling for inline suggestion components using Giant Swarm's design system
  */
 
-/* Modal Styles */
-.modal-backdrop {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(0, 0, 0, 0.5);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 1050;
-  opacity: 0;
-  visibility: hidden;
-  transition: opacity 0.3s ease, visibility 0.3s ease;
-}
-
-.modal-backdrop.show {
-  opacity: 1;
-  visibility: visible;
-}
-
-.modal-dialog {
-  position: relative;
-  width: 100%;
-  max-width: 600px;
-  margin: 1.75rem auto;
-  pointer-events: none;
-  transform: translateY(-50px);
-  transition: transform 0.3s ease-out;
-}
-
-.modal-backdrop.show .modal-dialog {
-  transform: translateY(0);
-}
-
-.modal-content {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  pointer-events: auto;
-  background-color: #fff;
-  background-clip: padding-box;
-  border: 1px solid rgba(0, 0, 0, 0.2);
-  border-radius: 0.3rem;
-  outline: 0;
-  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.5);
-}
-
-.modal-header {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  justify-content: space-between;
-  padding: 1rem;
-  border-bottom: 1px solid #dee2e6;
-  border-top-left-radius: calc(0.3rem - 1px);
-  border-top-right-radius: calc(0.3rem - 1px);
-}
-
-.modal-title {
-  margin-bottom: 0;
-  line-height: 1.5;
-  font-size: 1.25rem;
-}
-
-.btn-close {
-  box-sizing: content-box;
-  width: 1em;
-  height: 1em;
-  padding: 0.25em;
-  color: #000;
-  background: transparent url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23000'%3e%3cpath d='M.293.293a1 1 0 011.414 0L8 6.586 14.293.293a1 1 0 111.414 1.414L9.414 8l6.293 6.293a1 1 0 01-1.414 1.414L8 9.414l-6.293 6.293a1 1 0 01-1.414-1.414L6.586 8 .293 1.707a1 1 0 010-1.414z'/%3e%3c/svg%3e") center/1em auto no-repeat;
-  border: 0;
+/* Suggestion container */
+.suggestion-container {
   border-radius: 0.25rem;
-  opacity: 0.5;
-  cursor: pointer;
-}
-
-.btn-close:hover {
-  opacity: 0.75;
-}
-
-.modal-body {
-  position: relative;
-  flex: 1 1 auto;
-  padding: 1rem;
-}
-
-.modal-footer {
-  display: flex;
-  flex-wrap: wrap;
-  flex-shrink: 0;
-  align-items: center;
-  justify-content: flex-end;
   padding: 0.75rem;
-  border-top: 1px solid #dee2e6;
-  border-bottom-right-radius: calc(0.3rem - 1px);
-  border-bottom-left-radius: calc(0.3rem - 1px);
+  margin: 0.5rem 0;
+  background-color: var(--gs-white);
+  border-left: 3px solid var(--gs-vivid-blue);
 }
 
-.modal-footer > * {
-  margin: 0.25rem;
+/* Minimal suggestion style */
+.suggestion-minimal {
+  padding: 0.5rem;
+  margin: 0;
+  background-color: rgba(0, 159, 255, 0.05);
+  border-radius: 0.25rem;
+  border-left: 2px solid var(--gs-vivid-blue);
 }
 
-/* Suggestion Modal Specific Styles */
-.suggestion-modal .issue-link {
-  display: block;
+.suggestion-minimal .form-select {
   margin-bottom: 0.5rem;
+}
+
+.suggestion-minimal .suggestion-actions {
+  margin-top: 0.5rem;
+}
+
+.suggestion-section {
+  margin-bottom: 0.75rem;
+}
+
+.suggestion-title {
   font-weight: 500;
+  font-size: 1rem;
+  color: var(--gs-blue);
+  margin-bottom: 0.5rem;
 }
 
 .suggestion-info {
-  margin-bottom: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.issue-link {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+  color: var(--gs-vivid-blue);
 }
 
 .current-fields {
-  margin-bottom: 1rem;
-  padding: 0.75rem;
-  background-color: #f8f9fa;
+  margin-bottom: 0.75rem;
+  padding: 0.5rem;
+  background-color: rgba(255, 255, 255, 0.8);
   border-radius: 0.25rem;
   border: 1px solid #dee2e6;
 }
@@ -131,26 +62,28 @@
 .current-fields-title {
   font-weight: 500;
   margin-bottom: 0.5rem;
+  color: var(--gs-blue);
 }
 
 .suggestion-value {
-  margin-bottom: 1rem;
+  margin-bottom: 0.75rem;
 }
 
 .suggestion-preview {
   padding: 0.75rem;
-  background-color: #e6f7ff;
+  background-color: rgba(0, 159, 255, 0.1);
   border-radius: 0.25rem;
-  border: 1px solid #91d5ff;
+  border: 1px solid rgba(0, 159, 255, 0.3);
   font-family: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   white-space: pre-wrap;
-  margin-bottom: 1rem;
+  margin-bottom: 0.75rem;
+  color: var(--gs-blue);
 }
 
 .custom-input-section {
-  margin-top: 1rem;
+  margin-top: 0.75rem;
   padding: 0.75rem;
-  background-color: #f8f9fa;
+  background-color: var(--gs-white);
   border-radius: 0.25rem;
   border: 1px solid #dee2e6;
   display: none;
@@ -164,16 +97,56 @@
 .custom-input-title {
   font-weight: 500;
   margin-bottom: 0.5rem;
+  color: var(--gs-blue);
 }
 
-/* Confirmation Modal */
-.confirm-modal .modal-body {
-  text-align: center;
-  padding: 1.5rem;
+/* Options List */
+.options-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 0.75rem 0;
 }
 
-.confirm-modal .modal-footer {
-  justify-content: center;
+.option-item {
+  padding: 0.5rem;
+  border: 1px solid #dee2e6;
+  border-radius: 0.25rem;
+  margin-bottom: 0.5rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+}
+
+.option-item:hover {
+  background-color: var(--gs-white);
+  border-color: var(--gs-vivid-blue);
+}
+
+.option-item.selected {
+  background-color: rgba(0, 159, 255, 0.1);
+  border-color: var(--gs-vivid-blue);
+}
+
+.option-item-icon {
+  margin-right: 0.75rem;
+  color: var(--gs-vivid-blue);
+  flex-shrink: 0;
+}
+
+.option-item-content {
+  flex-grow: 1;
+}
+
+.option-item-title {
+  font-weight: 500;
+  margin-bottom: 0.25rem;
+  color: var(--gs-blue);
+}
+
+.option-item-description {
+  font-size: 0.875rem;
+  color: var(--gs-electric-blue);
 }
 
 /* Animation keyframes */
@@ -183,18 +156,19 @@
 }
 
 @keyframes slideDown {
-  from { transform: translateY(-20px); opacity: 0; }
+  from { transform: translateY(-10px); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }
 }
 
-/* Responsive Modal Adjustments */
+/* Dark mode styles for suggestions */
+[data-theme="dark"] .suggestion-minimal {
+  background-color: rgba(0, 159, 255, 0.1);
+  border-color: var(--gs-vivid-blue);
+}
+
+/* Responsive Adjustments */
 @media (max-width: 576px) {
-  .modal-dialog {
-    margin: 0.5rem;
-  }
-  
-  .modal-content {
-    max-height: calc(100vh - 1rem);
-    overflow-y: auto;
+  .suggestion-container {
+    padding: 0.5rem;
   }
 } 

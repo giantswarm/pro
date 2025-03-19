@@ -13,7 +13,13 @@ import * as aiAnalysis from './aiAnalysis.js';
  * Initialize the web application
  */
 export async function initApp() {
-  console.log('Initializing AI Roadmap Analysis Tool...');
+  console.log('Initializing Giant Swarm AI Roadmap Analysis Tool...');
+  
+  // Initialize app state and branding
+  initGiantSwarmBranding();
+  
+  // Initialize dark mode
+  initDarkMode();
   
   // Initialize UI components
   initTabs();
@@ -42,6 +48,164 @@ export async function initApp() {
     ui.updateOperationStatus(`Error initializing application: ${error.message}`, 'danger');
   } finally {
     ui.toggleLoadingOverlay(false);
+  }
+}
+
+/**
+ * Initialize Giant Swarm branding elements
+ */
+function initGiantSwarmBranding() {
+  // Set document title
+  document.title = "Giant Swarm AI Roadmap Analysis Tool";
+  
+  // Update copyright year in footer
+  const currentYear = new Date().getFullYear();
+  const footerYear = document.querySelector('footer small');
+  if (footerYear) {
+    footerYear.innerHTML = footerYear.innerHTML.replace('2023', currentYear);
+  }
+  
+  // Apply Giant Swarm styling to loading overlay
+  const loadingOverlay = document.getElementById('loadingOverlay');
+  if (loadingOverlay) {
+    loadingOverlay.classList.add('gs-branded');
+  }
+  
+  // Apply Giant Swarm colors to spinners
+  const spinners = document.querySelectorAll('.spinner-border');
+  spinners.forEach(spinner => {
+    spinner.style.color = 'var(--gs-blue)';
+  });
+}
+
+/**
+ * Initialize dark mode functionality
+ * Implements dark mode toggle based on Giant Swarm styleguide
+ */
+function initDarkMode() {
+  const darkModeToggle = document.getElementById('darkModeToggle');
+  const darkModeIcon = document.getElementById('darkModeIcon');
+  const darkModeText = document.getElementById('darkModeText');
+  
+  if (!darkModeToggle) return;
+  
+  // Add transition class to body for smooth theme transitions
+  document.body.classList.add('theme-transition');
+  
+  // Check for saved theme preference
+  const savedTheme = localStorage.getItem('gs-theme');
+  
+  // Check system preference
+  const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  
+  // Apply saved theme or OS preference
+  if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
+    applyDarkMode();
+  } else if (savedTheme === 'light') {
+    applyLightMode();
+  } else {
+    // If no saved preference, use system preference
+    if (prefersDark) {
+      applyDarkMode();
+    } else {
+      applyLightMode();
+    }
+  }
+  
+  // Add event listener for toggle
+  darkModeToggle.addEventListener('click', toggleDarkMode);
+  
+  // Listen for OS theme changes
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
+    // Only auto-switch if user hasn't manually set a preference
+    if (!localStorage.getItem('gs-theme')) {
+      if (e.matches) {
+        applyDarkMode(false); // Don't save to localStorage
+      } else {
+        applyLightMode(false); // Don't save to localStorage
+      }
+    }
+  });
+  
+  /**
+   * Toggle between light and dark mode
+   */
+  function toggleDarkMode() {
+    const currentTheme = document.documentElement.getAttribute('data-theme');
+    console.log('Current theme:', currentTheme);
+    
+    if (currentTheme === 'dark') {
+      applyLightMode(true); // Save to localStorage
+    } else {
+      applyDarkMode(true); // Save to localStorage
+    }
+  }
+  
+  /**
+   * Apply dark mode
+   * @param {boolean} savePreference - Whether to save the preference to localStorage
+   */
+  function applyDarkMode(savePreference = false) {
+    document.documentElement.setAttribute('data-theme', 'dark');
+    
+    // Update toggle button
+    darkModeIcon.classList.remove('bi-sun-fill');
+    darkModeIcon.classList.add('bi-moon-fill');
+    darkModeText.textContent = 'Dark Mode';
+    
+    // Save preference if requested
+    if (savePreference) {
+      localStorage.setItem('gs-theme', 'dark');
+    }
+    
+    // Dispatch event for other components to react to theme change
+    window.dispatchEvent(new CustomEvent('giantswarm:themeChanged', { 
+      detail: { theme: 'dark' } 
+    }));
+    
+    console.log('Dark mode applied');
+  }
+  
+  /**
+   * Apply light mode
+   * @param {boolean} savePreference - Whether to save the preference to localStorage
+   */
+  function applyLightMode(savePreference = false) {
+    document.documentElement.setAttribute('data-theme', 'light');
+    
+    // Update toggle button
+    darkModeIcon.classList.remove('bi-moon-fill');
+    darkModeIcon.classList.add('bi-sun-fill');
+    darkModeText.textContent = 'Light Mode';
+    
+    // Save preference if requested
+    if (savePreference) {
+      localStorage.setItem('gs-theme', 'light');
+    }
+    
+    // Dispatch event for other components to react to theme change
+    window.dispatchEvent(new CustomEvent('giantswarm:themeChanged', { 
+      detail: { theme: 'light' } 
+    }));
+    
+    console.log('Light mode applied');
+  }
+  
+  /**
+   * Update the dark mode toggle button based on current theme
+   */
+  function updateDarkModeToggleButton() {
+    const theme = document.documentElement.getAttribute('data-theme');
+    
+    if (theme === 'dark') {
+      darkModeIcon.classList.remove('bi-sun-fill');
+      darkModeIcon.classList.add('bi-moon-fill');
+      darkModeText.textContent = 'Dark Mode';
+    } else {
+      darkModeIcon.classList.remove('bi-moon-fill');
+      darkModeIcon.classList.add('bi-sun-fill');
+      darkModeText.textContent = 'Light Mode';
+    }
   }
 }
 
@@ -92,6 +256,9 @@ function initTabs() {
  * Initialize field fixing UI and event listeners
  */
 function initFieldFixing() {
+  // Initialize fix fields module
+  fixFields.initFixFields();
+  
   // Find empty fields button
   const findBtn = document.getElementById('findEmptyFields');
   if (findBtn) {
@@ -112,9 +279,30 @@ function populateSelectOptions() {
   const stateObj = state.getState();
   if (!stateObj.fieldOptions) return;
   
-  // Populate team selects
+  // Populate team selects differently for the fix team field
   if (stateObj.fieldOptions.teams) {
-    ui.populateSelectOptions('fixTeam', stateObj.fieldOptions.teams, true);
+    const fixTeamSelect = document.getElementById('fixTeam');
+    if (fixTeamSelect) {
+      // Keep the existing options (including the no-team option)
+      const existingOptions = Array.from(fixTeamSelect.options).slice(0, 2);
+      fixTeamSelect.innerHTML = '';
+      
+      // Add back the existing options
+      existingOptions.forEach(option => {
+        fixTeamSelect.appendChild(option);
+      });
+      
+      // Add new team options
+      stateObj.fieldOptions.teams.forEach(team => {
+        const option = document.createElement('option');
+        option.value = team.value;
+        option.textContent = team.text;
+        fixTeamSelect.appendChild(option);
+      });
+    }
+    
+    // Populate the analysis team select normally
+    ui.populateSelectOptions('analysisTeam', stateObj.fieldOptions.teams, true);
   }
   
   // Populate field type selects

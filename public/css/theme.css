@@ -1,0 +1,386 @@
+/**
+ * Theme CSS
+ * Contains color variables and theme settings for light and dark mode
+ * Updated for 2025 design following Giant Swarm brand guidelines
+ */
+
+:root {
+  /* Giant Swarm brand colors (from official style guide) */
+  --gs-blue: #002645;
+  --gs-vivid-blue: #009fff;
+  --gs-electric-blue: #003056;
+  --gs-orange: #e86d00;
+  --gs-green: #43dc67;
+  --gs-white: #ffffff;
+  
+  /* Secondary colors from Giant Swarm style guide */
+  --gs-black: #001b31;
+  --gs-shadow-blue: #6f8a9f;
+  --gs-electric-text: #5b6c79;
+  --gs-light-white: #f0f7f9;
+  
+  /* 2025 Design Additional colors */
+  --gs-blue-90: rgba(0, 38, 69, 0.9);
+  --gs-blue-80: rgba(0, 38, 69, 0.8);
+  --gs-vivid-blue-80: rgba(0, 159, 255, 0.8);
+  --gs-vivid-blue-20: rgba(0, 159, 255, 0.2);
+  --gs-green-20: rgba(67, 220, 103, 0.2);
+  --gs-orange-20: rgba(232, 109, 0, 0.2);
+  
+  /* Light mode default variables - 2025 Design */
+  --gs-bg-color: var(--gs-light-white);
+  --gs-card-bg: #ffffff;
+  --gs-card-shadow: 0 8px 30px rgba(0, 27, 49, 0.08);
+  --gs-text-color: var(--gs-electric-text);
+  --gs-border-color: rgba(111, 138, 159, 0.2);
+  --gs-border-radius: 12px;
+  --gs-muted-text: var(--gs-shadow-blue);
+  --gs-nav-link: var(--gs-shadow-blue);
+  --gs-nav-active: var(--gs-vivid-blue);
+  --gs-header-bg: var(--gs-blue);
+  --gs-header-text: #ffffff;
+  --gs-footer-bg: var(--gs-light-white);
+  --gs-footer-text: var(--gs-shadow-blue);
+  --gs-table-border: rgba(111, 138, 159, 0.2);
+  --gs-table-row-hover: rgba(240, 247, 249, 0.7);
+  --gs-input-bg: #ffffff;
+  --gs-input-color: var(--gs-electric-text);
+  --gs-input-border: rgba(111, 138, 159, 0.3);
+  --gs-input-shadow: 0 4px 10px rgba(0, 27, 49, 0.05);
+  --gs-suggestion-bg: #ffffff;
+  --gs-loading-overlay-bg: rgba(255, 255, 255, 0.9);
+  --gs-button-primary-bg: var(--gs-vivid-blue);
+  --gs-button-primary-text: #ffffff;
+  --gs-button-primary-hover: rgba(0, 159, 255, 0.9);
+  --gs-button-secondary-bg: rgba(111, 138, 159, 0.1);
+  --gs-button-secondary-text: var(--gs-shadow-blue);
+  --gs-button-secondary-hover: rgba(111, 138, 159, 0.2);
+  --gs-accent-color: var(--gs-orange);
+  --gs-badge-bg: rgba(111, 138, 159, 0.1);
+  --gs-badge-text: var(--gs-shadow-blue);
+  --gs-code-bg: rgba(111, 138, 159, 0.05);
+  --gs-code-text: var(--gs-blue);
+}
+
+/* Dark mode theme variables - 2025 Design - Based on Giant Swarm style guide */
+[data-theme="dark"] {
+  /* Using the exact colors from the Giant Swarm style guide for dark mode */
+  --gs-bg-color: var(--gs-black);
+  --gs-card-bg: #001f38;
+  --gs-card-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+  --gs-text-color: #e5ecf1;
+  --gs-border-color: rgba(111, 138, 159, 0.15);
+  --gs-muted-text: rgba(111, 138, 159, 0.8);
+  --gs-nav-link: rgba(255, 255, 255, 0.7);
+  --gs-nav-active: var(--gs-vivid-blue);
+  --gs-header-bg: #00162a;
+  --gs-header-text: #ffffff;
+  --gs-footer-bg: #00162a;
+  --gs-footer-text: rgba(255, 255, 255, 0.6);
+  --gs-table-border: rgba(111, 138, 159, 0.15);
+  --gs-table-row-hover: rgba(0, 159, 255, 0.1);
+  --gs-input-bg: rgba(0, 38, 69, 0.3);
+  --gs-input-color: #ffffff;
+  --gs-input-border: rgba(111, 138, 159, 0.3);
+  --gs-input-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+  --gs-suggestion-bg: #001f38;
+  --gs-loading-overlay-bg: rgba(0, 27, 49, 0.95);
+  --gs-button-primary-bg: var(--gs-vivid-blue);
+  --gs-button-primary-text: #ffffff;
+  --gs-button-primary-hover: rgba(0, 159, 255, 0.9);
+  --gs-button-secondary-bg: rgba(111, 138, 159, 0.15);
+  --gs-button-secondary-text: #ffffff;
+  --gs-button-secondary-hover: rgba(111, 138, 159, 0.25);
+  --gs-accent-color: var(--gs-orange);
+  --gs-badge-bg: rgba(0, 159, 255, 0.15);
+  --gs-badge-text: #ffffff;
+  --gs-code-bg: rgba(0, 38, 69, 0.3);
+  --gs-code-text: var(--gs-vivid-blue);
+}
+
+/* Component theme overrides for 2025 design */
+.card {
+  border-radius: var(--gs-border-radius);
+  border: 1px solid var(--gs-border-color);
+  box-shadow: var(--gs-card-shadow);
+  transition: box-shadow 0.3s ease, transform 0.3s ease;
+  overflow: hidden;
+  background-color: var(--gs-card-bg);
+}
+
+.card:hover {
+  box-shadow: 0 10px 40px rgba(0, 27, 49, 0.15);
+}
+
+[data-theme="dark"] .card:hover {
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+}
+
+.card-header {
+  border-bottom: 1px solid var(--gs-border-color);
+  padding: 1.25rem 1.5rem;
+  background-color: rgba(111, 138, 159, 0.05);
+}
+
+[data-theme="dark"] .card-header {
+  background-color: rgba(0, 27, 49, 0.2);
+}
+
+.card-body {
+  padding: 1.5rem;
+}
+
+/* Form elements with proper dark mode support */
+.form-control,
+.form-select {
+  border-radius: 8px;
+  border: 1px solid var(--gs-input-border);
+  background-color: var(--gs-input-bg);
+  color: var(--gs-input-color);
+  padding: 0.75rem 1rem;
+  box-shadow: var(--gs-input-shadow);
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.form-control:focus,
+.form-select:focus {
+  border-color: var(--gs-vivid-blue);
+  box-shadow: 0 0 0 3px var(--gs-vivid-blue-20);
+  outline: none;
+}
+
+.form-label {
+  font-weight: 500;
+  margin-bottom: 0.5rem;
+  color: var(--gs-shadow-blue);
+}
+
+[data-theme="dark"] .form-label {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+/* Buttons with proper Giant Swarm branding */
+.btn {
+  border-radius: 8px;
+  padding: 0.75rem 1.25rem;
+  font-weight: 500;
+  transition: background-color 0.3s ease, transform 0.2s ease;
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.btn-primary {
+  background-color: var(--gs-button-primary-bg);
+  border-color: var(--gs-button-primary-bg);
+  color: var(--gs-button-primary-text);
+}
+
+.btn-primary:hover, 
+.btn-primary:focus {
+  background-color: var(--gs-button-primary-hover);
+  border-color: var(--gs-button-primary-hover);
+}
+
+.btn-secondary {
+  background-color: var(--gs-button-secondary-bg);
+  border-color: transparent;
+  color: var(--gs-button-secondary-text);
+}
+
+.btn-secondary:hover,
+.btn-secondary:focus {
+  background-color: var(--gs-button-secondary-hover);
+  border-color: transparent;
+}
+
+/* Table styling with dark mode improvements */
+.table {
+  color: var(--gs-text-color);
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+}
+
+.table th {
+  font-weight: 500;
+  color: var(--gs-shadow-blue);
+}
+
+[data-theme="dark"] .table th {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.table td,
+.table th {
+  padding: 1rem;
+  border-bottom: 1px solid var(--gs-table-border);
+}
+
+.table tr:last-child td {
+  border-bottom: none;
+}
+
+.table tr:hover td {
+  background-color: var(--gs-table-row-hover);
+}
+
+/* Navigation links */
+.nav-link {
+  color: var(--gs-nav-link);
+  font-weight: 500;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  transition: color 0.3s ease, background-color 0.3s ease;
+}
+
+.nav-link:hover {
+  color: var(--gs-vivid-blue);
+  background-color: var(--gs-vivid-blue-20);
+}
+
+.nav-link.active {
+  color: var(--gs-nav-active);
+  background-color: var(--gs-vivid-blue-20);
+  font-weight: 600;
+}
+
+/* Alert styling */
+.alert {
+  border-radius: var(--gs-border-radius);
+  padding: 1.25rem;
+  border: none;
+}
+
+.alert-info {
+  background-color: var(--gs-vivid-blue-20);
+  color: var(--gs-electric-text);
+}
+
+.alert-success {
+  background-color: var(--gs-green-20);
+  color: var(--gs-electric-text);
+}
+
+.alert-warning {
+  background-color: var(--gs-orange-20);
+  color: var(--gs-electric-text);
+}
+
+.alert-danger {
+  background-color: rgba(220, 53, 69, 0.15);
+  color: var(--gs-electric-text);
+}
+
+/* Dark mode alert overrides */
+[data-theme="dark"] .alert-info {
+  background-color: rgba(0, 159, 255, 0.15);
+  color: #e5ecf1;
+}
+
+[data-theme="dark"] .alert-success {
+  background-color: rgba(67, 220, 103, 0.15);
+  color: #e5ecf1;
+}
+
+[data-theme="dark"] .alert-warning {
+  background-color: rgba(232, 109, 0, 0.15);
+  color: #e5ecf1;
+}
+
+[data-theme="dark"] .alert-danger {
+  background-color: rgba(220, 53, 69, 0.1);
+  color: #e5ecf1;
+}
+
+/* Badge styling with dark mode support */
+.badge {
+  background-color: var(--gs-badge-bg);
+  color: var(--gs-text-color);
+  font-weight: 600;
+}
+
+.badge.bg-secondary {
+  background-color: rgba(111, 138, 159, 0.25) !important;
+  color: var(--gs-blue);
+}
+
+.badge.bg-danger {
+  background-color: rgba(220, 53, 69, 0.9) !important;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+[data-theme="dark"] .badge.bg-secondary {
+  background-color: rgba(111, 138, 159, 0.35) !important;
+  color: rgba(255, 255, 255, 0.95);
+}
+
+[data-theme="dark"] .badge.bg-primary {
+  background-color: var(--gs-vivid-blue) !important;
+  color: #ffffff;
+}
+
+[data-theme="dark"] .badge.bg-success {
+  background-color: rgba(67, 220, 103, 0.8) !important;
+  color: #ffffff;
+}
+
+[data-theme="dark"] .badge.bg-danger {
+  background-color: rgba(220, 53, 69, 0.9) !important;
+  color: #ffffff;
+}
+
+/* App header and footer styling */
+.app-header {
+  background-color: var(--gs-header-bg);
+  color: var(--gs-header-text);
+  padding: 1.5rem 0;
+}
+
+.app-footer {
+  background-color: var(--gs-footer-bg);
+  color: var(--gs-footer-text);
+  padding: 1.5rem 0;
+}
+
+.app-footer a {
+  color: var(--gs-footer-text);
+  text-decoration: none;
+  transition: color 0.3s ease;
+}
+
+.app-footer a:hover {
+  color: var(--gs-vivid-blue);
+}
+
+/* Loading overlay */
+.loading-overlay {
+  background-color: var(--gs-loading-overlay-bg);
+  backdrop-filter: blur(5px);
+}
+
+/* Dark mode toggle button */
+[data-theme="dark"] .dark-mode-toggle {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="dark"] .dark-mode-toggle:hover {
+  background-color: rgba(255, 255, 255, 0.15);
+}
+
+/* Dark mode text and icons */
+[data-theme="dark"] .text-muted {
+  color: rgba(255, 255, 255, 0.6) !important;
+}
+
+[data-theme="dark"] .bi {
+  color: inherit;
+}
+
+[data-theme="dark"] .bi-robot,
+[data-theme="dark"] .bi-magic,
+[data-theme="dark"] .bi-tools {
+  color: var(--gs-vivid-blue);
+} 

@@ -113,55 +113,68 @@ export function populateSelectOptions(selectId, options, includeAllOption = true
 }
 
 /**
- * Show a modal dialog
- * @param {Object} options - Modal options
- * @param {string} options.title - The modal title
- * @param {string} options.message - The modal message
- * @param {string} options.type - The modal type (info, success, warning, danger)
+ * Show a confirmation box inline instead of as a modal
+ * @param {Object} options - Confirmation options
+ * @param {string} options.title - The confirmation title
+ * @param {string} options.message - The confirmation message
+ * @param {string} options.type - The confirmation type (info, success, warning, danger)
  * @param {Function} options.onConfirm - Callback for confirmation
  * @param {Function} options.onCancel - Callback for cancellation
+ * @param {Element} options.container - Container element to add the confirmation to (optional)
  * @returns {Promise<boolean>} Whether the user confirmed or cancelled
  */
 export function showConfirmation(options) {
   return new Promise((resolve) => {
-    const confirmModal = document.createElement('div');
-    confirmModal.className = 'suggestion-modal';
-    confirmModal.innerHTML = `
-      <div class="suggestion-modal-content" style="max-width: 400px;">
-        <div class="suggestion-modal-header">
-          <h5 class="modal-title">${options.title || 'Confirmation'}</h5>
-          <button type="button" class="btn-close" id="closeConfirmModal"></button>
-        </div>
-        <div class="suggestion-modal-body">
-          <p>${options.message || 'Are you sure?'}</p>
-        </div>
-        <div class="suggestion-modal-footer">
-          <button type="button" class="btn btn-secondary" id="cancelConfirmation">Cancel</button>
+    // Create the confirmation element
+    const confirmElement = document.createElement('div');
+    confirmElement.className = 'suggestion-container';
+    confirmElement.style.animation = 'slideDown 0.3s ease-out';
+    confirmElement.innerHTML = `
+      <div class="suggestion-section">
+        <h5 class="suggestion-title">${options.title || 'Confirmation'}</h5>
+        <p>${options.message || 'Are you sure?'}</p>
+      </div>
+      <div class="suggestion-section suggestion-actions">
+        <div class="d-flex justify-content-end">
+          <button type="button" class="btn btn-secondary me-2" id="cancelConfirmation">Cancel</button>
           <button type="button" class="btn btn-${options.type || 'primary'}" id="confirmAction">Confirm</button>
         </div>
       </div>
     `;
     
-    document.body.appendChild(confirmModal);
+    // Find or create container
+    let container = options.container;
+    if (!container) {
+      // If no container is provided, create one and append to body
+      container = document.createElement('div');
+      container.className = 'confirmation-container';
+      container.style.position = 'fixed';
+      container.style.bottom = '20px';
+      container.style.right = '20px';
+      container.style.zIndex = '1050';
+      container.style.maxWidth = '400px';
+      document.body.appendChild(container);
+    }
     
-    const closeModal = () => {
-      document.body.removeChild(confirmModal);
+    // Add to container
+    container.appendChild(confirmElement);
+    
+    const removeConfirmation = () => {
+      container.removeChild(confirmElement);
+      // If we created the container, clean it up when empty
+      if (!options.container && container.children.length === 0) {
+        document.body.removeChild(container);
+      }
     };
     
-    document.getElementById('closeConfirmModal').addEventListener('click', () => {
-      closeModal();
-      resolve(false);
-      if (options.onCancel) options.onCancel();
-    });
-    
     document.getElementById('cancelConfirmation').addEventListener('click', () => {
-      closeModal();
+      removeConfirmation();
       resolve(false);
       if (options.onCancel) options.onCancel();
     });
     
     document.getElementById('confirmAction').addEventListener('click', () => {
-      closeModal();
+      removeConfirmation();
       resolve(true);
       if (options.onConfirm) options.onConfirm();
     });

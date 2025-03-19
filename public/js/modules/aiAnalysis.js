@@ -18,22 +18,34 @@ export function initAnalysisForm() {
   
   // Initialize select options when field options are loaded
   const stateObj = state.getState();
-  if (stateObj.fieldOptions && stateObj.fieldOptions.teams) {
-    populateTeamOptions();
+  if (stateObj.fieldOptions) {
+    populateAnalysisFilters();
   }
 }
 
 /**
- * Populates team select options for the analysis form
+ * Populates all filter select options for the analysis form
  */
-function populateTeamOptions() {
+function populateAnalysisFilters() {
   const stateObj = state.getState();
-  if (!stateObj.fieldOptions || !stateObj.fieldOptions.teams) return;
+  if (!stateObj.fieldOptions) return;
   
-  const teamSelect = document.getElementById('analysisTeam');
-  if (teamSelect) {
-    ui.populateSelectOptions('analysisTeam', stateObj.fieldOptions.teams, true);
-  }
+  // Map field names to their corresponding state property and element ID
+  const fieldMappings = [
+    { stateProperty: 'teams', elementId: 'analysisTeam' },
+    { stateProperty: 'functions', elementId: 'analysisFunction' },
+    { stateProperty: 'kinds', elementId: 'analysisKind' },
+    { stateProperty: 'statuses', elementId: 'analysisStatus' },
+    { stateProperty: 'sigs', elementId: 'analysisSIG' },
+    { stateProperty: 'wgs', elementId: 'analysisWG' }
+  ];
+  
+  // Populate each filter select
+  fieldMappings.forEach(mapping => {
+    if (stateObj.fieldOptions[mapping.stateProperty]) {
+      ui.populateSelectOptions(mapping.elementId, stateObj.fieldOptions[mapping.stateProperty], true);
+    }
+  });
 }
 
 /**
@@ -42,24 +54,47 @@ function populateTeamOptions() {
 export async function generateAIAnalysis() {
   // Get form values
   const teamValue = document.getElementById('analysisTeam').value;
+  const functionValue = document.getElementById('analysisFunction').value;
+  const kindValue = document.getElementById('analysisKind').value;
+  const statusValue = document.getElementById('analysisStatus').value;
+  const sigValue = document.getElementById('analysisSIG').value;
+  const wgValue = document.getElementById('analysisWG').value;
   
   // Show loading overlay
   ui.toggleLoadingOverlay(true, 'Starting AI analysis...');
   
   try {
-    // Update status based on team filter
-    if (teamValue === 'no-team') {
-      ui.updateLoadingStatus('Analyzing issues with no team assigned...');
-    } else if (teamValue) {
-      ui.updateLoadingStatus(`Analyzing issues in team: ${teamValue}...`);
+    // Update status based on filters
+    if (teamValue || functionValue || kindValue || statusValue || sigValue || wgValue) {
+      const activeFilters = [];
+      if (teamValue) activeFilters.push(`team: ${teamValue}`);
+      if (functionValue) activeFilters.push(`function: ${functionValue}`);
+      if (kindValue) activeFilters.push(`kind: ${kindValue}`);
+      if (statusValue) activeFilters.push(`status: ${statusValue}`);
+      if (sigValue) activeFilters.push(`SIG: ${sigValue}`);
+      if (wgValue) activeFilters.push(`working group: ${wgValue}`);
+      
+      ui.updateLoadingStatus(`Analyzing issues with filters: ${activeFilters.join(', ')}...`);
     } else {
       ui.updateLoadingStatus('Analyzing all issues across teams...');
     }
     
     // Build filters
     const filters = {
-      team: teamValue
+      team: teamValue,
+      function: functionValue,
+      kind: kindValue,
+      status: statusValue,
+      sig: sigValue,
+      wg: wgValue
     };
+    
+    // Remove empty filters
+    Object.keys(filters).forEach(key => {
+      if (!filters[key]) {
+        delete filters[key];
+      }
+    });
     
     // Generate AI summary
     ui.updateLoadingStatus('Connecting to GitHub API to fetch issues...', 'info');

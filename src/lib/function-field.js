@@ -17,8 +17,9 @@ async function getFunctionSuggestion(item, options) {
 /**
  * Fix function field values using AI suggestions
  * @param {Object} options - Options including team filter or itemId
+ * @param {boolean} isServerMode - Whether running in server/API mode
  * @returns {Promise<Object|number>} - Result with status and suggested function or number of updated items
  */
-export async function fixFunctionField(options) {
-  return await batchFixFields(options, 'function', getFunctionSuggestion);
+export async function fixFunctionField(options, isServerMode = false) {
+  return await batchFixFields(options, 'function', getFunctionSuggestion, value => value, isServerMode);
 } 

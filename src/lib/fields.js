@@ -190,7 +190,7 @@ export async function getAISuggestion(itemId, options, fieldType) {
     const prompt = `I have a GitHub issue with the following details:
 Title: ${item.title}
 Content: ${item.body || 'No description provided'}
-Author: ${item.author.join(', ')}
+Author: ${item.author}
 Assignees: ${item.assignees.join(', ')}
 Comments: ${item.comments.join(', ')}
 Labels: ${item.labels.join(', ')}
@@ -228,12 +228,12 @@ Please respond ONLY with the exact name of one of the valid ${fieldType}s listed
 }
 
 /**
- * Fix a single item's field value with AI suggestion
+ * Get a suggestion for a single item's field value but don't apply it 
  * @param {string} itemId - ID of the item to fix
  * @param {string} fieldName - Name of the field to fix
  * @param {Function} getSuggestion - Function to get a suggestion
  * @param {Function} normalizeValue - Function to normalize the suggestion
- * @returns {Promise<Object>} - Result with status and message
+ * @returns {Promise<Object>} - Result with status and suggestion but does not apply it
  */
 export async function fixSingleItemField(itemId, fieldName, getSuggestion, normalizeValue = value => value) {
   try {
@@ -249,7 +249,7 @@ export async function fixSingleItemField(itemId, fieldName, getSuggestion, norma
     if (!suggestion) {
       return {
         status: 'error',
-        message: `Could not get a ${fieldName} suggestion for issue #${item.number}`
+        message: `Could not get a ${fieldName} suggestion`
       };
     }
     
@@ -267,16 +267,16 @@ export async function fixSingleItemField(itemId, fieldName, getSuggestion, norma
       };
     }
     
-    // Update the field
-    await updateItemField(item.id, field.id, option.id);
-    
+    // Return the suggestion without applying it
     return {
       status: 'success',
-      message: `Updated ${fieldName} for issue ${item.number} to "${option.name}"`,
-      suggestion: option.name
+      message: `Suggested ${fieldName}: "${option.name}"`,
+      suggestion: option.name,
+      optionId: option.id,
+      fieldId: field.id
     };
   } catch (error) {
-    console.error(`Error fixing ${fieldName} field for item:`, error.message);
+    console.error(`Error getting ${fieldName} suggestion:`, error.message);
     return {
       status: 'error',
       message: error.message
@@ -285,29 +285,59 @@ export async function fixSingleItemField(itemId, fieldName, getSuggestion, norma
 }
 
 /**
- * Process multiple items to fix their field values using AI suggestions
+ * Process multiple items to get suggestions for their field values using AI
+ * This function will show interactive prompts in CLI mode and return suggestions in API mode
  * @param {Object} options - Options including filters or itemId
  * @param {string} fieldName - Field to fix (team, function, kind)
  * @param {Function} getSuggestion - Function to get a suggestion for the field
  * @param {Function} normalizeValue - Function to normalize values
- * @returns {Promise<Object|number>} - Result for single item or count of updated items
+ * @param {boolean} isServerMode - Whether running in server/API mode (vs CLI mode)
+ * @returns {Promise<Object|Array>} - Result for single item or array of items with suggestions
  */
-export async function batchFixFields(options, fieldName, getSuggestion, normalizeValue = value => value) {
+export async function batchFixFields(options, fieldName, getSuggestion, normalizeValue = value => value, isServerMode = false) {
   try {
-    // If itemId is provided, fix a single item
+    // If itemId is provided, get suggestion for a single item
     if (options.itemId) {
-      return await fixSingleItemField(options.itemId, fieldName, getSuggestion, normalizeValue);
+      // In CLI mode with a single item, we'll get the suggestion and prompt for confirmation
+      // In API mode, we'll just return the suggestion without applying it
+      const suggestion = await fixSingleItemField(options.itemId, fieldName, getSuggestion, normalizeValue);
+      
+      // If running in CLI mode, prompt for confirmation and apply if confirmed
+      if (!isServerMode && suggestion.status === 'success') {
+        const { confirmUpdate } = await inquirer.prompt([
+          {
+            type: 'confirm',
+            name: 'confirmUpdate',
+            message: `Update ${fieldName} for issue to "${suggestion.suggestion}"?`,
+            default: true
+          }
+        ]);
+        
+        if (confirmUpdate) {
+          try {
+            // Apply the suggestion
+            await updateItemField(options.itemId, suggestion.fieldId, suggestion.optionId);
+            console.log(chalk.green(`✓ Updated ${fieldName} to "${suggestion.suggestion}"`));
+          } catch (error) {
+            console.error(chalk.red(`✗ Error applying suggestion: ${error.message}`));
+          }
+        } else {
+          console.log(chalk.yellow(`Skipped updating ${fieldName}`));
+        }
+      }
+      
+      return suggestion;
     }
     
     // Create main spinner for the command
-    const mainSpinner = ora(`Starting ${fieldName} field fix process...`).start();
+    const mainSpinner = ora(`Starting ${fieldName} field suggestion process...`).start();
     
     // Get the field and options
     const field = await findFieldByName(fieldName);
     
     if (!field) {
       mainSpinner.fail(`No ${fieldName} field found in this project.`);
-      return 0;
+      return [];
     }
     
     mainSpinner.succeed(`Found ${fieldName} field with ${field.options.length} options.`);
@@ -335,7 +365,10 @@ export async function batchFixFields(options, fieldName, getSuggestion, normaliz
     }
     
     itemsSpinner.succeed(`Found ${itemsWithoutField.length} items without ${fieldName} field set.`);
-    let updatedCount = 0;
+    
+    // Prepare results array to store suggestions
+    const suggestionsResults = [];
+    let updatedCount = 0; // Track items updated in CLI mode for backward compatibility
     
     for (const item of itemsWithoutField) {
       if (!item.content) continue;
@@ -348,6 +381,13 @@ export async function batchFixFields(options, fieldName, getSuggestion, normaliz
       
       if (!suggestionValue) {
         console.log(chalk.yellow(`Could not get a ${fieldName} suggestion for issue #${item.content.number}`));
+        suggestionsResults.push({
+          itemId: item.id,
+          number: item.content.number,
+          title: item.content.title,
+          status: 'error',
+          message: `Could not get a ${fieldName} suggestion`
+        });
         continue;
       }
       
@@ -359,43 +399,72 @@ export async function batchFixFields(options, fieldName, getSuggestion, normaliz
       
       if (!option) {
         console.log(chalk.yellow(`Could not find matching ${fieldName} option for "${normalizedValue}"`));
+        suggestionsResults.push({
+          itemId: item.id,
+          number: item.content.number,
+          title: item.content.title,
+          status: 'error',
+          message: `Could not find matching ${fieldName} option`,
+          suggestion: normalizedValue
+        });
         continue;
       }
       
-      // Ask for user confirmation before updating
-      const { confirmUpdate } = await inquirer.prompt([
-        {
-          type: 'confirm',
-          name: 'confirmUpdate',
-          message: `Update ${fieldName} for issue #${item.content.number} to "${option.name}"?`,
-          default: true
-        }
-      ]);
+      console.log(chalk.green(`Suggested ${fieldName} for issue #${item.content.number}: "${option.name}"`));
       
-      if (!confirmUpdate) {
-        console.log(chalk.yellow(`Skipping update for issue #${item.content.number}`));
-        continue;
-      }
+      // Add result to suggestions array
+      suggestionsResults.push({
+        itemId: item.id,
+        number: item.content.number,
+        title: item.content.title,
+        status: 'success',
+        message: `Suggested ${fieldName}: "${option.name}"`,
+        suggestion: option.name,
+        optionId: option.id,
+        fieldId: field.id
+      });
       
-      // Create spinner for the update process
-      const updateSpinner = ora(`Updating ${fieldName} field for issue #${item.content.number}...`).start();
-      
-      try {
-        await updateItemField(item.id, field.id, option.id);
+      // Ask for user confirmation when running in CLI mode
+      if (!isServerMode) {
+        const { confirmUpdate } = await inquirer.prompt([
+          {
+            type: 'confirm',
+            name: 'confirmUpdate',
+            message: `Update ${fieldName} for issue #${item.content.number} to "${option.name}"?`,
+            default: true
+          }
+        ]);
         
-        updatedCount++;
-        updateSpinner.succeed(`Updated ${fieldName} for issue ${item.content.number} to "${option.name}"`);
-      } catch (error) {
-        updateSpinner.fail(`Error updating ${fieldName} for issue ${item.content.number}: ${error.message}`);
+        if (confirmUpdate) {
+          // Create spinner for the update process
+          const updateSpinner = ora(`Updating ${fieldName} field for issue #${item.content.number}...`).start();
+          
+          try {
+            await updateItemField(item.id, field.id, option.id);
+            updateSpinner.succeed(`Updated ${fieldName} for issue ${item.content.number} to "${option.name}"`);
+            updatedCount++; // Increment count for CLI output
+          } catch (error) {
+            updateSpinner.fail(`Error updating ${fieldName} for issue ${item.content.number}: ${error.message}`);
+          }
+        } else {
+          console.log(chalk.yellow(`Skipping update for issue #${item.content.number}`));
+        }
       }
     }
     
-    console.log(chalk.blue(`Updated ${fieldName} field for ${updatedCount} issues.`));
-    return updatedCount;
+    // Print summary message in CLI mode with count of updated items
+    if (!isServerMode) {
+      console.log(chalk.blue(`\nSummary: Updated ${fieldName} field for ${updatedCount} issues.`));
+      return updatedCount; // Return count for CLI backward compatibility
+    } else {
+      // In API mode, return the array of results with suggestions
+      console.log(chalk.blue(`Generated ${fieldName} suggestions for ${suggestionsResults.length} issues.`));
+      return suggestionsResults;
+    }
   } catch (error) {
     // Stop any active spinner on error
-    ora().fail(`Error fixing ${fieldName} fields`);
-    console.error(chalk.red(`Error fixing ${fieldName} fields:`), chalk.red(error.message));
+    ora().fail(`Error processing ${fieldName} fields`);
+    console.error(chalk.red(`Error processing ${fieldName} fields:`), chalk.red(error.message));
     throw error;
   }
 } 
