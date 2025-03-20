@@ -53,6 +53,7 @@
   /* 2025 Design Additional colors */
   --gs-vivid-blue-80: rgba(0, 159, 255, 0.8);
   --gs-vivid-blue-20: rgba(0, 159, 255, 0.2);
+  --gs-black-80: rgba(0, 27, 49, 0.8);
   
   /* Blue group (#002645) */
   --gs-blue-80:  rgba(0, 38, 69, 0.8);
@@ -81,14 +82,15 @@
 
   /* Light theme colors */
 
-  --gs-bg-color: var(--gs-light-white);    /* Giant Swarm White for light backgrounds */
-  --gs-text-color: var(--gs-electric-text); /* Electric Blue for body text */
-  --gs-text-muted: var(--gs-shadow-blue);  /* Shadow Blue for secondary text */
-  --gs-link: var(--gs-shadow-blue); /* Electric Blue for body text */
-  --gs-link-hover: var(--gs-vivid-blue);  /* Shadow Blue for secondary text */
+  --gs-bg-color: var(--gs-light-white);
+  --gs-text-color: var(--gs-electric-text);
+  --gs-text-muted: var(--gs-shadow-blue);
+  --gs-link: var(--gs-shadow-blue);
+  --gs-link-hover: var(--gs-vivid-blue);
   --gs-border-color: var(--gs-shadow-blue);
   --gs-border-radius: 12px;
   --gs-accent-color: var(--gs-orange);
+  --gs-headline-color: var(--gs-blue);
   
   --gs-success: var(--gs-green);
   --gs-warning: var(--gs-orange);
@@ -96,7 +98,7 @@
   --gs-info: var(--gs-sky-20);
   --gs-success-text: var(--gs-text-color);
   --gs-warning-text : var(--gs-text-color);
-  --gs-danger-text: var(--gs-text-color);     /* Alert red */
+  --gs-danger-text: var(--gs-white);
   --gs-info-text: var(--gs-text-color);
   
   /* Header and Footer */
@@ -124,10 +126,13 @@
   --gs-table-header-bg: var(--gs-blue-20);
   --gs-table-header-color: var(--gs-electric-blue);
   
-  --gs-input-bg: var(--gs-white);
-  --gs-input-color: var(--gs-electric-text);
+  --gs-label-color: var(--gs-text-color);
+  --gs-input-bg: var(--gs-light-white);
+  --gs-input-bg-focus: var(--gs-blue-20);
+  --gs-input-color: var(--gs-text-color);
   --gs-input-border: var(--gs-shadow-blue);
-  --gs-input-shadow: var(--gs-black);
+  --gs-input-shadow: var(--gs-shadow-blue);
+  --gs-select-bg: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%FFFFFF' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3e%3c/svg%3e");
   
   --gs-loading-overlay-bg: var(--gs-white);
   --gs-spinner: var(--gs-vivid-blue);
@@ -142,8 +147,9 @@
   --gs-button-success-text: var(--gs-white);
   --gs-button-success-hover: var(--gs-green-80);
   
-  --gs-badge-bg: var(--gs-shadow-blue);
-  --gs-badge-text: var(--gs-white);
+  --gs-badge-bg: var(--gs-blue-20);
+  --gs-badge-text: var(--gs-blue);
+  --gs-badge-border: var(--gs-blue-40);
   --gs-code-bg: var(--gs-shadow-blue);
   --gs-code-text: var(--gs-blue);
 
@@ -154,12 +160,13 @@
 /* Dark mode theme variables - 2025 Design - Based on Giant Swarm style guide */
 [data-theme="dark"] {
   --gs-bg-color: var(--gs-black);
-  --gs-text-color: var(--gs-white);
+  --gs-text-color: var(--gs-light-white);
   --gs-muted-text: var(--gs-shadow-blue);
   --gs-link: var(--gs-shadow-blue);
   --gs-link-hover: var(--gs-vivid-blue);
   --gs-border-color: var(--gs-shadow-blue);
   --gs-accent-color: var(--gs-orange);
+  --gs-headline-color: var(--gs-light-white);
 
   --gs-success: var(--gs-green);
   --gs-warning: var(--gs-orange);
@@ -171,12 +178,12 @@
   --gs-info-text: var(--gs-white);
   
   /* Header and Footer */
-  --gs-header-bg: var(--gs-blue);
-  --gs-header-text: var(--gs-white);
+  --gs-header-bg: var(--gs-electric-blue);
+  --gs-header-text: var(--gs-light-white);
   --gs-footer-bg: var(--gs-black);
   --gs-footer-text: var(--gs-light-white);
 
-  --gs-card-bg: var(--gs-blue);
+  --gs-card-bg: var(--gs-blue-20);
   --gs-card-shadow: var(--gs-black);
   --gs-card-header-bg: var(--gs-vivid-blue-20);
   --gs-card-header-text: var(--gs-light-white);
@@ -195,17 +202,19 @@
   --gs-table-header-bg: var(--gs-vivid-blue-20);
   --gs-table-header-color: var(--gs-light-white);
 
-  --gs-input-bg: var(--gs-blue);
+  --gs-input-bg: var(--gs-black);
+  --gs-input-bg-focus: var(--gs-electric-blue);
   --gs-input-color: var(--gs-white);
   --gs-input-border: var(--gs-shadow-blue);
-  --gs-input-shadow: var(--gs-black);
+  --gs-input-shadow: var(--gs-shadow-blue);
+  --gs-select-bg: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23343a40' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3e%3c/svg%3e");
 
   --gs-loading-overlay-bg: var(--gs-blue);
   --gs-spinner: var(--gs-vivid-blue);
 
   --gs-button-primary-bg: var(--gs-vivid-blue);
   --gs-button-primary-text: var(--gs-white);
-  --gs-button-primary-hover: var(--gs-vivid-blue);
+  --gs-button-primary-hover: var(--gs--light-white);
   --gs-button-secondary-bg: var(--gs-blue-20);
   --gs-button-secondary-text: var(--gs-white);
   --gs-button-secondary-hover: var(--gs-light-white);
@@ -213,14 +222,18 @@
   --gs-button-success-text: var(--gs-white);
   --gs-button-success-hover: var(--gs-green-80);
   
-  --gs-badge-bg: var(--gs-shadow-blue);
-  --gs-badge-text: var(--gs-white);
+  --gs-badge-bg: var(--gs-black);
+  --gs-badge-text: var(--gs-light-white);
+  --gs-badge-border: var(--gs-blue-40);
   --gs-code-bg: var(--gs-shadow-blue);
   --gs-code-text: var(--gs-blue);
-  
-  /* Additional dark mode variables */
-  --gs-info-bg: var(--gs-vivid-blue);
-  --gs-success-bg: var(--gs-green);
-  --gs-warning-bg: var(--gs-orange);
-  --gs-danger-bg: var(--gs-danger);
+}
+
+/* Theme transitions for smooth dark/light mode switching */
+.theme-transition,
+.theme-transition *,
+.theme-transition *:before,
+.theme-transition *:after {
+  transition: all 0.3s ease !important;
+  transition-delay: 0 !important;
 }

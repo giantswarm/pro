@@ -470,10 +470,6 @@ export async function startFixingEmptyFields() {
       return new Promise(resolve => {
         setTimeout(async () => {
           try {
-            // Update progress
-            const progress = ((index + 1) / stateObj.emptyFieldItems.length) * 100;
-            document.getElementById('fixProgressBar').style.width = `${progress}%`;
-            
             // Get suggestion for this item
             await getSuggestionForRow(item, index, fieldType);
             resolve();
