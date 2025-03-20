@@ -185,9 +185,14 @@ This document contains:
             
             <!-- Analysis Results -->
             <div id="aiAnalysisResults" class="ai-analysis-results mt-4" style="display: none;">
-              <div class="d-flex align-items-center mb-3">
-                <i class="bi bi-robot text-primary me-2" style="font-size: 1.5rem;"></i>
-                <h3 class="mb-0">AI Analysis Results</h3>
+              <div class="d-flex align-items-center justify-content-between mb-3">
+                <div class="d-flex align-items-center">
+                  <i class="bi bi-robot text-primary me-2" style="font-size: 1.5rem;"></i>
+                  <h3 class="mb-0">AI Analysis Results</h3>
+                </div>
+                <button id="copyAnalysisButton" class="btn btn-outline-secondary btn-sm">
+                  <i class="bi bi-clipboard"></i> Copy to Clipboard
+                </button>
               </div>
               <div id="aiAnalysisSummary" class="ai-analysis-summary"></div>
             </div>

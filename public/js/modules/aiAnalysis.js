@@ -37,6 +37,9 @@ import * as state from './state.js';
 import * as api from './api.js';
 import * as ui from '../utils/ui.js';
 
+// Store the original summary for copying
+let currentAnalysisSummary = '';
+
 /**
  * Initializes the AI analysis form
  */
@@ -46,10 +49,49 @@ export function initAnalysisForm() {
     generateBtn.addEventListener('click', generateAIAnalysis);
   }
   
+  // Initialize copy to clipboard button
+  const copyBtn = document.getElementById('copyAnalysisButton');
+  if (copyBtn) {
+    copyBtn.addEventListener('click', copyAnalysisToClipboard);
+  }
+  
   // Initialize select options when field options are loaded
   const stateObj = state.getState();
   if (stateObj.fieldOptions) {
     populateAnalysisFilters();
+  }
+}
+
+/**
+ * Copies the current analysis to clipboard
+ */
+async function copyAnalysisToClipboard() {
+  const copyBtn = document.getElementById('copyAnalysisButton');
+  if (!currentAnalysisSummary) {
+    ui.showToast('No analysis results to copy', 'warning');
+    return;
+  }
+  
+  try {
+    await navigator.clipboard.writeText(currentAnalysisSummary);
+    
+    // Change button text and icon temporarily to show success
+    const originalButtonHtml = copyBtn.innerHTML;
+    copyBtn.innerHTML = '<i class="bi bi-check-lg"></i> Copied!';
+    copyBtn.classList.remove('btn-outline-secondary');
+    copyBtn.classList.add('btn-success');
+    
+    // Reset button after 2 seconds
+    setTimeout(() => {
+      copyBtn.innerHTML = originalButtonHtml;
+      copyBtn.classList.remove('btn-success');
+      copyBtn.classList.add('btn-outline-secondary');
+    }, 2000);
+    
+    ui.showToast('Analysis copied to clipboard', 'success');
+  } catch (err) {
+    console.error('Failed to copy analysis:', err);
+    ui.showToast('Failed to copy to clipboard', 'danger');
   }
 }
 
@@ -143,6 +185,9 @@ export async function generateAIAnalysis() {
     if (!result.data || !result.data.summary) {
       throw new Error('No summary generated');
     }
+    
+    // Store the original markdown for clipboard copying
+    currentAnalysisSummary = result.data.summary;
     
     // Display the results
     displayAIAnalysisResults(result.data.summary);
