@@ -73,12 +73,9 @@ function handleFieldTypeChange() {
     
     // Implicitly set to "no team assigned"
     teamSelect.value = 'no-team';
-  } else if (fieldType === 'function' || fieldType === 'kind') {
-    // Show team filter when fixing function or kind fields
-    teamFilterContainer.style.display = 'block';
-    
-    // Reset team selection
-    teamSelect.value = '';
+  } else if (fieldType === 'function' || fieldType === 'kind' || fieldType === 'workstream') {
+    // Show team filter when fixing function, kind, or workstream fields
+    teamFilterContainer.style.display = 'block';    
   } else {
     // Hide team filter for other cases (like no selection)
     teamFilterContainer.style.display = 'none';
@@ -123,17 +120,10 @@ export async function findIssuesWithEmptyFields() {
     const filters = {};
     
     // Handle filtering logic based on what we're trying to fix
-    if (fieldType === 'team') {
-      // If fixing team fields, look for issues with empty team fields
-      filters.noTeam = true;
-    } else {
-      // If fixing function/kind fields, we can optionally filter by team
-      if (teamValue === 'no-team') {
-        filters.noTeam = true;
-      } else if (teamValue) {
-        filters.team = teamValue;
-      }
+    if (teamValue) {
+      filters.team = teamValue;
     }
+    filters.fieldType = fieldType;
     
     // Update loading status based on search criteria
     let loadingMessage = '';
@@ -148,6 +138,8 @@ export async function findIssuesWithEmptyFields() {
     }
     
     ui.updateLoadingStatus(loadingMessage);
+
+    state.updateStateProperty('emptyField', fieldType);
     
     // Fetch items from API
     ui.updateLoadingStatus('Connecting to GitHub API to fetch issues...', 'info');
@@ -264,7 +256,7 @@ function buildIssuesTable(issues) {
   
   // Build rows for each issue
   issues.forEach((issue, index) => {
-    const emptyField = getEmptyFieldName(issue);
+    const emptyField = getEmptyFieldName();
     if (!emptyField) return; // Skip if no empty fields
     
     const row = document.createElement('tr');
@@ -369,30 +361,6 @@ function getFieldDisplayValue(field, value) {
   // Find matching option
   const option = fieldOptions.find(opt => opt.id === value || opt.value === value);
   return option ? (option.name || option.text || value) : value.toString();
-}
-
-/**
- * Gets the name of the empty field in the issue
- * @param {Object} issue - The issue object
- * @returns {string|null} - The field name or null if no empty field is found
- */
-function getEmptyFieldName(issue) {
-  if (!issue || !issue.fields) return null;
-  
-  const requiredFields = ['team', 'function', 'kind'];
-  for (const fieldName of requiredFields) {
-    // Check if field doesn't exist or is empty
-    const hasField = issue.fields.some(field => 
-      field.name && field.name.toLowerCase() === fieldName.toLowerCase() && 
-      field.value && field.value.toString().trim() !== ''
-    );
-    
-    if (!hasField) {
-      return fieldName;
-    }
-  }
-  
-  return null;
 }
 
 /**
@@ -523,7 +491,7 @@ function getSuggestionForRow(rowOrItem, issueOrIndex, providedFieldType) {
     // Called with (row, issue)
     row = rowOrItem;
     issue = issueOrIndex;
-    fieldType = getEmptyFieldName(issue);
+    fieldType = getEmptyFieldName();
   }
   
   const suggestionCell = row?.querySelector('.suggestion-cell');
@@ -568,13 +536,15 @@ function getSuggestionForRow(rowOrItem, issueOrIndex, providedFieldType) {
     fieldOptions = stateObj.fieldOptions.functions;
   } else if (fieldType.toLowerCase() === 'kind' && stateObj.fieldOptions?.kinds) {
     fieldOptions = stateObj.fieldOptions.kinds;
+  } else if (fieldType.toLowerCase() === 'workstream' && stateObj.fieldOptions?.workstreams) {
+    fieldOptions = stateObj.fieldOptions.workstreams;
   }
   
   console.log(`Using ${fieldOptions.length} options for ${fieldType} field`);
   
   // Use fetchSuggestion for all field types
   const getSuggestionPromise = () => {
-    // Get the current team value from the issue fields (for function and kind fields)
+    // Get the current team value from the issue fields (for function, kind, and workstream fields)
     let teamValue = '';
     if (issue.fields && Array.isArray(issue.fields)) {
       const teamField = issue.fields.find(field => 
@@ -872,4 +842,12 @@ function getSuggestionForRow(rowOrItem, issueOrIndex, providedFieldType) {
         });
       }
     });
-} 
+}
+
+/**
+ * Gets the name of the empty field in the issue
+ * @returns {string|null} - The field name or null if no empty field is found
+ */
+function getEmptyFieldName() {
+  return state.getStateProperty('emptyField');
+}

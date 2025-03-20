@@ -9,6 +9,7 @@ import { showFieldCommand } from '../src/commands/show-field.js';
 import { fixTeamFieldCommand } from '../src/commands/fix-team-field.js';
 import { fixFunctionFieldCommand } from '../src/commands/fix-function-field.js';
 import { fixKindFieldCommand } from '../src/commands/fix-kind-field.js';
+import { fixWorkstreamFieldCommand } from '../src/commands/fix-workstream-field.js';
 import { summarizeIssuesCommand } from '../src/commands/summarize-issues.js';
 import { serverCommand } from '../src/commands/server.js';
 
@@ -18,7 +19,8 @@ import {
     FUNCTION_FIELD_ID,
     SIG_FIELD_ID,
     WG_FIELD_ID,
-    KIND_FIELD_ID
+    KIND_FIELD_ID,
+    WORKSTREAM_FIELD_ID
 } from '../src/lib/project.js';
 
 // Register commands using Commander
@@ -32,10 +34,14 @@ program
   .option('--kind <kind>', 'Filter by Kind')
   .option('--status <status>', 'Filter by Status')
   .option('--function <function>', 'Filter by Function')
+  .option('--workstream <workstream>', 'Filter by Workstream')
   .option('--team <team>', 'Filter by Team')
   .option('--sig <sig>', 'Filter by SIG')
   .option('--wg <wg>', 'Filter by Working Group')
   .option('--no-team', 'Filter items with an empty Team field')
+  .option('--no-function', 'Filter items with an empty Function field')
+  .option('--no-kind', 'Filter items with an empty Kind field')
+  .option('--no-workstream', 'Filter items with an empty Workstream field')
   .action(listItemsCommand);
 
 program
@@ -74,6 +80,12 @@ program
   .action(showFieldCommand);
 
 program
+  .command('show-workstreams')
+  .description('Show details of workstreams in the roadmap board')
+  .option('--field <fieldId>', 'Workstream field ID to show', WORKSTREAM_FIELD_ID)
+  .action(showFieldCommand);
+
+program
   .command('fix-team-field')
   .description('Fix team field values based on team labels')
   .action(fixTeamFieldCommand);
@@ -82,15 +94,19 @@ program
   .command('fix-function-field')
   .description('Fix function field values using ChatGPT suggestions')
   .option('--team <team>', 'Filter by team name')
-  .option('--no-team', 'Only include items with no team assigned')
   .action(fixFunctionFieldCommand);
 
 program
   .command('fix-kind-field')
   .description('Fix kind field values using ChatGPT suggestions')
   .option('--team <team>', 'Filter by team name')
-  .option('--no-team', 'Only include items with no team assigned')
   .action(fixKindFieldCommand);
+
+program
+  .command('fix-workstream-field')
+  .description('Fix workstream field values using ChatGPT suggestions')
+  .option('--team <team>', 'Filter by team name')
+  .action(fixWorkstreamFieldCommand);
 
 program
   .command('summarize-issues')
@@ -98,6 +114,7 @@ program
   .option('--kind <kind>', 'Filter by Kind')
   .option('--status <status>', 'Filter by Status')
   .option('--function <function>', 'Filter by Function')
+  .option('--workstream <workstream>', 'Filter by Workstream')
   .option('--team <team>', 'Filter by Team')
   .option('--sig <sig>', 'Filter by SIG')
   .option('--wg <wg>', 'Filter by Working Group')
@@ -119,5 +136,6 @@ export const showField = showFieldCommand;
 export const fixTeamField = fixTeamFieldCommand;
 export const fixFunctionField = fixFunctionFieldCommand;
 export const fixKindField = fixKindFieldCommand;
+export const fixWorkstreamField = fixWorkstreamFieldCommand;
 export const summarizeIssues = summarizeIssuesCommand;
 export const server = serverCommand;

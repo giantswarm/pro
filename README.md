@@ -9,7 +9,7 @@
 - 📊 View and filter roadmap items directly from the terminal
 - 🔄 Synchronize project fields and item data
 - 🤖 AI-powered field suggestions using OpenAI
-- 🏷️ Automatically categorize issues by team, function, and kind
+- 🏷️ Automatically categorize issues by team, function, kind, and workstream
 - 📈 Generate AI summaries and insights for issues
 - 🎨 Beautiful terminal output with colors and spinners
 - 🌐 Web interface with all features accessible via browser
@@ -55,6 +55,7 @@ pro list-items --kind "Feature"
 pro list-items --team "Honey Badger"
 pro list-items --status "In Progress"
 pro list-items --function "Development"
+pro list-items --workstream "Networking"
 
 # Show items with no team assigned
 pro list-items --no-team
@@ -80,6 +81,9 @@ pro show-sigs
 
 # Show Working Groups
 pro show-wgs
+
+# Show Workstreams
+pro show-workstreams
 ```
 
 ### Fix Fields
@@ -97,6 +101,11 @@ pro fix-function-field --no-team
 pro fix-kind-field
 pro fix-kind-field --team "Honey Badger"
 pro fix-kind-field --no-team
+
+# Fix workstream field values using AI suggestions
+pro fix-workstream-field
+pro fix-workstream-field --team "Honey Badger"
+pro fix-workstream-field --no-team
 ```
 
 ### AI Analysis
@@ -109,6 +118,7 @@ pro summarize-issues
 pro summarize-issues --team "Honey Badger"
 pro summarize-issues --kind "Feature"
 pro summarize-issues --function "Development"
+pro summarize-issues --workstream "Networking"
 ```
 
 ### Web Server

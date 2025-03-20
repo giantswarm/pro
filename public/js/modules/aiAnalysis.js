@@ -65,6 +65,7 @@ function populateAnalysisFilters() {
     { stateProperty: 'teams', elementId: 'analysisTeam' },
     { stateProperty: 'functions', elementId: 'analysisFunction' },
     { stateProperty: 'kinds', elementId: 'analysisKind' },
+    { stateProperty: 'workstreams', elementId: 'analysisWorkstream' },
     { stateProperty: 'statuses', elementId: 'analysisStatus' },
     { stateProperty: 'sigs', elementId: 'analysisSIG' },
     { stateProperty: 'wgs', elementId: 'analysisWG' }
@@ -86,6 +87,7 @@ export async function generateAIAnalysis() {
   const teamValue = document.getElementById('analysisTeam').value;
   const functionValue = document.getElementById('analysisFunction').value;
   const kindValue = document.getElementById('analysisKind').value;
+  const workstreamValue = document.getElementById('analysisWorkstream').value;
   const statusValue = document.getElementById('analysisStatus').value;
   const sigValue = document.getElementById('analysisSIG').value;
   const wgValue = document.getElementById('analysisWG').value;
@@ -95,11 +97,12 @@ export async function generateAIAnalysis() {
   
   try {
     // Update status based on filters
-    if (teamValue || functionValue || kindValue || statusValue || sigValue || wgValue) {
+    if (teamValue || functionValue || kindValue || workstreamValue || statusValue || sigValue || wgValue) {
       const activeFilters = [];
       if (teamValue) activeFilters.push(`team: ${teamValue}`);
       if (functionValue) activeFilters.push(`function: ${functionValue}`);
       if (kindValue) activeFilters.push(`kind: ${kindValue}`);
+      if (workstreamValue) activeFilters.push(`workstream: ${workstreamValue}`);
       if (statusValue) activeFilters.push(`status: ${statusValue}`);
       if (sigValue) activeFilters.push(`SIG: ${sigValue}`);
       if (wgValue) activeFilters.push(`working group: ${wgValue}`);
@@ -114,6 +117,7 @@ export async function generateAIAnalysis() {
       team: teamValue,
       function: functionValue,
       kind: kindValue,
+      workstream: workstreamValue,
       status: statusValue,
       sig: sigValue,
       wg: wgValue

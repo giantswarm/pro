@@ -59,7 +59,6 @@ export async function initApp() {
   // Initialize UI components
   initTabs();
   initFieldFixing();
-  
   // Load field options (teams, etc.)
   try {
     ui.toggleLoadingOverlay(true, 'Loading application data...');

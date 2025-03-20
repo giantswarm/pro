@@ -65,18 +65,15 @@ export async function fetchIssues(filters = {}) {
     const queryParams = new URLSearchParams();
     
     if (filters.team === 'no-team') {
-      queryParams.append('no-team', 'true');
+      queryParams.append('noTeam', 'true');
     } else if (filters.team) {
       queryParams.append('team', filters.team);
     }
     
-    // Add other filters as needed
-    if (filters.kind) {
-      queryParams.append('kind', filters.kind);
-    }
-    
-    if (filters.function) {
-      queryParams.append('function', filters.function);
+    // check if filters.fieldType is defined and is either team, function, kind, or workstream
+    if (filters.fieldType && (filters.fieldType === 'function' || filters.fieldType === 'kind' || filters.fieldType === 'workstream')) {  
+      // add noKind, noFunction, or noWorkstream to the query params - capitalize the first letter
+      queryParams.append("no" + filters.fieldType.charAt(0).toUpperCase() + filters.fieldType.slice(1), true);
     }
     
     const url = `/api/items?${queryParams.toString()}`;
@@ -95,9 +92,9 @@ export async function fetchIssues(filters = {}) {
 
 /**
  * Request a field fix suggestion from the server
- * @param {string} fieldType - Type of field to fix (team, function, kind)
+ * @param {string} fieldType - Type of field to fix (team, function, kind, workstream)
  * @param {string} itemId - ID of the item
- * @param {string} [teamValue] - Team value (for function and kind fields)
+ * @param {string} [teamValue] - Team value (for function, kind, and workstream fields)
  * @returns {Promise<Object>} The API response
  */
 export async function fetchSuggestion(fieldType, itemId, teamValue) {
@@ -115,6 +112,10 @@ export async function fetchSuggestion(fieldType, itemId, teamValue) {
         break;
       case 'kind':
         endpoint = '/api/fix-kind-field';
+        payload.team = teamValue;
+        break;
+      case 'workstream':
+        endpoint = '/api/fix-workstream-field';
         payload.team = teamValue;
         break;
       default:
@@ -172,9 +173,9 @@ export async function fetchSuggestion(fieldType, itemId, teamValue) {
 
 /**
  * Apply a field value to an issue
- * @param {string} fieldType - Type of field to update (team, function, kind)
+ * @param {string} fieldType - Type of field to update (team, function, kind, workstream)
  * @param {string} itemId - ID of the item
- * @param {string} [teamValue] - Team value (for function and kind fields)
+ * @param {string} [teamValue] - Team value (for function, kind, and workstream fields)
  * @param {string} fieldValue - Value to apply
  * @param {Object} [optionData] - Optional data from a suggestion response
  * @returns {Promise<Object>} The API response
@@ -219,6 +220,10 @@ export async function applyFieldValue(fieldType, itemId, teamValue, fieldValue, 
         break;
       case 'kind':
         endpoint = '/api/apply-custom-kind';
+        payload.teamValue = teamValue;
+        break;
+      case 'workstream':
+        endpoint = '/api/apply-custom-workstream';
         payload.teamValue = teamValue;
         break;
       default:
@@ -273,7 +278,7 @@ export async function generateSummary(filters = {}) {
 /**
  * Update a field value for an issue
  * @param {string} issueId - The ID of the issue
- * @param {string} fieldType - The type of field (team, function, kind)
+ * @param {string} fieldType - The type of field (team, function, kind, workstream)
  * @param {string} value - The new value for the field
  * @param {Object} [metadata] - Optional metadata (fieldId, optionId) from suggestion
  * @returns {Promise<Object>} The updated issue data
@@ -322,6 +327,9 @@ export async function updateIssueField(issueId, fieldType, value, metadata = {})
         break;
       case 'kind':
         endpoint = '/api/apply-custom-kind';
+        break;
+      case 'workstream':
+        endpoint = '/api/apply-custom-workstream';
         break;
       default:
         throw new Error(`Unsupported field type: ${fieldType}`);

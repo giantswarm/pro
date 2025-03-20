@@ -35,6 +35,7 @@ import { fixFunctionField } from '../lib/function-field.js';
 import { fixKindField } from '../lib/kind-field.js';
 import { summarizeIssues } from '../lib/summarize.js';
 import { addLogClient, logger, closeAllConnections } from '../lib/logger.js';
+import { fixWorkstreamField } from '../lib/workstream-field.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -176,6 +177,7 @@ export async function serverCommand(options) {
    *   - statuses: Array of status options
    *   - sigs: Array of SIG options
    *   - wgs: Array of working group options
+   *   - workstreams: Array of workstream options
    *   - fieldTypes: Array of field type objects
    * - error: Error message (if status is "error")
    */
@@ -191,10 +193,12 @@ export async function serverCommand(options) {
         statuses: [],
         sigs: [],
         wgs: [],
+        workstreams: [],
         fieldTypes: [
           { value: 'team', text: 'Team' },
           { value: 'function', text: 'Function' },
-          { value: 'kind', text: 'Kind' }
+          { value: 'kind', text: 'Kind' },
+          { value: 'workstream', text: 'Workstream' }
         ]
       };
       
@@ -203,6 +207,7 @@ export async function serverCommand(options) {
         team: 'teams',
         function: 'functions',
         kind: 'kinds',
+        workstream: 'workstreams',
         status: 'statuses',
         sig: 'sigs',
         'working group': 'wgs'
@@ -359,6 +364,62 @@ export async function serverCommand(options) {
             
       // Use the specialized single-item function which returns more consistent results
       const result = await fixKindField(options, true);
+      
+      // Format response to ensure consistency
+      if (result && (result.status === 'success' || !result.status)) {
+        return res.json({ 
+          status: 'success', 
+          data: {
+            suggestion: result.suggestion || result.data?.suggestion,
+            optionId: result.optionId || result.data?.optionId,
+            fieldId: result.fieldId || result.data?.fieldId
+          }
+        });
+      }
+      
+      // Pass through any error responses
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ status: 'error', error: error.message });
+    }
+  });
+  
+  /**
+   * POST /api/fix-workstream-field - Get workstream field suggestion for an issue
+   * 
+   * WHY:
+   * - Web UI needs to get AI-powered workstream suggestions
+   * - Suggestions need to be reviewed before being applied
+   * 
+   * PARAMETERS:
+   * - itemId (required): The ID of the project item/issue
+   * - team (optional): The team value to use for context
+   * 
+   * RESPONSE:
+   * - status: "success" or "error"
+   * - data: Object containing:
+   *   - suggestion: The suggested workstream name
+   *   - optionId: The ID of the suggested workstream option
+   *   - fieldId: The ID of the workstream field
+   * - error: Error message (if status is "error")
+   */
+  app.post('/api/fix-workstream-field', async (req, res) => {
+    try {
+      const options = {
+        itemId: req.body.itemId,
+        team: req.body.team
+      };
+      
+      // Validate required parameters
+      if (!options.itemId) {
+        return res.status(400).json({ 
+          status: 'error', 
+          error: 'Missing required parameter: itemId' 
+        });
+      }
+            
+      // Use the specialized single-item function which returns more consistent results
+      const result = await fixWorkstreamField(options, true);
       
       // Format response to ensure consistency
       if (result && (result.status === 'success' || !result.status)) {
@@ -629,6 +690,89 @@ export async function serverCommand(options) {
   });
   
   /**
+   * POST /api/apply-custom-workstream - Apply a custom workstream value to an issue
+   * 
+   * WHY:
+   * - Users need to manually select workstream values for issues
+   * - Web UI needs a way to apply these selections
+   * 
+   * PARAMETERS:
+   * - itemId (required): The ID of the project item/issue
+   * - customValue (required): The workstream name to apply
+   * 
+   * RESPONSE:
+   * - status: "success" or "error"
+   * - data: Object containing:
+   *   - updated: true if the update was successful
+   *   - message: Success message
+   * - error: Error message (if status is "error")
+   */
+  app.post('/api/apply-custom-workstream', async (req, res) => {
+    try {
+      const { itemId, customValue } = req.body;
+      
+      // Validate required parameters
+      if (!itemId || !customValue) {
+        return res.status(400).json({ 
+          status: 'error', 
+          error: 'Missing required fields (itemId, customValue)' 
+        });
+      }
+      
+      console.log(`Applying custom workstream value: itemId=${itemId}, value=${customValue}`);
+      
+      // Need to find the workstream field and appropriate option ID
+      const fields = await listFields(true); // Get fields from GitHub
+      
+      // Find the workstream field
+      const workstreamField = fields.find(field => 
+        field.__typename === 'ProjectV2SingleSelectField' && 
+        field.name.toLowerCase() === 'workstream'
+      );
+      
+      if (!workstreamField) {
+        return res.status(404).json({
+          status: 'error',
+          error: 'Workstream field not found in project'
+        });
+      }
+      
+      // Find the option that matches the custom value
+      const option = workstreamField.options.find(opt => 
+        opt.name.toLowerCase() === customValue.toLowerCase()
+      );
+      
+      if (!option) {
+        return res.status(404).json({
+          status: 'error',
+          error: `Workstream value "${customValue}" not found in available options`
+        });
+      }
+      
+      // Call updateItemField with the correct parameters
+      const result = await updateItemField(itemId, workstreamField.id, option.id);
+      
+      if (result.errors && result.errors.length > 0) {
+        return res.status(400).json({ 
+          status: 'error', 
+          error: result.errors[0].message || 'Error updating workstream field in GitHub' 
+        });
+      }
+      
+      return res.json({ 
+        status: 'success', 
+        data: {
+          updated: true,
+          message: 'Workstream field updated successfully'
+        }
+      });
+    } catch (error) {
+      console.error('Error applying custom workstream value:', error);
+      res.status(500).json({ status: 'error', error: error.message });
+    }
+  });
+  
+  /**
    * POST /api/apply-suggestion - Apply a suggested field value with user confirmation
    * 
    * WHY:
@@ -744,7 +888,7 @@ export async function serverCommand(options) {
    * 
    * PARAMETERS:
    * - issueId (required): ID of the issue to get suggestions for
-   * - fieldType (required): Type of field (team, function, kind)
+   * - fieldType (required): Type of field (team, function, kind, workstream)
    * 
    * RESPONSE:
    * - status: "success" or "error"
@@ -756,7 +900,7 @@ export async function serverCommand(options) {
    * 
    * NOTE:
    * - This endpoint only supports team field currently
-   * - For function and kind fields, use their respective POST endpoints
+   * - For function, kind, and workstream fields, use their respective POST endpoints
    */
   app.get('/api/suggestions/:issueId/:fieldType', async (req, res) => {
     try {
@@ -786,6 +930,13 @@ export async function serverCommand(options) {
           return res.status(400).json({ 
             status: 'error', 
             error: 'Team value is required for kind suggestions. Use POST /api/fix-kind-field endpoint instead.' 
+          });
+        case 'workstream':
+          // For workstream field, we need team value but it's not available from the URL params
+          // Return appropriate error message with more helpful instructions
+          return res.status(400).json({ 
+            status: 'error', 
+            error: 'Team value is required for workstream suggestions. Use POST /api/fix-workstream-field endpoint instead.' 
           });
         default:
           return res.status(400).json({ status: 'error', error: `Unsupported field type: ${fieldType}` });
@@ -825,10 +976,12 @@ export async function serverCommand(options) {
     logger.info('- POST /api/fix-team-field - Get team field suggestion for an issue');
     logger.info('- POST /api/fix-function-field - Get function field suggestion for an issue');
     logger.info('- POST /api/fix-kind-field - Get kind field suggestion for an issue');
+    logger.info('- POST /api/fix-workstream-field - Get workstream field suggestion for an issue');
     logger.info('- POST /api/apply-suggestion - Apply suggested field value (with user confirmation)');
     logger.info('- POST /api/apply-custom-team - Apply custom team value');
     logger.info('- POST /api/apply-custom-function - Apply custom function value');
     logger.info('- POST /api/apply-custom-kind - Apply custom kind value');
+    logger.info('- POST /api/apply-custom-workstream - Apply custom workstream value');
     logger.info('- POST /api/summarize-issues - Analyze issues with AI');
     logger.info('\nPress Ctrl+C to stop the server');
   });

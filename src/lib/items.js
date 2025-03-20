@@ -90,7 +90,7 @@ export async function listItems(options) {
   try {
     // Build filter criteria based on provided options
     const filters = {};
-    ['kind', 'status', 'function', 'sig', 'wg'].forEach(key => {
+    ['kind', 'status', 'function', 'workstream', 'sig', 'wg'].forEach(key => {
       if (options[key]) {
         filters[key === 'wg' ? 'working group' : key] = normalizeFieldValue(options[key]);
       }
@@ -132,16 +132,30 @@ export async function listItems(options) {
     const filtered = allItems.filter(item => {
       if (!item.fieldValues || !item.fieldValues.nodes) return false;
       
-      // Apply --no-team filter if specified
-      if (options.noTeam === true) {
-        const hasTeam = item.fieldValues.nodes.some(node => 
+      // Helper function to check if an item has a non-empty field value
+      function hasNonEmptyField(item, fieldName) {
+        return item.fieldValues.nodes.some(node => 
           node.field &&
           node.field.name &&
-          node.field.name.toLowerCase() === 'team' &&
+          node.field.name.toLowerCase() === fieldName.toLowerCase() &&
           typeof node.name === 'string' &&
           node.name.trim() !== ''
         );
-        if (hasTeam) return false;
+      }
+      
+      // Check all "no-field" filters using the same pattern
+      const fieldChecks = [
+        { option: 'noKind', fieldName: 'kind' },
+        { option: 'noFunction', fieldName: 'function' },
+        { option: 'noWorkstream', fieldName: 'workstream' },
+        { option: 'noTeam', fieldName: 'team' }
+      ];
+      
+      // If any filter condition matches, exclude the item
+      for (const check of fieldChecks) {
+        if (options[check.option] === true && hasNonEmptyField(item, check.fieldName)) {
+          return false;
+        }
       }
       
       // Apply other filters with normalization for case insensitivity and emojis

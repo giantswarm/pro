@@ -194,7 +194,7 @@ export async function summarizeIssues(options, isCliMode = false) {
     
     // Build filter criteria based on provided options
     const filters = {};
-    ['kind', 'status', 'function', 'sig', 'wg'].forEach(key => {
+    ['kind', 'status', 'function', 'workstream', 'sig', 'wg'].forEach(key => {
       if (options[key]) {
         filters[key === 'wg' ? 'working group' : key] = normalizeFieldValue(options[key]);
       }

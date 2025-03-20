@@ -42,7 +42,10 @@ const initialState = {
     kind: [],
     status: [],
     function: [],
-    team: []
+    team: [],
+    sig: [],
+    wg: [],
+    workstream: []
   },
   items: [],
   emptyFieldItems: [],
