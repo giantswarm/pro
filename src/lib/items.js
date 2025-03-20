@@ -127,30 +127,31 @@ export async function listItems(options) {
     );
 
     spinner.text = 'Applying filters to items...';
+
+    // Check all "no-field" filters using the same pattern
+    const fieldChecks = [
+    { option: 'noKind', fieldName: 'kind' },
+    { option: 'noFunction', fieldName: 'function' },
+    { option: 'noWorkstream', fieldName: 'workstream' },
+    { option: 'noTeam', fieldName: 'team' }
+    ];
     
     // Apply filters
     const filtered = allItems.filter(item => {
       if (!item.fieldValues || !item.fieldValues.nodes) return false;
-      
+      if (!item.content || !item.content.title) return false;
+    
       // Helper function to check if an item has a non-empty field value
       function hasNonEmptyField(item, fieldName) {
         return item.fieldValues.nodes.some(node => 
           node.field &&
           node.field.name &&
           node.field.name.toLowerCase() === fieldName.toLowerCase() &&
-          typeof node.name === 'string' &&
-          node.name.trim() !== ''
+          typeof node.field.name === 'string' &&
+          node.field.name.trim() !== ''
         );
       }
-      
-      // Check all "no-field" filters using the same pattern
-      const fieldChecks = [
-        { option: 'noKind', fieldName: 'kind' },
-        { option: 'noFunction', fieldName: 'function' },
-        { option: 'noWorkstream', fieldName: 'workstream' },
-        { option: 'noTeam', fieldName: 'team' }
-      ];
-      
+    
       // If any filter condition matches, exclude the item
       for (const check of fieldChecks) {
         if (options[check.option] === true && hasNonEmptyField(item, check.fieldName)) {
@@ -184,7 +185,6 @@ export async function listItems(options) {
     if (filtered.length === 0) {
       console.log(chalk.yellow(`No items found matching provided filters.`));
     } else {
-      console.log(chalk.cyan(`Filtered items:`));
       filtered.forEach(item => {
         let output = `- [${item.id}] `;
         if (item.content && Object.keys(item.content).length > 0) {

@@ -151,6 +151,19 @@ export async function serverCommand(options) {
    */
   app.get('/api/items', async (req, res) => {
     try {
+      // in case of noTeam, noKind, noWorkstream or noFunction, we need to convert the value to true
+      if (req.query.noTeam) {
+        req.query.noTeam = true;
+      }
+      if (req.query.noKind) {
+        req.query.noKind = true;
+      }
+      if (req.query.noWorkstream) {
+        req.query.noWorkstream = true;
+      }
+      if (req.query.noFunction) {
+        req.query.noFunction = true;
+      }
       const result = await listItems(req.query);
       res.json(result);
     } catch (error) {
