@@ -42,6 +42,26 @@ export GITHUB_API_TOKEN=your_github_token
 export OPENAI_API_KEY=your_openai_api_key
 ```
 
+## 🌐 Global Options
+
+Pro supports several global options that apply to all commands:
+
+- `--no-cache`: Disable API response caching (by default, responses are cached)
+- `--cache-ttl <milliseconds>`: Set cache time-to-live in milliseconds (default: 3600000 = 1 hour)
+
+These options can help optimize performance and reduce API rate limit usage.
+
+```bash
+# Run with caching disabled
+npx pro list-items --no-cache
+
+# Set a custom cache TTL (30 minutes)
+npx pro list-items --cache-ttl 1800000
+
+# Combine with other command options
+npx pro fix-function-field --team platform --cache-ttl 600000
+```
+
 ## 📋 Commands
 
 ### List Items

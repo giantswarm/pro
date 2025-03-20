@@ -26,7 +26,10 @@ import {
 // Register commands using Commander
 program
   .version('0.1.0')
-  .description('Roadmap board management tool');
+  .description('Roadmap board management tool')
+  // Global options for API caching
+  .option('--no-cache', 'Disable API response caching')
+  .option('--cache-ttl <milliseconds>', 'Cache time-to-live in milliseconds (default: 3600000 = 1 hour)', parseInt);
 
 program
   .command('list-items')
