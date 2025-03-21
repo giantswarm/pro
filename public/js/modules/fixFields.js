@@ -42,6 +42,7 @@ import * as state from './state.js';
 import * as api from './api.js';
 import * as ui from '../utils/ui.js';
 import { createSuggestion } from '../components/suggestionModal.js';
+import notifications from '../utils/notifications.js';
 
 /**
  * Initialize the fix fields functionality
@@ -379,7 +380,7 @@ export async function fixSingleIssue(index) {
   const teamValue = document.getElementById('fixTeam').value;
   
   if (!fieldType) {
-    alert('Please select a field type to fix');
+    notifications.warning('Please select a field type to fix');
     return;
   }
   
@@ -394,7 +395,10 @@ export async function fixSingleIssue(index) {
     await getSuggestionForRow(item, index, fieldType);
   } catch (error) {
     console.error(`Error fixing single issue at index ${index}:`, error);
-    ui.updateOperationStatus(`Error: ${error.message}`, 'danger');
+    notifications.updateStatus(`Error: ${error.message}`, { 
+      elementId: 'fixFieldsStatus', 
+      type: 'error' 
+    });
   }
 }
 
@@ -407,13 +411,13 @@ export async function startFixingEmptyFields() {
   const teamValue = document.getElementById('fixTeam').value;
   
   if (!fieldType) {
-    alert('Please select a field type to fix');
+    notifications.warning('Please select a field type to fix');
     return;
   }
   
   const stateObj = state.getState();
   if (stateObj.emptyFieldItems.length === 0) {
-    alert('No issues found with empty fields to fix');
+    notifications.warning('No issues found with empty fields to fix');
     return;
   }
   

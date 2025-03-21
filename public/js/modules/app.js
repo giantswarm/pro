@@ -40,48 +40,38 @@ import * as ui from '../utils/ui.js';
 import * as fixFields from './fixFields.js';
 import * as aiAnalysis from './aiAnalysis.js';
 import * as websocket from '../utils/websocket.js';
+import notifications from '../utils/notifications.js';
 
 /**
- * Initialize the web application
+ * Initialize the application
+ * Sets up the UI, loads necessary data, and prepares the app for use
  */
 export async function initApp() {
-  console.log('Initializing Giant Swarm AI Roadmap Analysis Tool...');
-  
-  // Initialize app state and branding
-  initGiantSwarmBranding();
-  
-  // Initialize dark mode
-  initDarkMode();
-  
-  // Initialize WebSocket connection for real-time logs
-  websocket.initWebSocket();
-  
-  // Initialize UI components
-  initTabs();
-  initFieldFixing();
-  // Load field options (teams, etc.)
   try {
-    ui.toggleLoadingOverlay(true, 'Loading application data...');
-    const fieldOptions = await api.fetchFieldOptions();
+    console.log('Initializing application...');
     
-    if (fieldOptions.status === 'success' && fieldOptions.data) {
-      state.updateStateProperty('fieldOptions', fieldOptions.data);
-      
-      // Initialize forms with loaded data
-      populateSelectOptions();
-      
-      // Initialize AI analysis form
-      aiAnalysis.initAnalysisForm();
-      
-      ui.updateOperationStatus('Application initialized', 'success');
-    } else {
-      throw new Error('Failed to load field options');
-    }
-  } catch (error) {
-    console.error('Error initializing app:', error);
-    ui.updateOperationStatus(`Error initializing application: ${error.message}`, 'danger');
-  } finally {
+    // Initialize theme and UI components
+    initGiantSwarmBranding();
+    initDarkMode();
+    initTabs();
+    
+    // Setup WebSocket connection
+    initWebSocket();
+    
+    // Initialize feature modules
+    initFieldFixing();
+    initAiAnalysis();
+    
+    // Update UI to indicate app is ready
     ui.toggleLoadingOverlay(false);
+    notifications.updateStatus('Application initialized', {
+      elementId: 'operationStatus',
+      type: 'success'
+    });
+  } catch (error) {
+    console.error('Error initializing application:', error);
+    ui.toggleLoadingOverlay(false);
+    notifications.error(`Error initializing application: ${error.message}`);
   }
 }
 
