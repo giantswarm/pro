@@ -116,60 +116,6 @@ export function updateStatusMessage(message, isLoading = true) {
   }
 }
 
-/**
- * Updates the operation status text
- * @param {string} message - The message to display
- * @param {string} type - The type of message (success, warning, danger)
- * @deprecated Use notifications.updateStatus() instead
- */
-export function updateOperationStatus(message, type = 'success') {
-  console.warn('updateOperationStatus is deprecated. Use notifications.updateStatus() instead.');
-  
-  // Map the old type values to the new ones
-  const typeMap = {
-    'success': 'success',
-    'warning': 'warning',
-    'danger': 'error',
-    'primary': 'info'
-  };
-  
-  const mappedType = typeMap[type] || 'info';
-  
-  // Use the new notifications module
-  notifications.updateStatus(message, {
-    elementId: 'fixFieldsStatus',
-    type: mappedType
-  });
-}
-
-/**
- * Shows a toast notification
- * @param {string} message - The message to display
- * @param {string} type - The type of message (success, danger, warning, info)
- * @param {number} duration - How long to show the toast in ms
- * @deprecated Use notifications.show(), notifications.success(), notifications.error(), etc. instead
- */
-export function showToast(message, type = 'success', duration = 3000) {
-  console.warn('showToast is deprecated. Use notifications methods instead.');
-  
-  // Map the old type values to the new ones
-  const typeMap = {
-    'success': 'success',
-    'warning': 'warning',
-    'danger': 'error',
-    'info': 'info',
-    'primary': 'info'
-  };
-  
-  const mappedType = typeMap[type] || 'info';
-  
-  // Use the new notifications module
-  notifications.show({
-    message: message,
-    type: mappedType,
-    duration: duration
-  });
-}
 
 /**
  * Populate a select element with options

@@ -126,7 +126,9 @@ function handleSocketMessage(event) {
       
       // Show a notification to the user if they're actively using the app
       if (document.visibilityState === 'visible') {
-        ui.showToast('The server is shutting down. You may need to refresh the page when it restarts.', 'warning', 10000);
+        notifications.warning('The server is shutting down. You may need to refresh the page when it restarts.', {
+          duration: 10000
+        });
       }
       
       // Mark as server shutdown to change reconnection behavior
@@ -297,74 +299,10 @@ function scheduleServerRestartCheck() {
       connectWebSocket(wsUrl);
       
       // Notify user
-      ui.showToast('Connection to server restored!', 'success');
+      notifications.success('Connection to server restored!');
     };
     
     // Handle errors silently - we expect errors while the server is down
     testSocket.onerror = () => {};
   }, 3000);
 }
-
-/**
- * Handle a message from the server
- * @param {Object} data - Message data from the server
- * @private
- */
-function handleMessage(data) {
-  if (!data) return;
-  
-  switch (data.type) {
-    case 'log':
-      handleLogMessage(data);
-      break;
-    case 'progress':
-      handleProgressMessage(data);
-      break;
-    case 'shutdown':
-      handleShutdownMessage();
-      break;
-    case 'status':
-      handleStatusMessage(data);
-      break;
-    default:
-      console.log('Received message:', data);
-  }
-}
-
-/**
- * Handle a shutdown message from the server
- * @private
- */
-function handleShutdownMessage() {
-  // Show a message to the user
-  notifications.warning(
-    'The server is shutting down. You may need to refresh the page when it restarts.',
-    { duration: 10000 }
-  );
-  
-  // Handle connection closure
-  connectionState.connected = false;
-  connectionState.reconnectAttempts = 0;
-}
-
-/**
- * Handle a successful reconnection
- * @private
- */
-function handleReconnection() {
-  console.log('WebSocket reconnected successfully');
-  
-  // Reset reconnect state
-  connectionState.connected = true;
-  connectionState.reconnectAttempts = 0;
-  clearTimeout(connectionState.reconnectTimeout);
-  
-  // Show a toast notification to inform the user
-  notifications.success('Connection to server restored!');
-  
-  // Re-subscribe to any active logs if needed
-  if (connectionState.activeLogSession) {
-    // Re-subscribe to the log session that was active
-    requestLogStream(connectionState.activeLogSession);
-  }
-} 

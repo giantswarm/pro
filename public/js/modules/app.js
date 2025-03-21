@@ -235,31 +235,37 @@ function initDarkMode() {
 }
 
 /**
- * Initialize tab switching functionality
+ * Initialize tab navigation
  */
 function initTabs() {
-  // Tab handling
-  const tabButtons = document.querySelectorAll('.nav-link[data-bs-toggle="tab"]');
-  tabButtons.forEach(button => {
-    button.addEventListener('click', (e) => {
-      const targetId = e.target.getAttribute('data-bs-target');
+  const tabNavs = document.querySelectorAll('.nav-link');
+  const tabContents = document.querySelectorAll('.tab-pane');
+
+  tabNavs.forEach(tab => {
+    tab.addEventListener('click', (e) => {
+      e.preventDefault();
       
-      // Hide previous tab container
-      document.querySelectorAll('.tab-pane').forEach(pane => {
-        pane.classList.remove('show', 'active');
-      });
+      // Remove active class from all tabs and contents
+      tabNavs.forEach(t => t.classList.remove('active'));
+      tabContents.forEach(c => c.classList.remove('active', 'show'));
+
+      // Add active class to clicked tab
+      tab.classList.add('active');
       
-      // Show selected tab
-      const targetPane = document.querySelector(targetId);
-      if (targetPane) {
-        targetPane.classList.add('show', 'active');
+      // Get target content and show it
+      const targetId = tab.getAttribute('href').substring(1);
+      const targetContent = document.getElementById(targetId);
+      if (targetContent) {
+        targetContent.classList.add('active', 'show');
       }
       
-      // Update active tab button
-      tabButtons.forEach(btn => btn.classList.remove('active'));
-      e.target.classList.add('active');
+      // Hide any result containers when switching tabs
+      const resultContainers = document.querySelectorAll('.result-container');
+      resultContainers.forEach(container => {
+        container.style.display = 'none';
+      });
       
-      // Hide issues container when switching tabs
+      // Hide the issues container when switching tabs
       const issuesContainer = document.getElementById('issuesContainer');
       if (issuesContainer) {
         issuesContainer.style.display = 'none';
@@ -341,8 +347,6 @@ async function initAiAnalysis() {
 
     // Initialize AI analysis form
     aiAnalysis.initAnalysisForm();
-
-    ui.updateOperationStatus('Application initialized', 'success');
   } else {
     throw new Error('Failed to load field options');
   }
