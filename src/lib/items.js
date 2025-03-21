@@ -90,18 +90,15 @@ export async function listItems(options) {
   try {
     // Build filter criteria based on provided options
     const filters = {};
-    ['kind', 'status', 'function', 'workstream', 'sig', 'wg'].forEach(key => {
+    ['team', 'kind', 'status', 'function', 'workstream', 'sig', 'wg'].forEach(key => {
       if (options[key]) {
         filters[key === 'wg' ? 'working group' : key] = normalizeFieldValue(options[key]);
       }
     });
-    if (options.team !== undefined && options.team !== 'all') {
-      filters['team'] = normalizeFieldValue(options.team);
-    }
 
     // Create a spinner with a message
     const spinner = ora('Fetching items from GitHub project...').start();
-    
+
     // Use the projectId from options with fallback to ROADMAP_BOARD_ID for backward compatibility
     const projectId = ROADMAP_BOARD_ID;
     
@@ -163,19 +160,16 @@ export async function listItems(options) {
       return Object.entries(filters).every(([filterKey, normalizedFilterValue]) => {
         // If the filter value is 'all', match any value
         if (normalizedFilterValue === 'all') return true;
-        
+
         const matchingField = item.fieldValues.nodes.find(node => {
           if (!node.field) return false;
           return node.field.name && node.field.name.toLowerCase() === filterKey;
         });
-        
+
         if (!matchingField) return false;
         
         const normalizedFieldValue = normalizeFieldValue(matchingField.name || '');
-        
-        // Consider match if either contains the other after normalization
-        return normalizedFieldValue.includes(normalizedFilterValue) || 
-               normalizedFilterValue.includes(normalizedFieldValue);
+        return normalizedFieldValue === normalizedFilterValue;
       });
     });
     

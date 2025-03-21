@@ -21,13 +21,7 @@
 
 import chalk from 'chalk';
 import ora from 'ora';
-import { graphQLWithAuth, fetchPaginated } from './api.js';
-import {
-  ROADMAP_BOARD_ID,
-  LIST_ITEMS_QUERY,
-  ISSUE_DETAIL_QUERY
-} from './project.js';
-import { normalizeFieldValue } from './utils.js';
+import { listItems, getItemByID } from './items.js';
 import OpenAI from 'openai';
 import { logger } from './logger.js';
 
@@ -38,68 +32,6 @@ if (!process.env.OPENAI_API_KEY) {
 }
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
-/**
- * Fetch detailed information for an issue
- * @param {Object} item - The project item containing basic issue details
- * @returns {Promise<Object>} - The issue with detailed information
- */
-async function fetchIssueDetails(item) {
-  if (!item.content) {
-    return {
-      title: 'Unknown',
-      number: 'N/A',
-      url: '',
-      body: 'No content available',
-      author: '',
-      assignees: [],
-      comments: [],
-      fields: {}
-    };
-  }
-
-  const baseIssue = {
-    title: item.content.title || 'Untitled',
-    number: item.content.number || 'N/A',
-    url: item.content.url || '',
-    body: '',
-    author: '',
-    assignees: [],
-    comments: [],
-    fields: {}
-  };
-
-  // Extract field values
-  if (item.fieldValues && item.fieldValues.nodes) {
-    item.fieldValues.nodes.forEach(node => {
-      if (node.field && node.field.name && typeof node.name === 'string') {
-        baseIssue.fields[node.field.name.toLowerCase()] = node.name;
-      }
-    });
-  }
-
-  try {
-    // Fetch more detailed issue information
-    const issueDetails = await graphQLWithAuth(ISSUE_DETAIL_QUERY, { id: item.id });
-    if (issueDetails && issueDetails.node && issueDetails.node.content) {
-      const content = issueDetails.node.content;
-      baseIssue.body = content.bodyText || '';
-      baseIssue.author = content.author?.login || '';
-      
-      if (content.assignees && content.assignees.nodes) {
-        baseIssue.assignees = content.assignees.nodes.map(a => a.login);
-      }
-      
-      if (content.comments && content.comments.nodes) {
-        baseIssue.comments = content.comments.nodes.map(c => c.bodyText);
-      }
-    }
-  } catch (err) {
-    console.error(`Error fetching details for issue #${baseIssue.number}:`, err.message);
-  }
-
-  return baseIssue;
-}
 
 /**
  * Generate a summary, grouping, and priority list for a set of issues
@@ -155,12 +87,12 @@ Based on these issues, please provide:
 3. A suggested priority order for addressing these issues, with a brief explanation for each priority
 4. Any potential dependencies or relationships between issues that might affect planning
 
-Please format your response with clear headings for each section.`;
+Please format your response with clear Markdown headings (using # and ##) for each section. Use proper Markdown formatting for lists, emphasis, and code blocks where appropriate. This will be displayed directly in a web interface that supports Markdown rendering.`;
 
     const response = await openai.chat.completions.create({
       model: "o3-mini",
       messages: [
-        { role: "system", content: "You are a helpful project management assistant that analyzes GitHub issues." },
+        { role: "system", content: "You are a helpful project management assistant that analyzes GitHub issues. Format your responses using proper Markdown syntax for headings, lists, emphasis, and code blocks to ensure readability. Your analysis will be displayed in a web interface that supports Markdown rendering." },
         { role: "user", content: prompt }
       ]
     });
@@ -187,75 +119,15 @@ export async function summarizeIssues(options, isCliMode = false) {
     let analysisSpinner = null;
     
     if (isCliMode) {
-      mainSpinner = ora('Starting issue summarization process...').start();
-    } else {
-      logger.info('Starting issue summarization process...', { source: 'summarize' });
-    }
-    
-    // Build filter criteria based on provided options
-    const filters = {};
-    ['kind', 'status', 'function', 'workstream', 'sig', 'wg'].forEach(key => {
-      if (options[key]) {
-        filters[key === 'wg' ? 'working group' : key] = normalizeFieldValue(options[key]);
-      }
-    });
-    if (options.team !== undefined && options.team !== false) {
-      filters['team'] = normalizeFieldValue(options.team);
-    }
-    
-    if (isCliMode) {
       mainSpinner.text = 'Fetching issues from GitHub project...';
     } else {
       logger.info('Fetching issues from GitHub project...', { source: 'summarize' });
     }
     
     // Fetch all items
-    const allItems = await fetchPaginated(
-      LIST_ITEMS_QUERY,
-      { projectId: ROADMAP_BOARD_ID, first },
-      result => result.node.items
-    );
+    const result = await listItems(options);
     
-    if (isCliMode) {
-      mainSpinner.text = 'Applying filters to issues...';
-    } else {
-      logger.info('Applying filters to issues...', { source: 'summarize' });
-    }
-    
-    // Apply filters with normalization
-    const filtered = allItems.filter(item => {
-      if (!item.fieldValues || !item.fieldValues.nodes) return false;
-      
-      // Apply --no-team filter if specified
-      if (options.team !== undefined && options.team === false) {
-        const hasTeam = item.fieldValues.nodes.some(node => 
-          node.field &&
-          node.field.name &&
-          node.field.name.toLowerCase() === 'team' &&
-          typeof node.name === 'string' &&
-          node.name.trim() !== ''
-        );
-        if (hasTeam) return false;
-      }
-      
-      // Apply other filters with normalization for case insensitivity and emojis
-      return Object.entries(filters).every(([filterKey, normalizedFilterValue]) => {
-        const matchingField = item.fieldValues.nodes.find(node => {
-          if (!node.field) return false;
-          return node.field.name && node.field.name.toLowerCase() === filterKey;
-        });
-        
-        if (!matchingField) return false;
-        
-        const normalizedFieldValue = normalizeFieldValue(matchingField.name);
-        
-        // Consider match if either contains the other after normalization
-        return normalizedFieldValue.includes(normalizedFilterValue) || 
-               normalizedFilterValue.includes(normalizedFieldValue);
-      });
-    });
-    
-    if (filtered.length === 0) {
+    if (result.data.length === 0) {
       if (isCliMode) {
         mainSpinner.fail('No issues found matching provided filters.');
       } else {
@@ -265,11 +137,11 @@ export async function summarizeIssues(options, isCliMode = false) {
     }
     
     if (isCliMode) {
-      mainSpinner.succeed(`Found ${filtered.length} issues matching the filters.`);
+      mainSpinner.succeed(`Found ${result.data.length} issues matching the filters.`);
     } else {
-      logger.info(`Found ${filtered.length} issues matching the filters.`, { 
+      logger.info(`Found ${result.data.length} issues matching the filters.`, {
         source: 'summarize', 
-        count: filtered.length 
+        count: result.data.length
       });
     }
     
@@ -284,19 +156,19 @@ export async function summarizeIssues(options, isCliMode = false) {
     const issuesWithDetails = [];
     let counter = 0;
     
-    for (const item of filtered) {
+    for (const item of result.data) {
       counter++;
       
       if (isCliMode) {
-        detailSpinner.text = `Fetching details for issue ${counter}/${filtered.length}`;
+        detailSpinner.text = `Fetching details for issue ${counter}/${result.data.length}`;
       } else {
-        logger.info(`Fetching details for issue ${counter}/${filtered.length}`, { 
+        logger.info(`Fetching details for issue ${counter}/${result.data.length}`, {
           source: 'summarize',
-          progress: { current: counter, total: filtered.length }
+          progress: { current: counter, total: result.data.length }
         });
       }
       
-      const issueDetails = await fetchIssueDetails(item);
+      const issueDetails = await getItemByID(item.id);
       issuesWithDetails.push(issueDetails);
     }
     
