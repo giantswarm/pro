@@ -36,6 +36,7 @@
 import * as state from './state.js';
 import * as api from './api.js';
 import * as ui from '../utils/ui.js';
+import notifications from '../utils/notifications.js';
 
 // Store the original summary for copying
 let currentAnalysisSummary = '';
@@ -68,7 +69,7 @@ export function initAnalysisForm() {
 async function copyAnalysisToClipboard() {
   const copyBtn = document.getElementById('copyAnalysisButton');
   if (!currentAnalysisSummary) {
-    ui.showToast('No analysis results to copy', 'warning');
+    notifications.warning('No analysis results to copy');
     return;
   }
   
@@ -88,10 +89,10 @@ async function copyAnalysisToClipboard() {
       copyBtn.classList.add('btn-outline-secondary');
     }, 2000);
     
-    ui.showToast('Analysis copied to clipboard', 'success');
+    notifications.success('Analysis copied to clipboard');
   } catch (err) {
     console.error('Failed to copy analysis:', err);
-    ui.showToast('Failed to copy to clipboard', 'danger');
+    notifications.error('Failed to copy to clipboard');
   }
 }
 
@@ -193,11 +194,17 @@ export async function generateAIAnalysis() {
     displayAIAnalysisResults(result.data.summary);
     
     // Update status
-    ui.updateOperationStatus('AI analysis completed successfully', 'success');
+    notifications.updateStatus('AI analysis completed successfully', {
+      elementId: 'operationStatus',
+      type: 'success'
+    });
     
   } catch (error) {
     console.error('Error generating AI analysis:', error);
-    ui.updateOperationStatus(`Error: ${error.message}`, 'danger');
+    notifications.updateStatus(`Error: ${error.message}`, {
+      elementId: 'operationStatus',
+      type: 'error'
+    });
   } finally {
     ui.toggleLoadingOverlay(false);
   }

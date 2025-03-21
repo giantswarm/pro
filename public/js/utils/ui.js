@@ -31,6 +31,9 @@
  * - Visual feedback for operation status
  */
 
+// Import the new notifications module
+import notifications from './notifications.js';
+
 /**
  * Shows or hides the loading overlay with a message
  * @param {boolean} show - Whether to show or hide the overlay
@@ -117,12 +120,26 @@ export function updateStatusMessage(message, isLoading = true) {
  * Updates the operation status text
  * @param {string} message - The message to display
  * @param {string} type - The type of message (success, warning, danger)
+ * @deprecated Use notifications.updateStatus() instead
  */
 export function updateOperationStatus(message, type = 'success') {
-  const statusEl = document.getElementById('fixFieldsStatus');
-  if (!statusEl) return;
+  console.warn('updateOperationStatus is deprecated. Use notifications.updateStatus() instead.');
   
-  statusEl.innerHTML = `<p class="text-${type} mb-0">${message}</p>`;
+  // Map the old type values to the new ones
+  const typeMap = {
+    'success': 'success',
+    'warning': 'warning',
+    'danger': 'error',
+    'primary': 'info'
+  };
+  
+  const mappedType = typeMap[type] || 'info';
+  
+  // Use the new notifications module
+  notifications.updateStatus(message, {
+    elementId: 'fixFieldsStatus',
+    type: mappedType
+  });
 }
 
 /**
@@ -130,63 +147,28 @@ export function updateOperationStatus(message, type = 'success') {
  * @param {string} message - The message to display
  * @param {string} type - The type of message (success, danger, warning, info)
  * @param {number} duration - How long to show the toast in ms
+ * @deprecated Use notifications.show(), notifications.success(), notifications.error(), etc. instead
  */
 export function showToast(message, type = 'success', duration = 3000) {
-  // Create toast container if it doesn't exist
-  let toastContainer = document.getElementById('toast-container');
-  if (!toastContainer) {
-    toastContainer = document.createElement('div');
-    toastContainer.id = 'toast-container';
-    toastContainer.className = 'position-fixed bottom-0 end-0 p-3';
-    toastContainer.style.zIndex = '1050';
-    document.body.appendChild(toastContainer);
-  }
+  console.warn('showToast is deprecated. Use notifications methods instead.');
   
-  // Create toast element
-  const toastId = `toast-${Date.now()}`;
-  const toast = document.createElement('div');
-  toast.id = toastId;
-  toast.className = `toast show bg-${type} text-white`;
-  toast.setAttribute('role', 'alert');
-  toast.setAttribute('aria-live', 'assertive');
-  toast.setAttribute('aria-atomic', 'true');
+  // Map the old type values to the new ones
+  const typeMap = {
+    'success': 'success',
+    'warning': 'warning',
+    'danger': 'error',
+    'info': 'info',
+    'primary': 'info'
+  };
   
-  // Add toast content
-  toast.innerHTML = `
-    <div class="toast-header bg-${type} text-white">
-      <strong class="me-auto">Notification</strong>
-      <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast" aria-label="Close"></button>
-    </div>
-    <div class="toast-body">
-      ${message}
-    </div>
-  `;
+  const mappedType = typeMap[type] || 'info';
   
-  // Add to container
-  toastContainer.appendChild(toast);
-  
-  // Close button functionality
-  const closeBtn = toast.querySelector('.btn-close');
-  if (closeBtn) {
-    closeBtn.addEventListener('click', () => {
-      toast.classList.remove('show');
-      setTimeout(() => {
-        toastContainer.removeChild(toast);
-      }, 300);
-    });
-  }
-  
-  // Auto-remove after duration
-  setTimeout(() => {
-    if (document.getElementById(toastId)) {
-      toast.classList.remove('show');
-      setTimeout(() => {
-        if (document.getElementById(toastId) && toastContainer.contains(toast)) {
-          toastContainer.removeChild(toast);
-        }
-      }, 300);
-    }
-  }, duration);
+  // Use the new notifications module
+  notifications.show({
+    message: message,
+    type: mappedType,
+    duration: duration
+  });
 }
 
 /**

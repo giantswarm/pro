@@ -96,14 +96,21 @@ export async function findIssuesWithEmptyFields() {
   ui.toggleLoadingOverlay(true, 'Starting issue search process...');
   
   // Update status
-  ui.updateOperationStatus('Loading issues...', 'primary');
+  notifications.updateStatus('Loading issues...', {
+    elementId: 'fixFieldsStatus',
+    type: 'info',
+    loading: true
+  });
   
   // Get form values
   const fieldType = document.getElementById('fixFieldType').value;
   let teamValue = document.getElementById('fixTeam').value;
   
   if (!fieldType) {
-    ui.updateOperationStatus('Please select a field type to fix', 'danger');
+    notifications.updateStatus('Please select a field type to fix', {
+      elementId: 'fixFieldsStatus',
+      type: 'error'
+    });
     ui.toggleLoadingOverlay(false);
     return;
   }
@@ -151,7 +158,10 @@ export async function findIssuesWithEmptyFields() {
     }
     
     if (!result.data || result.data.length === 0) {
-      ui.updateOperationStatus('No issues found matching your criteria', 'warning');
+      notifications.updateStatus('No issues found matching your criteria', {
+        elementId: 'fixFieldsStatus',
+        type: 'warning'
+      });
       ui.toggleLoadingOverlay(false);
       document.getElementById('issuesContainer').style.display = 'none';
       return;
@@ -193,7 +203,10 @@ export async function findIssuesWithEmptyFields() {
     state.updateStateProperty('emptyFieldItems', emptyFieldItems);
     
     if (emptyFieldItems.length === 0) {
-      ui.updateOperationStatus(`No issues found with empty ${fieldType} fields`, 'success');
+      notifications.updateStatus(`No issues found with empty ${fieldType} fields`, {
+        elementId: 'fixFieldsStatus',
+        type: 'success'
+      });
       ui.toggleLoadingOverlay(false);
       document.getElementById('issuesContainer').style.display = 'none';
       return;
@@ -210,7 +223,10 @@ export async function findIssuesWithEmptyFields() {
     document.getElementById('issuesContainer').style.display = 'block';
     
     // Update status
-    ui.updateOperationStatus(`Found ${emptyFieldItems.length} issues with empty ${fieldType} fields`, 'success');
+    notifications.updateStatus(`Found ${emptyFieldItems.length} issues with empty ${fieldType} fields`, {
+      elementId: 'fixFieldsStatus',
+      type: 'success'
+    });
     ui.updateLoadingStatus(`Found ${emptyFieldItems.length} issues with empty ${fieldType} fields`, 'success');
     
     // Update the start fixing button text to be clearer
@@ -218,7 +234,10 @@ export async function findIssuesWithEmptyFields() {
     
   } catch (error) {
     console.error('Error fetching items:', error);
-    ui.updateOperationStatus(`Error: ${error.message}`, 'danger');
+    notifications.updateStatus(`Error: ${error.message}`, {
+      elementId: 'fixFieldsStatus',
+      type: 'error'
+    });
     ui.updateLoadingStatus(`Error fetching items: ${error.message}`, 'error');
   } finally {
     ui.toggleLoadingOverlay(false);
@@ -395,9 +414,9 @@ export async function fixSingleIssue(index) {
     await getSuggestionForRow(item, index, fieldType);
   } catch (error) {
     console.error(`Error fixing single issue at index ${index}:`, error);
-    notifications.updateStatus(`Error: ${error.message}`, { 
-      elementId: 'fixFieldsStatus', 
-      type: 'error' 
+    notifications.updateStatus(`Error: ${error.message}`, {
+      elementId: 'fixFieldsStatus',
+      type: 'error'
     });
   }
 }
@@ -456,13 +475,19 @@ export async function startFixingEmptyFields() {
     // Wait for all items to be processed
     await Promise.all(promises);
     
-    ui.updateOperationStatus(
+    notifications.updateStatus(
       `<strong>Suggestions retrieved for all ${stateObj.emptyFieldItems.length} issues.</strong> You must click "Accept" on each suggestion you want to apply.`,
-      'success'
+      {
+        elementId: 'fixFieldsStatus',
+        type: 'success'
+      }
     );
   } catch (error) {
     console.error('Error getting suggestions:', error);
-    ui.updateOperationStatus(`Error: ${error.message}`, 'danger');
+    notifications.updateStatus(`Error: ${error.message}`, {
+      elementId: 'fixFieldsStatus',
+      type: 'error'
+    });
   } finally {
     ui.toggleLoadingOverlay(false);
     
@@ -768,7 +793,7 @@ function getSuggestionForRow(rowOrItem, issueOrIndex, providedFieldType) {
                 }
                 
                 // Show success message
-                ui.showToast('Field updated successfully!', 'success');
+                notifications.success('Field updated successfully!');
                 
                 // Remove suggestion 
                 suggestionCell.innerHTML = '';
@@ -785,7 +810,7 @@ function getSuggestionForRow(rowOrItem, issueOrIndex, providedFieldType) {
               })
               .catch(error => {
                 console.error('Error updating field:', error);
-                ui.showToast(`Error: ${error.message}`, 'danger');
+                notifications.error(`Error: ${error.message}`);
                 // Restore the Get Suggestion button
                 actionCell.innerHTML = originalActionContent;
                 
@@ -799,7 +824,7 @@ function getSuggestionForRow(rowOrItem, issueOrIndex, providedFieldType) {
               });
           }
         } else {
-          alert('Please select a field value');
+          notifications.warning('Please select a field value');
         }
       });
       

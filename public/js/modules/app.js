@@ -49,14 +49,15 @@ import notifications from '../utils/notifications.js';
 export async function initApp() {
   try {
     console.log('Initializing application...');
-    
+    ui.toggleLoadingOverlay(true, 'Loading application data...');
+
     // Initialize theme and UI components
     initGiantSwarmBranding();
     initDarkMode();
     initTabs();
     
     // Setup WebSocket connection
-    initWebSocket();
+    websocket.initWebSocket();
     
     // Initialize feature modules
     initFieldFixing();
@@ -234,44 +235,38 @@ function initDarkMode() {
 }
 
 /**
- * Initialize tab navigation
+ * Initialize tab switching functionality
  */
 function initTabs() {
-  const tabNavs = document.querySelectorAll('.nav-link');
-  const tabContents = document.querySelectorAll('.tab-pane');
-  
-  tabNavs.forEach(tab => {
-    tab.addEventListener('click', (e) => {
-      e.preventDefault();
+  // Tab handling
+  const tabButtons = document.querySelectorAll('.nav-link[data-bs-toggle="tab"]');
+  tabButtons.forEach(button => {
+    button.addEventListener('click', (e) => {
+      const targetId = e.target.getAttribute('data-bs-target');
       
-      // Remove active class from all tabs and contents
-      tabNavs.forEach(t => t.classList.remove('active'));
-      tabContents.forEach(c => c.classList.remove('active', 'show'));
-      
-      // Add active class to clicked tab
-      tab.classList.add('active');
-      
-      // Get target content and show it
-      const targetId = tab.getAttribute('href').substring(1);
-      const targetContent = document.getElementById(targetId);
-      if (targetContent) {
-        targetContent.classList.add('active', 'show');
-      }
-      
-      // Hide any result containers when switching tabs
-      const resultContainers = document.querySelectorAll('.result-container');
-      resultContainers.forEach(container => {
-        container.style.display = 'none';
+      // Hide previous tab container
+      document.querySelectorAll('.tab-pane').forEach(pane => {
+        pane.classList.remove('show', 'active');
       });
       
-      // Hide the issues container when switching tabs
+      // Show selected tab
+      const targetPane = document.querySelector(targetId);
+      if (targetPane) {
+        targetPane.classList.add('show', 'active');
+      }
+      
+      // Update active tab button
+      tabButtons.forEach(btn => btn.classList.remove('active'));
+      e.target.classList.add('active');
+      
+      // Hide issues container when switching tabs
       const issuesContainer = document.getElementById('issuesContainer');
       if (issuesContainer) {
         issuesContainer.style.display = 'none';
       }
       
       // Reset operation status
-      ui.updateOperationStatus('', '');
+      notifications.updateStatus('', { elementId: 'operationStatus' });
     });
   });
 }
@@ -333,4 +328,22 @@ function populateSelectOptions() {
   if (stateObj.fieldOptions.fieldTypes) {
     ui.populateSelectOptions('fixFieldType', stateObj.fieldOptions.fieldTypes, false);
   }
-} 
+}
+
+async function initAiAnalysis() {
+  const fieldOptions = await api.fetchFieldOptions();
+
+  if (fieldOptions.status === 'success' && fieldOptions.data) {
+    state.updateStateProperty('fieldOptions', fieldOptions.data);
+
+    // Initialize forms with loaded data
+    populateSelectOptions();
+
+    // Initialize AI analysis form
+    aiAnalysis.initAnalysisForm();
+
+    ui.updateOperationStatus('Application initialized', 'success');
+  } else {
+    throw new Error('Failed to load field options');
+  }
+}
