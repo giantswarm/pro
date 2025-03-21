@@ -71,12 +71,14 @@ async function analyzeIssues(issues) {
 I have the following GitHub issues that need to be analyzed:
 
 ${simplifiedIssues.map((issue, index) => `
-ISSUE ${index + 1}: #${issue.number} - ${issue.title}
+ISSUE #${issue.number}: - ${issue.title}
+URL: ${issue.url}
 Author: ${issue.author}
 Assignees: ${issue.assignees}
 Fields: ${Object.entries(issue.fields).map(([key, value]) => `${key}: ${value}`).join(', ')}
 Description: ${issue.body || 'No description provided'}
 Comments: ${issue.comments}
+Labels: ${issue.labels}
 ---
 `).join('\n')}
 
@@ -169,7 +171,9 @@ export async function summarizeIssues(options, isCliMode = false) {
       }
       
       const issueDetails = await getItemByID(item.id);
-      issuesWithDetails.push(issueDetails);
+      // merge issueDetails with item
+      const mergedIssue = { ...item, ...issueDetails };
+      issuesWithDetails.push(mergedIssue);
     }
     
     if (isCliMode) {

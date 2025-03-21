@@ -39,6 +39,7 @@ export async function getItemByID(itemId) {
     let item = {
         number: '',
         title: '',
+        url: '',
         body: '',
         author: '',
         assignees: [],
@@ -54,6 +55,7 @@ export async function getItemByID(itemId) {
       if (issueDetails && issueDetails.node && issueDetails.node.content) {
         item.number = issueDetails.node.content.number || '';
         item.title = issueDetails.node.content.title || '';
+        item.url = issueDetails.node.content.url || '';
         item.author = issueDetails.node.content.author?.login || '';
         item.body = issueDetails.node.content.bodyText || '';
         if (issueDetails.node.content.assignees && issueDetails.node.content.assignees.nodes) {
