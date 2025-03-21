@@ -242,6 +242,9 @@ function formatMarkdown(markdown) {
     // Italic
     .replace(/\*(.*?)\*/g, '<em>$1</em>')
     
+    // Highlight warnings for old issues (emoji + bold text)
+    .replace(/⚠️\s*\*\*(.*?)\*\*/g, '<span class="old-issue-warning">⚠️ <strong>$1</strong></span>')
+    
     // Lists
     .replace(/^\- (.*$)/gim, '<li>$1</li>')
     .replace(/^\d+\. (.*$)/gim, '<li>$1</li>')

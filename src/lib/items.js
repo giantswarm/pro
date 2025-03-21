@@ -45,7 +45,10 @@ export async function getItemByID(itemId) {
         assignees: [],
         comments: [],
         labels: [],
-        projects: []
+        projects: [],
+        createdAt: null,
+        updatedAt: null,
+        closedAt: null
     }
     
     const detailSpinner = ora('Fetching issue details...').start();
@@ -58,11 +61,21 @@ export async function getItemByID(itemId) {
         item.url = issueDetails.node.content.url || '';
         item.author = issueDetails.node.content.author?.login || '';
         item.body = issueDetails.node.content.bodyText || '';
+        
+        // Extract date information
+        item.createdAt = issueDetails.node.content.createdAt || null;
+        item.updatedAt = issueDetails.node.content.updatedAt || null;
+        item.closedAt = issueDetails.node.content.closedAt || null;
+        
         if (issueDetails.node.content.assignees && issueDetails.node.content.assignees.nodes) {
           item.assignees = issueDetails.node.content.assignees.nodes.map(a => a.login);
         }
         if (issueDetails.node.content.comments && issueDetails.node.content.comments.nodes) {
-          item.comments = issueDetails.node.content.comments.nodes.map(c => c.bodyText);
+          // Include comment body and timestamps
+          item.comments = issueDetails.node.content.comments.nodes.map(c => ({
+            bodyText: c.bodyText,
+            createdAt: c.createdAt
+          }));
         }
         if (issueDetails.node.content.labels && issueDetails.node.content.labels.nodes) {
           item.labels = issueDetails.node.content.labels.nodes.map(l => l.name);

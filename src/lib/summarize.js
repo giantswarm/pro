@@ -49,13 +49,25 @@ async function analyzeIssues(issues) {
       issue.body.substring(0, 300) + '...' : 
       issue.body;
     
+    // Get formatted comments with timestamps if available
     const commentsPreview = issue.comments.length > 0 ? 
-      issue.comments.slice(0, 2).map(c => 
-        c.length > 200 ? c.substring(0, 200) + '...' : c
-      ).join('\n---\n') : 
+      issue.comments.slice(0, 2).map((c, i) => {
+        const commentText = typeof c === 'string' ? 
+          (c.length > 200 ? c.substring(0, 200) + '...' : c) :
+          (c.bodyText.length > 200 ? c.bodyText.substring(0, 200) + '...' : c.bodyText);
+        
+        // Add timestamp if available
+        const timestamp = c.createdAt ? ` (${new Date(c.createdAt).toISOString().split('T')[0]})` : '';
+        return `Comment ${i+1}${timestamp}: ${commentText}`;
+      }).join('\n---\n') : 
       'No comments';
-
-      return {
+    
+    // Calculate issue age in days if createdAt is available
+    const createdDate = issue.createdAt ? new Date(issue.createdAt) : null;
+    const today = new Date();
+    const ageInDays = createdDate ? Math.floor((today - createdDate) / (1000 * 60 * 60 * 24)) : null;
+    
+    return {
       title: issue.title,
       number: issue.number,
       url: issue.url,
@@ -65,6 +77,11 @@ async function analyzeIssues(issues) {
       fields: issue.fields,
       body: bodyPreview,
       comments: commentsPreview,
+      createdAt: issue.createdAt ? new Date(issue.createdAt).toISOString().split('T')[0] : 'Unknown',
+      updatedAt: issue.updatedAt ? new Date(issue.updatedAt).toISOString().split('T')[0] : 'Unknown',
+      closedAt: issue.closedAt ? new Date(issue.closedAt).toISOString().split('T')[0] : null,
+      ageInDays: ageInDays,
+      isOld: ageInDays !== null && ageInDays > 30
     };
   });
 
@@ -78,6 +95,9 @@ URL: ${issue.url}
 Author: ${issue.author}
 Assignees: ${issue.assignees}
 Labels: ${issue.labels}
+Created: ${issue.createdAt}${issue.isOld ? ' (OLD - ' + issue.ageInDays + ' days)' : ''}
+Last Updated: ${issue.updatedAt}
+${issue.closedAt ? `Closed: ${issue.closedAt}` : 'Status: Open'}
 Fields: ${Object.entries(issue.fields).map(([key, field]) => `${field.name}: ${field.value}`).join(', ')}
 Description: ${issue.body || 'No description provided'}
 Comments: ${issue.comments}
@@ -89,9 +109,12 @@ Based on these issues, please provide:
 1. A concise summary of the overall themes and topics represented in these issues
 2. A logical grouping of these issues by category or theme
 3. A suggested priority order for addressing these issues, with a brief explanation for each priority
-4. Any potential dependencies or relationships between issues that might affect planning
+4. An analysis of issue age distribution and identification of stagnant issues (older than 30 days)
+5. Any potential dependencies or relationships between issues that might affect planning
 
 When referring to an issue by number (e.g., #123), always format it as a proper Markdown link to the issue URL using this format: [#123]($URL). Replace $URL with the actual URL of the issue.
+
+Please highlight old issues (>30 days) in your analysis using **bold formatting and a ⚠️ warning emoji**. These require special attention as they may have been overlooked.
 
 Please format your response with clear Markdown headings (using # and ##) for each section. Use proper Markdown formatting for lists, emphasis, and code blocks where appropriate. This will be displayed directly in a web interface that supports Markdown rendering.`;
 

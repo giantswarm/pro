@@ -961,3 +961,29 @@ badge.bg-danger {
   font-size: 1.25rem;
   margin: 0 !important;
 }
+
+/* Old Issue Warning */
+.old-issue-warning {
+  display: inline-block;
+  padding: 0.25rem 0.5rem;
+  margin: 0.25rem 0;
+  background-color: rgba(var(--gs-warning-rgb), 0.1);
+  border-left: 3px solid var(--gs-warning);
+  border-radius: 0.25rem;
+  color: var(--gs-warning-text);
+  font-weight: 600;
+}
+
+.dark-theme .old-issue-warning {
+  background-color: rgba(var(--gs-warning-rgb), 0.2);
+  color: var(--gs-warning);
+}
+
+.old-issue-warning strong {
+  font-weight: 700;
+  color: var(--gs-warning-text);
+}
+
+.dark-theme .old-issue-warning strong {
+  color: var(--gs-warning);
+}

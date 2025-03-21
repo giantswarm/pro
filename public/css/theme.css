@@ -86,20 +86,24 @@
   --gs-text-color: var(--gs-electric-text);
   --gs-text-muted: var(--gs-shadow-blue);
   --gs-link: var(--gs-shadow-blue);
-  --gs-link-hover: var(--gs-vivid-blue);
+  --gs-link-hover: var(--gs-blue);
   --gs-border-color: var(--gs-shadow-blue);
   --gs-border-radius: 12px;
-  --gs-accent-color: var(--gs-orange);
+  --gs-accent-color: var(--gs-green);
   --gs-headline-color: var(--gs-blue);
   
   --gs-success: var(--gs-green);
+  --gs-success-rgb: 67, 220, 103;
   --gs-warning: var(--gs-orange);
-  --gs-danger: #ff3b30;     /* Alert red */
-  --gs-info: var(--gs-sky-20);
-  --gs-success-text: var(--gs-text-color);
-  --gs-warning-text : var(--gs-text-color);
+  --gs-warning-rgb: 232, 109, 0;
+  --gs-danger: #e04444;
+  --gs-danger-rgb: 224, 68, 68;
+  --gs-info: var(--gs-vivid-blue);
+  --gs-info-rgb: 0, 159, 255;
+  --gs-success-text: var(--gs-blue);
+  --gs-warning-text: var(--gs-blue);
   --gs-danger-text: var(--gs-white);
-  --gs-info-text: var(--gs-text-color);
+  --gs-info-text: var(--gs-white);
   
   /* Header and Footer */
   --gs-header-bg: var(--gs-blue);
@@ -169,9 +173,13 @@
   --gs-headline-color: var(--gs-light-white);
 
   --gs-success: var(--gs-green);
+  --gs-success-rgb: 67, 220, 103;
   --gs-warning: var(--gs-orange);
+  --gs-warning-rgb: 232, 109, 0;
   --gs-danger: #ff3b30;     /* Alert red */
+  --gs-danger-rgb: 255, 59, 48;
   --gs-info: var(--gs-vivid-blue-20);
+  --gs-info-rgb: 0, 159, 255;
   --gs-success-text: var(--gs-black);
   --gs-warning-text : var(--gs-black);
   --gs-danger-text: var(--gs-black);

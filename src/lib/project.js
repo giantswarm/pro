@@ -222,12 +222,18 @@ const ISSUE_DETAIL_QUERY = `
             number
             url
             bodyText
+            createdAt
+            updatedAt
+            closedAt
             author { login }
             assignees (first: 10) {
               nodes { login }
             }
             comments (first: 100) {
-              nodes { bodyText }
+              nodes {
+                bodyText
+                createdAt
+              }
             }
             projectsV2 (first: 10) {
               nodes { title }
