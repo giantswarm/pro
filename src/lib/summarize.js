@@ -55,14 +55,16 @@ async function analyzeIssues(issues) {
       ).join('\n---\n') : 
       'No comments';
 
-    return {
+      return {
       title: issue.title,
       number: issue.number,
+      url: issue.url,
       author: issue.author,
       assignees: issue.assignees.join(', ') || 'None',
+      labels: issue.labels.join(', ') || 'None',
+      fields: issue.fields,
       body: bodyPreview,
       comments: commentsPreview,
-      fields: issue.fields
     };
   });
 
@@ -75,10 +77,10 @@ ISSUE #${issue.number}: - ${issue.title}
 URL: ${issue.url}
 Author: ${issue.author}
 Assignees: ${issue.assignees}
-Fields: ${Object.entries(issue.fields).map(([key, value]) => `${key}: ${value}`).join(', ')}
+Labels: ${issue.labels}
+Fields: ${Object.entries(issue.fields).map(([key, field]) => `${field.name}: ${field.value}`).join(', ')}
 Description: ${issue.body || 'No description provided'}
 Comments: ${issue.comments}
-Labels: ${issue.labels}
 ---
 `).join('\n')}
 
@@ -88,6 +90,8 @@ Based on these issues, please provide:
 2. A logical grouping of these issues by category or theme
 3. A suggested priority order for addressing these issues, with a brief explanation for each priority
 4. Any potential dependencies or relationships between issues that might affect planning
+
+When referring to an issue by number (e.g., #123), always format it as a proper Markdown link to the issue URL using this format: [#123]($URL). Replace $URL with the actual URL of the issue.
 
 Please format your response with clear Markdown headings (using # and ##) for each section. Use proper Markdown formatting for lists, emphasis, and code blocks where appropriate. This will be displayed directly in a web interface that supports Markdown rendering.`;
 
