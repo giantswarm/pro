@@ -75,7 +75,7 @@ describe('close_issue / reopen_issue exports', () => {
 describe('handleCloseIssue', () => {
   it('closes an issue with the default stateReason (completed)', async (t) => {
     const calls = mockGraphQLSequence(t, [
-      { node: { content: ISSUE_CONTENT } },
+      { nodes: [{ id: 'PVTI_item1', content: ISSUE_CONTENT }] },
       { closeIssue: { issue: { ...ISSUE_CONTENT, state: 'CLOSED', stateReason: 'COMPLETED' } } }
     ]);
 
@@ -94,7 +94,7 @@ describe('handleCloseIssue', () => {
 
   it('maps stateReason "not_planned" to the NOT_PLANNED enum', async (t) => {
     const calls = mockGraphQLSequence(t, [
-      { node: { content: ISSUE_CONTENT } },
+      { nodes: [{ id: 'PVTI_item1', content: ISSUE_CONTENT }] },
       { closeIssue: { issue: { ...ISSUE_CONTENT, state: 'CLOSED', stateReason: 'NOT_PLANNED' } } }
     ]);
 
@@ -107,7 +107,7 @@ describe('handleCloseIssue', () => {
 
   it('posts a comment before closing when comment is provided', async (t) => {
     const calls = mockGraphQLSequence(t, [
-      { node: { content: ISSUE_CONTENT } },
+      { nodes: [{ id: 'PVTI_item1', content: ISSUE_CONTENT }] },
       { addComment: { commentEdge: { node: { id: 'IC_1', url: 'https://github.com/o/r/issues/42#issuecomment-1' } } } },
       { closeIssue: { issue: { ...ISSUE_CONTENT, state: 'CLOSED', stateReason: 'COMPLETED' } } }
     ]);
@@ -125,7 +125,7 @@ describe('handleCloseIssue', () => {
   });
 
   it('returns an error when the item has no underlying issue', async (t) => {
-    mockGraphQLSequence(t, [{ node: { content: null } }]);
+    mockGraphQLSequence(t, [{ nodes: [{ id: 'PVTI_missing', content: null }] }]);
 
     const result = await handleCloseIssue({ itemId: 'PVTI_missing' });
     assert.ok(result.error);
@@ -133,7 +133,7 @@ describe('handleCloseIssue', () => {
   });
 
   it('returns an error for an unrecognized non-empty stateReason without any GraphQL calls', async (t) => {
-    const calls = mockGraphQLSequence(t, [{ node: { content: ISSUE_CONTENT } }]);
+    const calls = mockGraphQLSequence(t, [{ nodes: [{ id: 'PVTI_item1', content: ISSUE_CONTENT }] }]);
 
     const result = await handleCloseIssue({ itemId: 'PVTI_item1', stateReason: 'wontfix' });
     assert.ok(result.error);
@@ -143,7 +143,7 @@ describe('handleCloseIssue', () => {
   });
 
   it('rejects an invalid stateReason before posting a comment (no side effects)', async (t) => {
-    const calls = mockGraphQLSequence(t, [{ node: { content: ISSUE_CONTENT } }]);
+    const calls = mockGraphQLSequence(t, [{ nodes: [{ id: 'PVTI_item1', content: ISSUE_CONTENT }] }]);
 
     const result = await handleCloseIssue({ itemId: 'PVTI_item1', comment: 'Closing this out', stateReason: 'wontfix' });
     assert.ok(result.error);
@@ -153,7 +153,7 @@ describe('handleCloseIssue', () => {
   });
 
   it('requires confirmPublicSafe when posting a comment to a public repo', async (t) => {
-    const calls = mockGraphQLSequence(t, [{ node: { content: PUBLIC_ISSUE_CONTENT } }]);
+    const calls = mockGraphQLSequence(t, [{ nodes: [{ id: 'PVTI_item2', content: PUBLIC_ISSUE_CONTENT }] }]);
 
     const result = await handleCloseIssue({ itemId: 'PVTI_item2', comment: 'Closing per request' });
     assert.ok(result.error);
@@ -165,7 +165,7 @@ describe('handleCloseIssue', () => {
 
   it('proceeds with a public-repo comment when confirmPublicSafe=true', async (t) => {
     const calls = mockGraphQLSequence(t, [
-      { node: { content: PUBLIC_ISSUE_CONTENT } },
+      { nodes: [{ id: 'PVTI_item2', content: PUBLIC_ISSUE_CONTENT }] },
       { addComment: { commentEdge: { node: { id: 'IC_3', url: 'https://github.com/giantswarm/roadmap/issues/7#issuecomment-3' } } } },
       { closeIssue: { issue: { ...PUBLIC_ISSUE_CONTENT, state: 'CLOSED', stateReason: 'COMPLETED' } } }
     ]);
@@ -183,7 +183,7 @@ describe('handleCloseIssue', () => {
 
   it('does not gate a comment on a private repo', async (t) => {
     const calls = mockGraphQLSequence(t, [
-      { node: { content: ISSUE_CONTENT } },
+      { nodes: [{ id: 'PVTI_item1', content: ISSUE_CONTENT }] },
       { addComment: { commentEdge: { node: { id: 'IC_4', url: 'https://github.com/o/r/issues/42#issuecomment-4' } } } },
       { closeIssue: { issue: { ...ISSUE_CONTENT, state: 'CLOSED', stateReason: 'COMPLETED' } } }
     ]);
@@ -203,7 +203,7 @@ describe('handleCloseIssue', () => {
 describe('handleReopenIssue', () => {
   it('reopens an issue', async (t) => {
     const calls = mockGraphQLSequence(t, [
-      { node: { content: { ...ISSUE_CONTENT, state: 'CLOSED' } } },
+      { nodes: [{ id: 'PVTI_item1', content: { ...ISSUE_CONTENT, state: 'CLOSED' } }] },
       { reopenIssue: { issue: { ...ISSUE_CONTENT, state: 'OPEN' } } }
     ]);
 
@@ -218,7 +218,7 @@ describe('handleReopenIssue', () => {
 
   it('posts a comment before reopening when comment is provided', async (t) => {
     const calls = mockGraphQLSequence(t, [
-      { node: { content: { ...ISSUE_CONTENT, state: 'CLOSED' } } },
+      { nodes: [{ id: 'PVTI_item1', content: { ...ISSUE_CONTENT, state: 'CLOSED' } }] },
       { addComment: { commentEdge: { node: { id: 'IC_2', url: 'https://github.com/o/r/issues/42#issuecomment-2' } } } },
       { reopenIssue: { issue: { ...ISSUE_CONTENT, state: 'OPEN' } } }
     ]);
@@ -233,7 +233,7 @@ describe('handleReopenIssue', () => {
   });
 
   it('returns an error when the item has no underlying issue', async (t) => {
-    mockGraphQLSequence(t, [{ node: { content: null } }]);
+    mockGraphQLSequence(t, [{ nodes: [{ id: 'PVTI_missing', content: null }] }]);
 
     const result = await handleReopenIssue({ itemId: 'PVTI_missing' });
     assert.ok(result.error);
@@ -241,7 +241,7 @@ describe('handleReopenIssue', () => {
   });
 
   it('requires confirmPublicSafe when posting a comment to a public repo', async (t) => {
-    const calls = mockGraphQLSequence(t, [{ node: { content: { ...PUBLIC_ISSUE_CONTENT, state: 'CLOSED' } } }]);
+    const calls = mockGraphQLSequence(t, [{ nodes: [{ id: 'PVTI_item2', content: { ...PUBLIC_ISSUE_CONTENT, state: 'CLOSED' } }] }]);
 
     const result = await handleReopenIssue({ itemId: 'PVTI_item2', comment: 'Reopening, still relevant' });
     assert.ok(result.error);
@@ -251,7 +251,7 @@ describe('handleReopenIssue', () => {
 
   it('proceeds with a public-repo comment when confirmPublicSafe=true', async (t) => {
     const calls = mockGraphQLSequence(t, [
-      { node: { content: { ...PUBLIC_ISSUE_CONTENT, state: 'CLOSED' } } },
+      { nodes: [{ id: 'PVTI_item2', content: { ...PUBLIC_ISSUE_CONTENT, state: 'CLOSED' } }] },
       { addComment: { commentEdge: { node: { id: 'IC_5', url: 'https://github.com/giantswarm/roadmap/issues/7#issuecomment-5' } } } },
       { reopenIssue: { issue: { ...PUBLIC_ISSUE_CONTENT, state: 'OPEN' } } }
     ]);

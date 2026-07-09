@@ -5,7 +5,6 @@ process.env.GITHUB_API_TOKEN = 'test-token';
 
 const { octokit } = await import('./rest-api.js');
 const {
-  resolveItemIssueRefs,
   fetchIssueComments,
   listIssueCommentsForItems,
   MAX_ITEMS_PER_CALL,
@@ -20,35 +19,6 @@ function graphqlResponse(dataObj) {
     headers: { 'content-type': 'application/json' }
   });
 }
-
-// ---------------------------------------------------------------------------
-// resolveItemIssueRefs
-// ---------------------------------------------------------------------------
-
-describe('resolveItemIssueRefs', () => {
-  it('resolves items to owner/repo/number, preserving input order', async (t) => {
-    t.mock.method(globalThis, 'fetch', async () => graphqlResponse({
-      nodes: [
-        { id: 'PVTI_1', content: { number: 5, repository: { nameWithOwner: 'giantswarm/pro' } } },
-        null
-      ]
-    }));
-
-    const refs = await resolveItemIssueRefs(['PVTI_1', 'PVTI_2']);
-
-    assert.deepStrictEqual(refs.get('PVTI_1'), { owner: 'giantswarm', repo: 'pro', number: 5 });
-    assert.strictEqual(refs.get('PVTI_2'), null);
-  });
-
-  it('treats a node with no issue content as unresolved', async (t) => {
-    t.mock.method(globalThis, 'fetch', async () => graphqlResponse({
-      nodes: [{ id: 'PVTI_1', content: null }]
-    }));
-
-    const refs = await resolveItemIssueRefs(['PVTI_1']);
-    assert.strictEqual(refs.get('PVTI_1'), null);
-  });
-});
 
 // ---------------------------------------------------------------------------
 // fetchIssueComments
@@ -263,7 +233,7 @@ describe('listIssueCommentsForItems', () => {
   it('resolves items then fetches comments per item, marking unresolved items with an error', async (t) => {
     t.mock.method(globalThis, 'fetch', async () => graphqlResponse({
       nodes: [
-        { id: 'PVTI_1', content: { number: 5, repository: { nameWithOwner: 'giantswarm/pro' } } },
+        { id: 'PVTI_1', content: { id: 'I_1', number: 5, repository: { isPrivate: false, nameWithOwner: 'giantswarm/pro' } } },
         null
       ]
     }));
@@ -283,7 +253,7 @@ describe('listIssueCommentsForItems', () => {
 
   it('applies the default maxPerIssue when an invalid value is passed', async (t) => {
     t.mock.method(globalThis, 'fetch', async () => graphqlResponse({
-      nodes: [{ id: 'PVTI_1', content: { number: 1, repository: { nameWithOwner: 'o/r' } } }]
+      nodes: [{ id: 'PVTI_1', content: { id: 'I_1', number: 1, repository: { isPrivate: true, nameWithOwner: 'o/r' } } }]
     }));
     t.mock.method(octokit, 'request', async () => ({
       data: Array.from({ length: 30 }, (_, i) => ({

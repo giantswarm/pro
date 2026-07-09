@@ -6,7 +6,7 @@
  *     events for the issue underlying a project board item.
  */
 
-import { getItemByID } from '../items.js';
+import { resolveItemIssues } from '../items.js';
 import { getIssueTimeline, MAX_TIMELINE_EVENTS } from '../timeline.js';
 import { logger } from '../logger.js';
 
@@ -58,17 +58,16 @@ export async function handleGetIssueTimeline(args, extra) {
       itemId: args.itemId, since: args.since, until: args.until, eventTypes: args.eventTypes
     });
 
-    const item = await getItemByID(args.itemId, token);
-    if (!item.repository?.nameWithOwner || !item.number) {
+    const issue = (await resolveItemIssues([args.itemId], token)).get(args.itemId);
+    if (!issue) {
       return { error: `Could not resolve item '${args.itemId}' to an underlying issue.` };
     }
-    const [owner, repo] = item.repository.nameWithOwner.split('/');
 
     const result = await getIssueTimeline(
       {
-        owner,
-        repo,
-        issue_number: item.number,
+        owner: issue.owner,
+        repo: issue.repo,
+        issue_number: issue.number,
         since: args.since || null,
         until: args.until || null,
         eventTypes: args.eventTypes || null

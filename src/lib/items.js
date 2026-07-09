@@ -2,7 +2,8 @@
  * Items Management Module
  *
  * Provides functions to list, filter, and update GitHub Project V2 items
- * on a given project board. All functions return data directly
+ * on a given project board, and to resolve items to their underlying issues
+ * (see resolveItemIssues). All functions return data directly
  * without console output.
  */
 
@@ -10,6 +11,7 @@ import { fetchPaginated, graphQLWithAuth } from './api.js';
 import {
   LIST_ITEMS_QUERY,
   ISSUE_DETAIL_QUERY,
+  ITEM_ISSUE_REFS_QUERY,
   UPDATE_ITEM_FIELD_MUTATION
 } from './project.js';
 import { listFields, findMatchingOption } from './fields.js';
@@ -105,6 +107,44 @@ export async function getItemByID(itemId, token) {
   }
 
   return item;
+}
+
+/**
+ * Resolve a batch of project item IDs to their underlying issues in a single
+ * batched GraphQL `nodes(ids:)` request (single item = array of one). This is
+ * THE item -> issue resolution mechanism: consumers that only need the issue
+ * ref (node ID, repo, number, visibility) should use this rather than the
+ * full-payload getItemByID detail fetch.
+ * @param {string[]} itemIds - Project item (PVTI) IDs
+ * @param {string} [token] - Optional per-request GitHub token
+ * @returns {Promise<Map<string, {issueId: string, owner: string, repo: string, number: number, isPrivate: boolean, nameWithOwner: string}|null>>}
+ *   Map from itemId to its issue ref, or null when the item doesn't resolve
+ *   to an accessible Issue (e.g. draft, deleted, or inaccessible content).
+ */
+export async function resolveItemIssues(itemIds, token) {
+  const result = await graphQLWithAuth(ITEM_ISSUE_REFS_QUERY, { ids: itemIds }, token);
+  const nodes = result?.nodes || [];
+  const refs = new Map();
+
+  itemIds.forEach((itemId, i) => {
+    const content = nodes[i]?.content;
+    const nameWithOwner = content?.repository?.nameWithOwner;
+    if (!content?.id || !nameWithOwner || !content.number) {
+      refs.set(itemId, null);
+      return;
+    }
+    const [owner, repo] = nameWithOwner.split('/');
+    refs.set(itemId, {
+      issueId: content.id,
+      owner,
+      repo,
+      number: content.number,
+      isPrivate: content.repository.isPrivate,
+      nameWithOwner
+    });
+  });
+
+  return refs;
 }
 
 /**

@@ -5,7 +5,7 @@
  *
  * Uses node:test's experimental module mocking (`node --experimental-test-
  * module-mocks`, enabled via the "test" script in package.json) because
- * tools.js imports `getItemByID` and `graphQLWithAuth` as named bindings --
+ * tools.js imports `resolveItemIssues` and `graphQLWithAuth` as named bindings --
  * mock.module() must run BEFORE tools.js (and therefore its dependency
  * graph) is first imported, otherwise the already-resolved bindings inside
  * tools.js keep pointing at the real implementations. All mocks below are
@@ -22,13 +22,13 @@ process.env.GITHUB_API_TOKEN = 'test-token';
 // ---------------------------------------------------------------------------
 
 const realItems = await import('../items.js');
-let getItemByIDImpl = async () => {
-  throw new Error('getItemByID not stubbed for this test');
+let resolveItemIssuesImpl = async () => {
+  throw new Error('resolveItemIssues not stubbed for this test');
 };
 mock.module(new URL('../items.js', import.meta.url).href, {
   exports: {
     ...realItems,
-    getItemByID: (...args) => getItemByIDImpl(...args)
+    resolveItemIssues: (...args) => resolveItemIssuesImpl(...args)
   }
 });
 
@@ -52,14 +52,20 @@ const { handleUpdateIssueLabels, handleCreateIssueInProject } = await import('./
 // ---------------------------------------------------------------------------
 
 describe('handleUpdateIssueLabels (handler wiring)', () => {
-  it('resolves owner/repo/number from getItemByID, adds then removes in order, and swallows a remove-404', async (t) => {
-    getItemByIDImpl = async () => ({
+  it('resolves owner/repo/number from resolveItemIssues, adds then removes in order, and swallows a remove-404', async (t) => {
+    resolveItemIssuesImpl = async (itemIds) => new Map([[itemIds[0], {
+      issueId: 'I_1',
+      owner: 'giantswarm',
+      repo: 'giantswarm',
       number: 42,
-      repository: { nameWithOwner: 'giantswarm/giantswarm', isPrivate: false },
-      labels: ['keep-me', 'to-remove']
-    });
+      isPrivate: false,
+      nameWithOwner: 'giantswarm/giantswarm'
+    }]]);
 
     const calls = [];
+    t.mock.method(octokit.rest.issues, 'listLabelsOnIssue', async () => ({
+      data: [{ name: 'keep-me' }, { name: 'to-remove' }]
+    }));
     t.mock.method(octokit.rest.issues, 'getLabel', async () => ({ data: { name: 'new-label' } }));
     t.mock.method(octokit.rest.issues, 'addLabels', async (params) => {
       calls.push({ op: 'add', ...params });
@@ -103,11 +109,17 @@ describe('handleUpdateIssueLabels (handler wiring)', () => {
   });
 
   it('reports only effective additions when a requested label is already on the issue (case-insensitive)', async (t) => {
-    getItemByIDImpl = async () => ({
+    resolveItemIssuesImpl = async (itemIds) => new Map([[itemIds[0], {
+      issueId: 'I_1',
+      owner: 'giantswarm',
+      repo: 'giantswarm',
       number: 42,
-      repository: { nameWithOwner: 'giantswarm/giantswarm', isPrivate: false },
-      labels: ['Keep-Me']
-    });
+      isPrivate: false,
+      nameWithOwner: 'giantswarm/giantswarm'
+    }]]);
+    t.mock.method(octokit.rest.issues, 'listLabelsOnIssue', async () => ({
+      data: [{ name: 'Keep-Me' }]
+    }));
 
     let getLabelCalls = 0;
     let addLabelsCall = null;
@@ -141,12 +153,8 @@ describe('handleUpdateIssueLabels (handler wiring)', () => {
     assert.ok(getLabelCalls > 0);
   });
 
-  it('resolves "Could not resolve the underlying issue" for a draft issue (null repository)', async () => {
-    getItemByIDImpl = async () => ({
-      number: '',
-      repository: null,
-      labels: []
-    });
+  it('resolves "Could not resolve the underlying issue" for a draft issue (unresolvable item)', async () => {
+    resolveItemIssuesImpl = async (itemIds) => new Map([[itemIds[0], null]]);
 
     const result = await handleUpdateIssueLabels({
       itemId: 'PVTI_draft',

@@ -173,6 +173,23 @@ export async function findMissingLabels(owner, repo, labels, token) {
 }
 
 /**
+ * List the label names currently applied to an issue via REST.
+ * Used to snapshot an issue's labels before mutating them, so callers can
+ * report which add/remove requests actually changed anything.
+ *
+ * @param {string} owner - Repository owner
+ * @param {string} repo - Repository name
+ * @param {number} issue_number - Issue number
+ * @param {string} [token] - Optional per-request GitHub token
+ * @returns {Promise<string[]>} - Names of labels currently on the issue
+ */
+export async function listIssueLabels(owner, repo, issue_number, token) {
+  const client = getOctokit(token);
+  const { data } = await client.rest.issues.listLabelsOnIssue({ owner, repo, issue_number, per_page: 100 });
+  return data.map(l => l.name);
+}
+
+/**
  * Add labels to an issue via REST.
  * Callers should validate labels with findMissingLabels first to avoid
  * GitHub's auto-create-on-add behavior.

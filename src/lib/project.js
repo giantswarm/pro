@@ -396,10 +396,12 @@ const USER_ID_QUERY = `
 `;
 
 // Batched lookup: resolve a list of ProjectV2Item IDs to their underlying
-// issue's repository + number in a single round trip, using GitHub's
+// issue's node ID, repository + number in a single round trip, using GitHub's
 // root-level `nodes(ids:)` query. The response array is in the same order
 // as the requested `ids` (entries are null for items that don't resolve to
-// an Issue, e.g. deleted or inaccessible content).
+// an Issue, e.g. deleted or inaccessible content). Includes the repository's
+// visibility so callers can gate free-text writes (e.g. comments) to public
+// repos behind an explicit confirmation.
 const ITEM_ISSUE_REFS_QUERY = `
   query GetItemIssueRefs($ids: [ID!]!) {
     nodes(ids: $ids) {
@@ -407,30 +409,8 @@ const ITEM_ISSUE_REFS_QUERY = `
         id
         content {
           ... on Issue {
-            number
-            repository {
-              nameWithOwner
-            }
-          }
-        }
-      }
-    }
-  }
-`;
-
-// Query to resolve the underlying issue node ID for a project item, including
-// the repository's visibility so callers can gate free-text writes (e.g. comments)
-// to public repos behind an explicit confirmation.
-const ITEM_ISSUE_ID_QUERY = `
-  query GetItemIssueId($itemId: ID!) {
-    node(id: $itemId) {
-      ... on ProjectV2Item {
-        content {
-          ... on Issue {
             id
             number
-            state
-            url
             repository {
               isPrivate
               nameWithOwner
@@ -499,7 +479,6 @@ export {
   ISSUE_NODE_ID_QUERY,
   USER_ID_QUERY,
   ITEM_ISSUE_REFS_QUERY,
-  ITEM_ISSUE_ID_QUERY,
   CLOSE_ISSUE_MUTATION,
   REOPEN_ISSUE_MUTATION,
   ADD_COMMENT_MUTATION

@@ -19,10 +19,12 @@ export {
   resolveBoardId
 } from './lib/project.js';
 
-// Project items: list/filter, detail, field mutation
+// Project items: list/filter, detail, batched item -> issue resolution,
+// field mutation
 export {
   listItems,
   getItemByID,
+  resolveItemIssues,
   updateItemField
 } from './lib/items.js';
 
@@ -47,9 +49,15 @@ export {
 // Bulk issue comment fetching (board items -> underlying issue comments)
 export {
   listIssueCommentsForItems,
-  resolveItemIssueRefs,
   fetchIssueComments
 } from './lib/comments.js';
+
+// Issue timeline (REST): compact activity events for an issue
+export {
+  getIssueTimeline,
+  compactTimelineEvent,
+  MAX_TIMELINE_EVENTS
+} from './lib/timeline.js';
 
 // Low-level GitHub clients for anything not covered above
 export { graphQLWithAuth, fetchPaginated } from './lib/api.js';
