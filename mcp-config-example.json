@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "giantswarm-pro": {
+      "command": "pro",
+      "args": [],
+      "env": {
+        "GITHUB_API_TOKEN": "your-github-personal-access-token-here"
+      }
+    }
+  }
+}

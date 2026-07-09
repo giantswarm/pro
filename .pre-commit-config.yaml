@@ -1,0 +1,56 @@
+# DO NOT EDIT. Generated with:
+#
+#    devctl
+#
+#    https://github.com/giantswarm/devctl/blob/c07a14a503b031c0af9164cd949bc0e0215ea57c/pkg/gen/input/precommit/internal/file/pre-commit-config.yaml.template
+#
+minimum_pre_commit_version: '2.17'
+default_install_hook_types: [pre-commit, commit-msg]
+repos:
+  # base hooks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-merge-conflict
+      - id: check-shebang-scripts-are-executable
+      - id: detect-private-key
+      - id: end-of-file-fixer
+        exclude: "(.*testdata/.*|^\\.yarn/.*)"
+      - id: mixed-line-ending
+      - id: trailing-whitespace
+        exclude: "(.*testdata/.*|^\\.yarn/.*)"
+
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v4.4.0
+    hooks:
+      - id: conventional-pre-commit
+        stages: [commit-msg]
+        args: [--strict]
+
+  # Helm chart hooks for pro
+  - repo: https://github.com/losisin/helm-values-schema-json
+    rev: v2.5.0
+    hooks:
+      - id: helm-schema
+        args:
+          - --config
+          - helm/pro/.schema.yaml
+  - repo: https://github.com/giantswarm/schemalint
+    rev: v2.6.1
+    hooks:
+      - id: schemalint-normalize
+        args:
+          - helm/pro/values.schema.json
+          - -o
+          - helm/pro/values.schema.json
+          - --force
+      - id: schemalint-verify
+        args:
+          - helm/pro/values.schema.json
+  - repo: https://github.com/norwoodj/helm-docs
+    rev: "v1.14.2"
+    hooks:
+      - id: helm-docs
+        args:
+          - --chart-search-root=helm
+          - --sort-values-order=file

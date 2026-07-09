@@ -1,0 +1,40 @@
+{
+  "name": "@giantswarm-io/pro",
+  "version": "0.0.0",
+  "description": "Core library and MCP server for managing Giant Swarm's roadmap and customer project boards",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/giantswarm/pro.git"
+  },
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "pro": "bin/index.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "!src/**/*.test.js"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "start": "node bin/index.js",
+    "start:http": "node bin/index.js --transport=streamable-http",
+    "self-update": "node bin/index.js --self-update",
+    "test": "node --experimental-test-module-mocks --test"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.24.3",
+    "@octokit/graphql": "^9.0.3",
+    "@octokit/rest": "^22.0.1",
+    "express": "^5.2.1"
+  },
+  "author": "Timo Derstappen"
+}

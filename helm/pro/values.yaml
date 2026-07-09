@@ -1,0 +1,65 @@
+# Default values for pro
+replicaCount: 1
+
+image:
+  repository: gsoci.azurecr.io/giantswarm/pro
+  pullPolicy: IfNotPresent
+  tag: ""
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podSecurityContext:
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+service:
+  type: ClusterIP
+  port: 8080
+
+route:
+  enabled: false
+  hostnames: []
+  # - pro.example.gigantic.io
+
+resources:
+  limits:
+    cpu: 1000m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+# Container env vars. The schema annotation below declares the allowed
+# shape (both `value:` and `valueFrom:` are permitted) so HelmReleases that
+# pass plain string env vars validate against the schema.
+# Generator infers items from the default below; itemProperties overrides it.
+# @schema itemProperties: {name: {type: string}, value: {type: string}, valueFrom: {type: object, properties: {secretKeyRef: {type: object, properties: {key: {type: string}, name: {type: string}}}}}}
+env:
+  - name: GITHUB_API_TOKEN
+    valueFrom:
+      secretKeyRef:
+        name: pro-github-token
+        key: token
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

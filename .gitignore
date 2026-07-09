@@ -1,0 +1,10 @@
+coverage
+node_modules
+data
+.trunk
+.cursor/mcp.json
+.cursor/rules/*.local.mdc
+.vscode
+
+# graphify knowledge graph (regenerable, rebuilt by the post-commit hook)
+graphify-out/

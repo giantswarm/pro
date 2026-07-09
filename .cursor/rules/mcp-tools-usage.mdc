@@ -1,0 +1,48 @@
+---
+description: How to use the pro MCP server tools efficiently for operational tasks (issues, sub-issues, boards)
+alwaysApply: true
+---
+
+# Using the pro MCP tools
+
+This project IS the MCP server. When asked to perform operational tasks (list issues, migrate epics, manage sub-issues, query boards), use the running MCP tools directly via `CallMcpTool` with `server: "user-pro"`. Do NOT read the source code first.
+
+## Workflow for operational tasks
+
+1. **Skip code reading** -- the tools are already running. Don't read `src/lib/mcp/*.js` or `src/lib/rest-api.js` to understand how they work. The MCP tool schemas at `/mcps/user-pro/tools/*.json` have all the info you need, and often you don't even need those.
+2. **Start with the board schema** -- call `FetchMcpResource` for `roadmap://schema` or `customer://schema` to discover field names, team names, and valid filter values.
+3. **Batch parallel calls** -- when exploring (e.g. checking multiple epics for task lists), call `get_issue_details` on 3-4 candidates in a single parallel batch instead of sequentially.
+4. **Act, then verify** -- run the migration/operation first, then verify with `list_sub_issues` or `get_parent_issue`. Don't over-research before acting.
+
+## Key tools
+
+| Tool | Use |
+|------|-----|
+| `list_issues` | Find issues by team, kind, status, keyword |
+| `get_issue_details` | Read issue body, comments, fields (needs project `itemId`) |
+| `list_sub_issues` | Verify sub-issue relationships |
+| `get_parent_issue` | Check parent from child side |
+| `migrate_task_list_to_sub_issues` | Convert task lists to sub-issues. Use `removeTaskList: false` first to evaluate safely |
+| `add_sub_issue` / `remove_sub_issue` | Manual sub-issue management |
+
+## `list_issues` usage
+
+Board field filters (Team, Kind, Status, etc.) MUST go in the `filters` map.
+The board is specified with the `board` parameter (not `project`).
+
+**Correct:**
+```json
+{"board": "roadmap", "filters": {"Team": "AI 🤖", "Kind": "Epic 🎯"}}
+```
+
+**Wrong** (these top-level params are auto-forwarded with a warning, but prefer the correct form):
+```json
+{"project": "roadmap", "team": "AI 🤖", "kind": "Epic 🎯"}
+```
+
+Other top-level parameters: `repository`, `assignee`, `label`, `state`, `keyword`, `updated`, `reason`, `emptyFields`.
+
+## Common patterns
+
+- **Team/Kind/Status values**: Use the display name with emoji, e.g. `"AI 🤖"`, `"Epic 🎯"`, `"In Progress ⛏️"`
+- **Issue refs**: Tools accept URLs (`https://github.com/o/r/issues/N`), short refs (`owner/repo#N`), or explicit `owner`/`repo`/`issue_number`

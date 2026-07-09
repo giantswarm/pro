@@ -1,0 +1,23 @@
+apiVersion: v2
+name: pro
+description: Giant Swarm Portfolio Roadmap Organizer (PRO) - MCP server for roadmap management
+annotations:
+  io.giantswarm.application.team: planeteers
+type: application
+version: 0.2.0
+appVersion: "2.0.0"
+home: https://github.com/giantswarm/pro
+icon: https://s.giantswarm.io/app-icons/1/png/default-app-icon.png
+sources:
+  - https://github.com/giantswarm/pro
+maintainers:
+  - name: Giant Swarm
+    url: https://www.giantswarm.io
+icon: https://s.giantswarm.io/app-icons/muster/1/light.svg
+keywords:
+  - roadmap
+  - project-management
+  - mcp
+  - github-projects
+annotations:
+  io.giantswarm.application.team: planeteers

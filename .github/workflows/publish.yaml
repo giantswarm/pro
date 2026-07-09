@@ -1,0 +1,140 @@
+---
+# yamllint disable rule:truthy
+# Publishes the npm package for every release tag:
+#
+#   1. sets the package version from the release tag (package.json stays at
+#      0.0.0 in git; the tag is the single source of truth for versions)
+#   2. attaches the npm tarball to the GitHub Release (used by `pro
+#      --self-update` and installable directly via `npm install -g <url>`)
+#   3. publishes @giantswarm-io/pro to the npm registry -- skipped with a notice
+#      until the NPM_TOKEN repository secret is configured
+#
+# Trigger notes: releases are created by the Auto-release workflow
+# (zz_generated.auto_release.yaml) using GITHUB_TOKEN, and GitHub suppresses
+# `release`/tag-`push` triggers for events created with that token. So this
+# workflow triggers on Auto-release *completing* and resolves the tag from
+# the run's head SHA. `release` covers human-created releases and
+# `workflow_dispatch` allows manual (re)publishing of any existing tag.
+name: Publish package
+
+on:
+  workflow_run:
+    workflows:
+      - Auto-release
+    types:
+      - completed
+  release:
+    types:
+      - published
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing release tag to publish (e.g. v1.3.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write   # upload the tarball to the release
+
+jobs:
+  publish:
+    name: Publish npm package
+    runs-on: ubuntu-latest
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Resolve release tag
+        id: tag
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          DISPATCH_TAG: ${{ inputs.tag }}
+          RUN_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          case "$EVENT_NAME" in
+            release)
+              TAG="$RELEASE_TAG"
+              ;;
+            workflow_dispatch)
+              TAG="$DISPATCH_TAG"
+              ;;
+            workflow_run)
+              # Auto-release tags the pushed commit if a bump was warranted.
+              # No tag on the run's head SHA means no release happened.
+              TAG=$(git tag --points-at "$RUN_HEAD_SHA" --list 'v*.*.*' | head -n1)
+              if [ -z "$TAG" ]; then
+                echo "::notice::No release tag on ${RUN_HEAD_SHA}; Auto-release made no release. Nothing to publish."
+              fi
+              ;;
+          esac
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Check out the tag
+        if: steps.tag.outputs.tag != ''
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: git checkout "refs/tags/$TAG"
+
+      - name: Set up Node.js
+        if: steps.tag.outputs.tag != ''
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: '24'
+          cache: 'npm'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        if: steps.tag.outputs.tag != ''
+        run: npm ci
+
+      - name: Run tests
+        if: steps.tag.outputs.tag != ''
+        env:
+          GITHUB_API_TOKEN: dummy-for-ci-validation
+        run: npm test
+
+      - name: Set version from release tag
+        if: steps.tag.outputs.tag != ''
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: npm version --no-git-tag-version "${TAG#v}"
+
+      - name: Pack tarball
+        if: steps.tag.outputs.tag != ''
+        id: pack
+        run: echo "tarball=$(npm pack)" >> "$GITHUB_OUTPUT"
+
+      - name: Attach tarball to release
+        if: steps.tag.outputs.tag != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.tag.outputs.tag }}
+          TARBALL: ${{ steps.pack.outputs.tarball }}
+        run: gh release upload "$TAG" "$TARBALL" --clobber
+
+      - name: Check for NPM_TOKEN
+        if: steps.tag.outputs.tag != ''
+        id: npm-token
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -n "$NPM_TOKEN" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::NPM_TOKEN secret is not configured; skipping npm publish. The tarball is still attached to the GitHub Release."
+          fi
+
+      # No --provenance: npm rejects provenance attestations from private
+      # source repositories, and giantswarm/pro is private.
+      - name: Publish to npm
+        if: steps.tag.outputs.tag != '' && steps.npm-token.outputs.available == 'true'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public

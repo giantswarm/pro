@@ -1,0 +1,14 @@
+
+<svg width="280" height="280" viewBox="0 0 280 280" xmlns="http://www.w3.org/2000/svg">
+  <!-- Code Brackets Group -->
+  <g fill="none" stroke="black" stroke-width="10">
+    <!-- Left Bracket -->
+    <path d="M80,60 L60,60 L60,140 L80,140" />
+    <!-- Right Bracket -->
+    <path d="M200,60 L220,60 L220,140 L200,140" />
+  </g>
+  <!-- Centered Pointer (Triangle) -->
+  <polygon points="130,100 150,85 150,115" fill="black" />
+  <!-- "PRO" text centered below -->
+  <text x="140" y="220" text-anchor="middle" font-size="60" font-family="monospace" fill="black">PRO</text>
+</svg>
