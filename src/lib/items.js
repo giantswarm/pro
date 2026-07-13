@@ -10,7 +10,8 @@ import { fetchPaginated, graphQLWithAuth } from './api.js';
 import {
   LIST_ITEMS_QUERY,
   ISSUE_DETAIL_QUERY,
-  UPDATE_ITEM_FIELD_MUTATION
+  UPDATE_ITEM_FIELD_MUTATION,
+  CLEAR_ITEM_FIELD_MUTATION
 } from './project.js';
 import { listFields, findMatchingOption } from './fields.js';
 import { logger } from './logger.js';
@@ -446,5 +447,22 @@ export async function updateItemField(itemId, fieldId, value, boardId, token) {
     itemId: itemId,
     fieldId: fieldId,
     value
+  }, token);
+}
+
+/**
+ * Clear (unset) a field value directly via GraphQL mutation.
+ * Works uniformly for single-select, iteration, and date fields.
+ * @param {string} itemId - ID of the item to update
+ * @param {string} fieldId - ID of the field to clear
+ * @param {string} boardId - The GitHub project node ID
+ * @param {string} [token] - Optional per-request GitHub token
+ * @returns {Promise<Object>} - Clear result
+ */
+export async function clearItemField(itemId, fieldId, boardId, token) {
+  return await graphQLWithAuth(CLEAR_ITEM_FIELD_MUTATION, {
+    projectId: boardId,
+    itemId: itemId,
+    fieldId: fieldId
   }, token);
 }

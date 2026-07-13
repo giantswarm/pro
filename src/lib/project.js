@@ -237,6 +237,22 @@ mutation UpdateProjectV2ItemField($projectId: ID!, $itemId: ID!, $fieldId: ID!, 
 }
 `;
 
+const CLEAR_ITEM_FIELD_MUTATION = `
+mutation ClearProjectV2ItemField($projectId: ID!, $itemId: ID!, $fieldId: ID!) {
+  clearProjectV2ItemFieldValue(
+    input: {
+      projectId: $projectId,
+      itemId: $itemId,
+      fieldId: $fieldId
+    }
+  ) {
+    projectV2Item {
+      id
+    }
+  }
+}
+`;
+
 const ISSUE_DETAIL_QUERY = `
   query($id: ID!) {
     node(id: $id) {
@@ -492,6 +508,7 @@ export {
   LIST_ITEMS_OVERVIEW_QUERY,
   LIST_FIELDS_QUERY,
   UPDATE_ITEM_FIELD_MUTATION,
+  CLEAR_ITEM_FIELD_MUTATION,
   ISSUE_DETAIL_QUERY,
   CREATE_ISSUE_MUTATION,
   ADD_ITEM_TO_PROJECT_MUTATION,

@@ -14,7 +14,7 @@
  *   - list_issue_comments: Fetch comments across multiple board items in one call
  */
 
-import { listItems, getItemByID, updateItemField } from '../items.js';
+import { listItems, getItemByID, updateItemField, clearItemField } from '../items.js';
 import { findFieldByName, findMatchingOption, findMatchingIteration } from '../fields.js';
 import { graphQLWithAuth } from '../api.js';
 import { findMissingLabels, addLabelsToIssue, removeLabelFromIssue } from '../rest-api.js';
@@ -249,7 +249,7 @@ export async function handleGetIssueDetails(args, extra) {
 
 export const updateIssueFieldTool = {
   name: 'update_issue_field',
-  description: 'Update a field value for an issue on a project board. Supports single-select fields (Status, Kind, Team, etc.) and iteration fields (Quarter). Also supports date fields (Start Date, Target Date) when a specific date is known. The server resolves field and option names to internal IDs automatically.',
+  description: 'Update a field value for an issue on a project board. Supports single-select fields (Status, Kind, Team, etc.) and iteration fields (Quarter). Also supports date fields (Start Date, Target Date) when a specific date is known. The server resolves field and option names to internal IDs automatically. To clear/unset a field instead of setting it, pass `clear: true` (and omit `value`) -- this works for single-select, iteration, and date fields.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -263,7 +263,11 @@ export const updateIssueFieldTool = {
       },
       value: {
         type: 'string',
-        description: 'The value to set. For single-select/iteration fields: option name with case-insensitive matching (e.g. "Q2 2026"). For date fields: "YYYY-MM-DD" format.'
+        description: 'The value to set. For single-select/iteration fields: option name with case-insensitive matching (e.g. "Q2 2026"). For date fields: "YYYY-MM-DD" format. Required unless `clear` is true.'
+      },
+      clear: {
+        type: 'boolean',
+        description: 'Set to true to clear/unset the field value instead of setting it (e.g. remove an item\'s Quarter). When true, `value` is ignored. Works for single-select, iteration, and date fields.'
       },
       board: {
         type: 'string',
@@ -271,7 +275,7 @@ export const updateIssueFieldTool = {
         description: 'Which board the item belongs to. Defaults to "roadmap".'
       }
     },
-    required: ['itemId', 'fieldName', 'value']
+    required: ['itemId', 'fieldName']
   }
 };
 
@@ -286,6 +290,30 @@ export async function handleUpdateIssueField(args, extra) {
     if (!field) {
       return {
         error: `Field '${args.fieldName}' not found on the ${board} board. Only single-select, iteration, and date fields can be updated.`
+      };
+    }
+
+    // Clear path -- clearProjectV2ItemFieldValue takes only the field ID and
+    // works uniformly across single-select, iteration, and date fields, so it
+    // short-circuits before the per-type value resolution below.
+    if (args.clear === true) {
+      await clearItemField(args.itemId, field.id, boardId, token);
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            itemId: args.itemId,
+            field: args.fieldName,
+            cleared: true
+          })
+        }]
+      };
+    }
+
+    if (typeof args.value !== 'string' || args.value.trim() === '') {
+      return {
+        error: `A value is required to update field '${args.fieldName}'. Pass a value, or set clear: true to unset the field.`
       };
     }
 
