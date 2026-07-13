@@ -55,6 +55,17 @@ const QUARTER_FIELD = {
   }
 };
 
+const STATUS_FIELD = {
+  __typename: 'ProjectV2SingleSelectField',
+  id: 'PVTSSF_status',
+  name: 'Status',
+  dataType: 'SINGLE_SELECT',
+  options: [
+    { id: 'opt-todo', name: 'Todo' },
+    { id: 'opt-done', name: 'Done' }
+  ]
+};
+
 // ---------------------------------------------------------------------------
 // Tool schema
 // ---------------------------------------------------------------------------
@@ -102,6 +113,27 @@ describe('handleUpdateIssueField clear path (#124)', () => {
     assert.strictEqual(mutation.variables.value, undefined);
   });
 
+  it('clears a single-select field via the clear mutation', async (t) => {
+    const calls = mockGraphQLSequence(t, [
+      fieldsPage([STATUS_FIELD]),
+      { clearProjectV2ItemFieldValue: { projectV2Item: { id: 'PVTI_x' } } }
+    ]);
+
+    const result = await handleUpdateIssueField({
+      itemId: 'PVTI_x',
+      fieldName: 'Status',
+      clear: true
+    });
+
+    const payload = parseResult(result);
+    assert.strictEqual(payload.success, true);
+    assert.strictEqual(payload.cleared, true);
+
+    const mutation = calls[1];
+    assert.match(mutation.query, /clearProjectV2ItemFieldValue/);
+    assert.strictEqual(mutation.variables.fieldId, 'PVTSSF_status');
+  });
+
   it('returns a clean error when neither value nor clear is provided', async (t) => {
     mockGraphQLSequence(t, [fieldsPage([QUARTER_FIELD])]);
 
@@ -113,6 +145,23 @@ describe('handleUpdateIssueField clear path (#124)', () => {
     assert.ok(result.error, 'expected an error');
     assert.match(result.error, /value is required/i);
     assert.match(result.error, /clear: true/);
+  });
+
+  it('treats clear:false like a normal update and still requires a value', async (t) => {
+    // Only the fields query should fire -- the missing-value guard returns
+    // before any mutation, so no clear/update mutation response is queued.
+    const calls = mockGraphQLSequence(t, [fieldsPage([QUARTER_FIELD])]);
+
+    const result = await handleUpdateIssueField({
+      itemId: 'PVTI_x',
+      fieldName: 'Quarter',
+      clear: false
+    });
+
+    assert.ok(result.error, 'expected an error');
+    assert.match(result.error, /value is required/i);
+    // No second GraphQL call -- clear:false did not trigger the clear path.
+    assert.strictEqual(calls.length, 1);
   });
 });
 

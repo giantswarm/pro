@@ -18,6 +18,20 @@ describe('normalizeFieldValue separator handling (#123)', () => {
 
   it('still strips emojis and other special characters', () => {
     assert.strictEqual(normalizeFieldValue('🚀 In Progress!'), 'in progress');
+    assert.strictEqual(normalizeFieldValue('Done ✅'), 'done');
+  });
+
+  it('strips punctuation that is not a separator (e.g. pipe)', () => {
+    assert.strictEqual(normalizeFieldValue('a|b'), 'ab');
+  });
+
+  it('preserves accented / non-ASCII letters instead of stripping them', () => {
+    assert.strictEqual(normalizeFieldValue('Café'), 'café');
+    assert.strictEqual(normalizeFieldValue('MÜNCHEN'), 'münchen');
+  });
+
+  it('keeps underscores (treated as a word character, not a separator)', () => {
+    assert.strictEqual(normalizeFieldValue('foo_bar'), 'foo_bar');
   });
 
   it('returns an empty string for falsy input', () => {
