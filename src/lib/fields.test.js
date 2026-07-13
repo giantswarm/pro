@@ -5,9 +5,10 @@ import { normalizeFieldValue } from './utils.js';
 import { findMatchingOption, findMatchingIteration } from './fields.js';
 
 describe('normalizeFieldValue separator handling (#123)', () => {
-  it('treats slash, hyphen, and whitespace as equivalent separators', () => {
+  it('treats slash, hyphen, underscore, and whitespace as equivalent separators', () => {
     assert.strictEqual(normalizeFieldValue('Q4/2026'), 'q4 2026');
     assert.strictEqual(normalizeFieldValue('Q4-2026'), 'q4 2026');
+    assert.strictEqual(normalizeFieldValue('Q4_2026'), 'q4 2026');
     assert.strictEqual(normalizeFieldValue('Q4 2026'), 'q4 2026');
   });
 
@@ -30,8 +31,10 @@ describe('normalizeFieldValue separator handling (#123)', () => {
     assert.strictEqual(normalizeFieldValue('MÜNCHEN'), 'münchen');
   });
 
-  it('keeps underscores (treated as a word character, not a separator)', () => {
-    assert.strictEqual(normalizeFieldValue('foo_bar'), 'foo_bar');
+  it('treats underscore as an interchangeable separator too', () => {
+    assert.strictEqual(normalizeFieldValue('Q4_2026'), 'q4 2026');
+    assert.strictEqual(normalizeFieldValue('foo_bar'), 'foo bar');
+    assert.strictEqual(normalizeFieldValue('foo_/_bar'), 'foo bar');
   });
 
   it('returns an empty string for falsy input', () => {
