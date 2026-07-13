@@ -1,8 +1,8 @@
 /**
  * Bulk Issue Comments Module
  *
- * Resolves GitHub Projects V2 items to their underlying issues (via a single
- * batched GraphQL `nodes(ids:)` lookup) and fetches each issue's comments via
+ * Resolves GitHub Projects V2 items to their underlying issues (via the
+ * batched resolveItemIssues helper in items.js) and fetches each issue's comments via
  * the REST API, which supports `since` filtering natively. Bounds response
  * size by capping the number of items per call, the number of REST pages
  * fetched per issue (when `since` is absent), the number of comments kept
@@ -20,9 +20,8 @@
  * common (unedited) case.
  */
 
-import { graphQLWithAuth } from './api.js';
 import { getOctokit } from './rest-api.js';
-import { ITEM_ISSUE_REFS_QUERY } from './project.js';
+import { resolveItemIssues } from './items.js';
 import { logger } from './logger.js';
 
 /** Maximum number of itemIds accepted in a single list_issue_comments call. */
@@ -53,35 +52,6 @@ function truncateBody(body) {
   if (body.length <= MAX_COMMENT_BODY_LENGTH) return body;
   const cut = body.length - MAX_COMMENT_BODY_LENGTH;
   return `${body.slice(0, MAX_COMMENT_BODY_LENGTH)}\n\n[... truncated ${cut} characters ...]`;
-}
-
-/**
- * Resolve a batch of project item IDs to their underlying issue's
- * owner/repo/number in a single batched GraphQL request.
- * @param {string[]} itemIds - Project item (PVTI) IDs
- * @param {string} [token] - Optional per-request GitHub token
- * @returns {Promise<Map<string, {owner: string, repo: string, number: number}|null>>}
- *   Map from itemId to its issue ref, or null when the item doesn't resolve
- *   to an accessible Issue.
- */
-export async function resolveItemIssueRefs(itemIds, token) {
-  const result = await graphQLWithAuth(ITEM_ISSUE_REFS_QUERY, { ids: itemIds }, token);
-  const nodes = result?.nodes || [];
-  const refs = new Map();
-
-  itemIds.forEach((itemId, i) => {
-    const node = nodes[i];
-    const nameWithOwner = node?.content?.repository?.nameWithOwner;
-    const number = node?.content?.number;
-    if (!node || !nameWithOwner || !number) {
-      refs.set(itemId, null);
-      return;
-    }
-    const [owner, repo] = nameWithOwner.split('/');
-    refs.set(itemId, { owner, repo, number });
-  });
-
-  return refs;
 }
 
 /**
@@ -183,7 +153,7 @@ export async function listIssueCommentsForItems({ itemIds, since, maxPerIssue, t
     ? Math.floor(maxPerIssue)
     : DEFAULT_MAX_PER_ISSUE;
 
-  const refs = await resolveItemIssueRefs(itemIds, token);
+  const refs = await resolveItemIssues(itemIds, token);
 
   const results = [];
   for (const itemId of itemIds) {

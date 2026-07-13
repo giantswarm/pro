@@ -14,10 +14,10 @@
  *   - list_issue_comments: Fetch comments across multiple board items in one call
  */
 
-import { listItems, getItemByID, updateItemField, clearItemField } from '../items.js';
+import { listItems, getItemByID, resolveItemIssues, updateItemField, clearItemField } from '../items.js';
 import { findFieldByName, findMatchingOption, findMatchingIteration } from '../fields.js';
 import { graphQLWithAuth } from '../api.js';
-import { findMissingLabels, addLabelsToIssue, removeLabelFromIssue } from '../rest-api.js';
+import { findMissingLabels, listIssueLabels, addLabelsToIssue, removeLabelFromIssue } from '../rest-api.js';
 import {
   resolveBoardId,
   DEFAULT_BOARD,
@@ -29,7 +29,6 @@ import {
   ISSUE_NODE_ID_QUERY,
   UPDATE_ITEM_FIELD_MUTATION,
   USER_ID_QUERY,
-  ITEM_ISSUE_ID_QUERY,
   CLOSE_ISSUE_MUTATION,
   REOPEN_ISSUE_MUTATION,
   ADD_COMMENT_MUTATION
@@ -56,16 +55,16 @@ function extractToken(extra) {
 }
 
 /**
- * Resolve a project item ID to its underlying GitHub issue (id, number, state, url,
- * and repository visibility).
+ * Resolve a single project item ID to its underlying issue ref via the
+ * batched resolveItemIssues helper, throwing when the item doesn't resolve.
  * @param {string} itemId - The project item ID
  * @param {string} [token] - Optional per-request GitHub token
- * @returns {Promise<{id: string, number: number, state: string, url: string, repository: {isPrivate: boolean, nameWithOwner: string}}>}
+ * @returns {Promise<{issueId: string, owner: string, repo: string, number: number, isPrivate: boolean, nameWithOwner: string}>}
  */
-async function resolveItemIssueId(itemId, token) {
-  const result = await graphQLWithAuth(ITEM_ISSUE_ID_QUERY, { itemId }, token);
-  const issue = result?.node?.content;
-  if (!issue?.id) {
+async function resolveSingleItemIssue(itemId, token) {
+  const refs = await resolveItemIssues([itemId], token);
+  const issue = refs.get(itemId);
+  if (!issue) {
     throw new Error(`Could not resolve an underlying issue for item '${itemId}'`);
   }
   return issue;
@@ -739,18 +738,18 @@ export async function handleCloseIssue(args, extra) {
       return { error: `Invalid stateReason '${args.stateReason}'. Must be "completed" or "not_planned".` };
     }
 
-    const issue = await resolveItemIssueId(args.itemId, token);
+    const issue = await resolveSingleItemIssue(args.itemId, token);
 
     if (args.comment) {
-      if (issue.repository?.isPrivate === false && args.confirmPublicSafe !== true) {
+      if (issue.isPrivate === false && args.confirmPublicSafe !== true) {
         return {
-          error: `Posting a comment to ${issue.repository.nameWithOwner} (public) requires confirmPublicSafe=true to reduce accidental disclosure of internal or customer-specific information.`
+          error: `Posting a comment to ${issue.nameWithOwner} (public) requires confirmPublicSafe=true to reduce accidental disclosure of internal or customer-specific information.`
         };
       }
-      await graphQLWithAuth(ADD_COMMENT_MUTATION, { subjectId: issue.id, body: args.comment }, token);
+      await graphQLWithAuth(ADD_COMMENT_MUTATION, { subjectId: issue.issueId, body: args.comment }, token);
     }
 
-    const result = await graphQLWithAuth(CLOSE_ISSUE_MUTATION, { issueId: issue.id, stateReason }, token);
+    const result = await graphQLWithAuth(CLOSE_ISSUE_MUTATION, { issueId: issue.issueId, stateReason }, token);
     const closed = result.closeIssue.issue;
 
     return {
@@ -804,18 +803,18 @@ export async function handleReopenIssue(args, extra) {
     const token = extractToken(extra);
     logger.info('MCP: Reopening issue', { itemId: args.itemId });
 
-    const issue = await resolveItemIssueId(args.itemId, token);
+    const issue = await resolveSingleItemIssue(args.itemId, token);
 
     if (args.comment) {
-      if (issue.repository?.isPrivate === false && args.confirmPublicSafe !== true) {
+      if (issue.isPrivate === false && args.confirmPublicSafe !== true) {
         return {
-          error: `Posting a comment to ${issue.repository.nameWithOwner} (public) requires confirmPublicSafe=true to reduce accidental disclosure of internal or customer-specific information.`
+          error: `Posting a comment to ${issue.nameWithOwner} (public) requires confirmPublicSafe=true to reduce accidental disclosure of internal or customer-specific information.`
         };
       }
-      await graphQLWithAuth(ADD_COMMENT_MUTATION, { subjectId: issue.id, body: args.comment }, token);
+      await graphQLWithAuth(ADD_COMMENT_MUTATION, { subjectId: issue.issueId, body: args.comment }, token);
     }
 
-    const result = await graphQLWithAuth(REOPEN_ISSUE_MUTATION, { issueId: issue.id }, token);
+    const result = await graphQLWithAuth(REOPEN_ISSUE_MUTATION, { issueId: issue.issueId }, token);
     const reopened = result.reopenIssue.issue;
 
     return {
@@ -881,19 +880,19 @@ export async function handleUpdateIssueLabels(args, extra) {
     const token = extractToken(extra);
     logger.info('MCP: Updating issue labels', { itemId: args.itemId, addLabels, removeLabels });
 
-    const item = await getItemByID(args.itemId, token);
-    if (!item.repository?.nameWithOwner || !item.number) {
+    const issue = (await resolveItemIssues([args.itemId], token)).get(args.itemId);
+    if (!issue) {
       return { error: `Could not resolve the underlying issue for item '${args.itemId}'.` };
     }
-    const [owner, repo] = item.repository.nameWithOwner.split('/');
-    const issueNumber = item.number;
+    const { owner, repo, number: issueNumber } = issue;
 
     // Snapshot of labels currently on the issue, used below to report which
     // requested removals actually changed anything (removeLabelFromIssue
     // swallows a 404 whether the label was never applied or never existed,
     // so this is the only way to distinguish an effective removal from a
     // no-op).
-    const currentLabels = new Set((item.labels || []).map(l => l.toLowerCase()));
+    const issueLabels = await listIssueLabels(owner, repo, issueNumber, token);
+    const currentLabels = new Set(issueLabels.map(l => l.toLowerCase()));
 
     // Validate additions exist in the repo BEFORE mutating anything -- GitHub's
     // add-labels endpoint would otherwise silently create missing labels.

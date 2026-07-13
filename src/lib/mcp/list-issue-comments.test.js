@@ -53,7 +53,7 @@ describe('list_issue_comments registration', () => {
 describe('handleListIssueComments', () => {
   it('returns comments per item on success', async (t) => {
     t.mock.method(globalThis, 'fetch', async () => graphqlResponse({
-      nodes: [{ id: 'PVTI_1', content: { number: 7, repository: { nameWithOwner: 'giantswarm/pro' } } }]
+      nodes: [{ id: 'PVTI_1', content: { id: 'I_7', number: 7, repository: { isPrivate: true, nameWithOwner: 'giantswarm/pro' } } }]
     }));
     t.mock.method(octokit, 'request', async () => ({
       data: [{ user: { login: 'bob' }, created_at: '2026-01-01T00:00:00Z', body: 'hello' }],

@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { listItems } from './items.js';
+import { listItems, resolveItemIssues } from './items.js';
 
 /**
  * Mock the global fetch used internally by @octokit/graphql so that
@@ -126,5 +126,62 @@ describe('listItems - response mapping', () => {
     const entry = result.data[0];
     assert.equal(entry.state, 'OPEN');
     assert.ok(!('closedAt' in entry), 'closedAt should be omitted for open items');
+  });
+});
+
+describe('resolveItemIssues', () => {
+  it('resolves items to their issue refs, preserving input order', async (t) => {
+    const calls = [];
+    mockGraphQLFetch(t, {
+      nodes: [
+        {
+          id: 'PVTI_1',
+          content: { id: 'I_1', number: 5, repository: { isPrivate: true, nameWithOwner: 'giantswarm/pro' } }
+        },
+        null
+      ]
+    }, calls);
+
+    process.env.GITHUB_API_TOKEN = 'test-token';
+    const refs = await resolveItemIssues(['PVTI_1', 'PVTI_2']);
+
+    assert.equal(calls.length, 1);
+    assert.deepEqual(calls[0].variables.ids, ['PVTI_1', 'PVTI_2']);
+    assert.deepEqual(refs.get('PVTI_1'), {
+      issueId: 'I_1',
+      owner: 'giantswarm',
+      repo: 'pro',
+      number: 5,
+      isPrivate: true,
+      nameWithOwner: 'giantswarm/pro'
+    });
+    assert.equal(refs.get('PVTI_2'), null);
+  });
+
+  it('carries repository visibility for public repos', async (t) => {
+    const calls = [];
+    mockGraphQLFetch(t, {
+      nodes: [{
+        id: 'PVTI_1',
+        content: { id: 'I_7', number: 7, repository: { isPrivate: false, nameWithOwner: 'giantswarm/roadmap' } }
+      }]
+    }, calls);
+
+    process.env.GITHUB_API_TOKEN = 'test-token';
+    const refs = await resolveItemIssues(['PVTI_1']);
+
+    assert.equal(refs.get('PVTI_1').isPrivate, false);
+    assert.equal(refs.get('PVTI_1').nameWithOwner, 'giantswarm/roadmap');
+  });
+
+  it('treats a node with no issue content (e.g. a draft issue) as unresolved', async (t) => {
+    const calls = [];
+    mockGraphQLFetch(t, {
+      nodes: [{ id: 'PVTI_1', content: null }]
+    }, calls);
+
+    process.env.GITHUB_API_TOKEN = 'test-token';
+    const refs = await resolveItemIssues(['PVTI_1']);
+    assert.equal(refs.get('PVTI_1'), null);
   });
 });

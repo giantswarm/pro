@@ -16,9 +16,9 @@ function parseResult(result) {
 }
 
 /**
- * getItemByID (used to resolve a PVTI item to its owner/repo/number) goes
- * through the GraphQL client, which is not mockable via t.mock.method since
- * it's a fresh @octokit/graphql instance per call (no shared exported
+ * resolveItemIssues (used to resolve a PVTI item to its owner/repo/number)
+ * goes through the GraphQL client, which is not mockable via t.mock.method
+ * since it's a fresh @octokit/graphql instance per call (no shared exported
  * object). Mock at the fetch layer instead -- @octokit/request calls
  * globalThis.fetch directly.
  */
@@ -37,39 +37,29 @@ function fetchResponseFor(body) {
 function mockItemFetch(t, { number, nameWithOwner, isPrivate = false }) {
   t.mock.method(globalThis, 'fetch', async () => fetchResponseFor({
     data: {
-      node: {
-        fieldValues: { nodes: [] },
+      nodes: [{
+        id: 'PVTI_mock',
         content: {
+          id: `I_${number}`,
           number,
-          title: 'Some issue',
-          url: `https://github.com/${nameWithOwner}/issues/${number}`,
-          repository: { nameWithOwner, isPrivate, url: `https://github.com/${nameWithOwner}` },
-          author: { login: 'someone' },
-          body: '',
-          createdAt: '2026-01-01T00:00:00Z',
-          updatedAt: '2026-01-01T00:00:00Z',
-          closedAt: null,
-          assignees: { nodes: [] },
-          comments: { nodes: [] },
-          labels: { nodes: [] },
-          projectsV2: { nodes: [] }
+          repository: { isPrivate, nameWithOwner }
         }
-      }
+      }]
     }
   }));
 }
 
 function mockItemFetchNotFound(t) {
-  t.mock.method(globalThis, 'fetch', async () => fetchResponseFor({ data: { node: null } }));
+  t.mock.method(globalThis, 'fetch', async () => fetchResponseFor({ data: { nodes: [null] } }));
 }
 
 /**
- * A resolvable node whose content is null (e.g. a draft issue) -- getItemByID
- * returns successfully with default/empty repository & number, without throwing.
+ * A resolvable node whose content is null (e.g. a draft issue) --
+ * resolveItemIssues maps it to null without throwing.
  */
 function mockItemFetchUnresolvableContent(t) {
   t.mock.method(globalThis, 'fetch', async () => fetchResponseFor({
-    data: { node: { fieldValues: { nodes: [] }, content: null } }
+    data: { nodes: [{ id: 'PVTI_draft', content: null }] }
   }));
 }
 
