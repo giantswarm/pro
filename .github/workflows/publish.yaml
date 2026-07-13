@@ -35,6 +35,7 @@ on:
 
 permissions:
   contents: write   # upload the tarball to the release
+  id-token: write   # npm provenance attestation (Sigstore)
 
 jobs:
   publish:
@@ -131,10 +132,8 @@ jobs:
             echo "::notice::NPM_TOKEN secret is not configured; skipping npm publish. The tarball is still attached to the GitHub Release."
           fi
 
-      # No --provenance: npm rejects provenance attestations from private
-      # source repositories, and giantswarm/pro is private.
       - name: Publish to npm
         if: steps.tag.outputs.tag != '' && steps.npm-token.outputs.available == 'true'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish --access public
+        run: npm publish --access public --provenance
