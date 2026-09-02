@@ -3,6 +3,15 @@
 ## [Unreleased]
 
 ### Added
+- OAuth authorization server metadata advertises `client_id_metadata_document_supported: true`, and any HTTPS Client ID Metadata Document URL (SEP-991) is accepted as `client_id` on `/authorize` and `/token`. Muster and Claude Code take this path only when it is advertised; it frees them from dynamically registered client_ids that vanish whenever the pod restarts.
+
+### Changed
+- CIMD documents are validated (`client_id` must equal the URL, non-empty `redirect_uris`, public client only) and the fetch is guarded against SSRF: HTTPS only, no IP literals, loopback, single-label or cluster-internal hostnames, no redirects, 5 s timeout, 64 KiB cap. Failed lookups are negative-cached for 5 minutes; a previously resolved document keeps being served while a refresh fails.
+- `OAUTH_TRUSTED_CLIENT_IDS` now only exempts URLs from that policy (and lets their document omit `client_id`); public CIMD URLs need no entry.
+
+### Fixed
+- A trusted CIMD client could be evicted from the client store once 1000 dynamic registrations accumulated, answering `invalid_client` until the CIMD cache expired. CIMD clients now live in their own store.
+- The HTTP server startup resolves once the port is bound and rejects on listen errors (previously an `EADDRINUSE` surfaced as an unhandled `error` event).
 - Trusted client auto-registration via `OAUTH_TRUSTED_CLIENT_IDS` env var: CIMD URLs in the allowlist are fetched and registered on first use, enabling muster to authenticate via OAuth without dynamic client registration
 
 ### Fixed
