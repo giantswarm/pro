@@ -39,6 +39,7 @@
 
 import { randomUUID } from 'crypto';
 import net from 'node:net';
+import { InvalidGrantError, UnsupportedGrantTypeError } from '@modelcontextprotocol/sdk/server/auth/errors.js';
 import { logger } from '../logger.js';
 
 // TTL for authorization sessions (10 minutes)
@@ -376,13 +377,19 @@ export function createGitHubOAuthProvider(config) {
       res.redirect(githubUrl.toString());
     },
 
+    // Errors thrown from the token-grant methods below must be MCP SDK
+    // OAuthError subclasses: the SDK's /token handler turns those into the
+    // RFC 6749 §5.2 error response (400 + error code) and anything else into
+    // an opaque 500 server_error. A bad or expired code is invalid_grant, so a
+    // client can tell "start over" apart from "the server is broken".
+
     /**
      * Return the PKCE code challenge for a local authorization code.
      */
     async challengeForAuthorizationCode(_client, authorizationCode) {
       const entry = authCodes.get(authorizationCode);
       if (!entry) {
-        throw new Error('Authorization code not found or expired');
+        throw new InvalidGrantError('Authorization code not found or expired');
       }
       return entry.codeChallenge;
     },
@@ -393,11 +400,11 @@ export function createGitHubOAuthProvider(config) {
     async exchangeAuthorizationCode(client, authorizationCode) {
       const entry = authCodes.get(authorizationCode);
       if (!entry) {
-        throw new Error('Authorization code not found or expired');
+        throw new InvalidGrantError('Authorization code not found or expired');
       }
 
       if (entry.clientId !== client.client_id) {
-        throw new Error('Authorization code was issued to a different client');
+        throw new InvalidGrantError('Authorization code was issued to a different client');
       }
 
       // Delete the code (single use)
@@ -422,7 +429,7 @@ export function createGitHubOAuthProvider(config) {
      * so we reject these requests.
      */
     async exchangeRefreshToken() {
-      throw new Error('Refresh tokens are not supported. Re-authorize to get a new token.');
+      throw new UnsupportedGrantTypeError('Refresh tokens are not supported. Re-authorize to get a new token.');
     },
 
     /**

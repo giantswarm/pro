@@ -173,3 +173,93 @@ describe('OAuth flow with a CIMD URL as client_id', () => {
     assert.strictEqual(JSON.parse(res.body).error, 'invalid_client');
   });
 });
+
+// ---------------------------------------------------------------------------
+// /token error responses
+// ---------------------------------------------------------------------------
+
+/** Run /authorize + /github/callback for a client and return the local code. */
+async function obtainLocalCode(clientId, codeChallenge) {
+  const query = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: REDIRECT_URI,
+    response_type: 'code',
+    code_challenge: codeChallenge,
+    code_challenge_method: 'S256'
+  });
+  const authorize = await request('GET', `/authorize?${query}`);
+  assert.strictEqual(authorize.status, 302, authorize.body);
+  const githubState = new URL(authorize.headers.location).searchParams.get('state');
+  const callback = await request('GET', `/github/callback?code=github-code&state=${githubState}`);
+  assert.strictEqual(callback.status, 302, callback.body);
+  return new URL(callback.headers.location).searchParams.get('code');
+}
+
+function postToken(params) {
+  return request('POST', '/token', {
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams(params).toString()
+  });
+}
+
+describe('POST /token error responses (RFC 6749 §5.2)', () => {
+  // The SDK's token handler maps OAuthError subclasses thrown by the provider
+  // to 400 + error code and everything else to an opaque 500 server_error.
+  // A code that a restart wiped, that expired or that was already used is the
+  // client's cue to re-authorize, so it must surface as invalid_grant.
+  it('returns 400 invalid_grant for an unknown or expired authorization code', async (t) => {
+    mockOutboundFetch(t);
+    const res = await postToken({
+      grant_type: 'authorization_code',
+      code: 'no-such-code',
+      code_verifier: base64url(randomBytes(32)),
+      redirect_uri: REDIRECT_URI,
+      client_id: CIMD_URL
+    });
+    assert.strictEqual(res.status, 400, res.body);
+    const body = JSON.parse(res.body);
+    assert.strictEqual(body.error, 'invalid_grant');
+    assert.match(body.error_description, /Authorization code not found or expired/);
+  });
+
+  it('returns 400 invalid_grant when the code was issued to a different client', async (t) => {
+    mockOutboundFetch(t);
+    const codeVerifier = base64url(randomBytes(32));
+    const codeChallenge = base64url(createHash('sha256').update(codeVerifier).digest());
+
+    // A dynamically registered public client obtains the code ...
+    const registered = await request('POST', '/register', {
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ redirect_uris: [REDIRECT_URI], token_endpoint_auth_method: 'none' })
+    });
+    assert.strictEqual(registered.status, 201, registered.body);
+    const { client_id: otherClientId } = JSON.parse(registered.body);
+    const localCode = await obtainLocalCode(otherClientId, codeChallenge);
+
+    // ... and the CIMD client tries to redeem it with the right verifier.
+    const res = await postToken({
+      grant_type: 'authorization_code',
+      code: localCode,
+      code_verifier: codeVerifier,
+      redirect_uri: REDIRECT_URI,
+      client_id: CIMD_URL
+    });
+    assert.strictEqual(res.status, 400, res.body);
+    const body = JSON.parse(res.body);
+    assert.strictEqual(body.error, 'invalid_grant');
+    assert.match(body.error_description, /issued to a different client/);
+  });
+
+  it('returns 400 unsupported_grant_type for refresh_token grants', async (t) => {
+    mockOutboundFetch(t);
+    const res = await postToken({
+      grant_type: 'refresh_token',
+      refresh_token: 'anything',
+      client_id: CIMD_URL
+    });
+    assert.strictEqual(res.status, 400, res.body);
+    const body = JSON.parse(res.body);
+    assert.strictEqual(body.error, 'unsupported_grant_type');
+    assert.match(body.error_description, /Refresh tokens are not supported/);
+  });
+});

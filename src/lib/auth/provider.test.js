@@ -416,12 +416,12 @@ describe('challengeForAuthorizationCode', () => {
     assert.strictEqual(challenge, 'my-pkce-challenge');
   });
 
-  it('throws for an unknown authorization code', async () => {
+  it('throws invalid_grant for an unknown authorization code', async () => {
     const { provider } = createGitHubOAuthProvider(TEST_CONFIG);
     const client = provider.clientsStore.registerClient({ client_name: 'c' });
     await assert.rejects(
       () => provider.challengeForAuthorizationCode(client, 'bogus-code'),
-      /Authorization code not found or expired/
+      { name: 'InvalidGrantError', errorCode: 'invalid_grant', message: /Authorization code not found or expired/ }
     );
   });
 });
@@ -465,32 +465,32 @@ describe('exchangeAuthorizationCode', () => {
     assert.strictEqual(tokenRes.scope, undefined, 'should not set scope when GitHub omits it');
   });
 
-  it('codes are single-use: throws on second exchange', async (t) => {
+  it('codes are single-use: throws invalid_grant on second exchange', async (t) => {
     const { provider, handleGitHubCallback } = createGitHubOAuthProvider(TEST_CONFIG);
     const { client, localCode } = await runCallbackFlow(provider, handleGitHubCallback, t);
     await provider.exchangeAuthorizationCode(client, localCode);
     await assert.rejects(
       () => provider.exchangeAuthorizationCode(client, localCode),
-      /Authorization code not found or expired/
+      { name: 'InvalidGrantError', errorCode: 'invalid_grant', message: /Authorization code not found or expired/ }
     );
   });
 
-  it('throws when the code belongs to a different client', async (t) => {
+  it('throws invalid_grant when the code belongs to a different client', async (t) => {
     const { provider, handleGitHubCallback } = createGitHubOAuthProvider(TEST_CONFIG);
     const { localCode } = await runCallbackFlow(provider, handleGitHubCallback, t);
     const otherClient = provider.clientsStore.registerClient({ client_name: 'other' });
     await assert.rejects(
       () => provider.exchangeAuthorizationCode(otherClient, localCode),
-      /Authorization code was issued to a different client/
+      { name: 'InvalidGrantError', errorCode: 'invalid_grant', message: /Authorization code was issued to a different client/ }
     );
   });
 
-  it('throws for an unknown code', async () => {
+  it('throws invalid_grant for an unknown code', async () => {
     const { provider } = createGitHubOAuthProvider(TEST_CONFIG);
     const client = provider.clientsStore.registerClient({ client_name: 'c' });
     await assert.rejects(
       () => provider.exchangeAuthorizationCode(client, 'nonexistent'),
-      /Authorization code not found or expired/
+      { name: 'InvalidGrantError', errorCode: 'invalid_grant', message: /Authorization code not found or expired/ }
     );
   });
 });
@@ -500,11 +500,11 @@ describe('exchangeAuthorizationCode', () => {
 // ---------------------------------------------------------------------------
 
 describe('exchangeRefreshToken', () => {
-  it('always throws (refresh tokens not supported)', async () => {
+  it('always throws unsupported_grant_type (refresh tokens not supported)', async () => {
     const { provider } = createGitHubOAuthProvider(TEST_CONFIG);
     await assert.rejects(
       () => provider.exchangeRefreshToken(),
-      /Refresh tokens are not supported/
+      { name: 'UnsupportedGrantTypeError', errorCode: 'unsupported_grant_type', message: /Refresh tokens are not supported/ }
     );
   });
 });
