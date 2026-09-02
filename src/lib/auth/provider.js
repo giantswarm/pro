@@ -6,7 +6,12 @@
  * proxying the actual authentication to GitHub.
  *
  * Flow:
- *   1. MCP client registers via /register → gets a local client_id
+ *   1. MCP client obtains a client_id, either by
+ *      a. registering via /register (RFC 7591 dynamic client registration), or
+ *      b. using the HTTPS URL of its Client ID Metadata Document (CIMD,
+ *         SEP-991) directly as client_id — PRO fetches and validates the
+ *         document on first use. The AS metadata advertises this with
+ *         client_id_metadata_document_supported: true.
  *   2. MCP client initiates /authorize with PKCE
  *   3. PRO redirects to GitHub OAuth with our app's client_id
  *   4. GitHub redirects back to /github/callback
@@ -14,14 +19,26 @@
  *   6. MCP client exchanges local code for the GitHub token via /token
  *   7. MCP requests include the GitHub token as Bearer auth
  *
+ * State and restarts: everything here lives in process memory. A restart
+ * drops all dynamically registered client_ids (clients on path 1a get
+ * invalid_client and must register again), every in-flight authorization
+ * session (a login that is on GitHub when the pod restarts fails at
+ * /github/callback with "Invalid or expired authorization session" and has to
+ * be started over) and every not-yet-exchanged local authorization code.
+ * CIMD clients (path 1b) are unaffected: their client_id is re-resolved from
+ * the URL, which is why muster and Claude Code use it.
+ *
  * Environment variables:
  *   GITHUB_OAUTH_CLIENT_ID     - GitHub OAuth App client ID
  *   GITHUB_OAUTH_CLIENT_SECRET - GitHub OAuth App client secret
- *   OAUTH_TRUSTED_CLIENT_IDS   - Comma-separated CIMD URLs of trusted clients
- *                                 that are auto-registered on first use (e.g. muster)
+ *   OAUTH_TRUSTED_CLIENT_IDS   - Comma-separated CIMD URLs that bypass the
+ *                                 outbound URL policy below (e.g. a muster on a
+ *                                 cluster-internal hostname). Public HTTPS CIMD
+ *                                 URLs need no entry here.
  */
 
 import { randomUUID } from 'crypto';
+import net from 'node:net';
 import { logger } from '../logger.js';
 
 // TTL for authorization sessions (10 minutes)
@@ -32,8 +49,47 @@ const TOKEN_CACHE_TTL_MS = 5 * 60 * 1000;
 const MAX_CLIENTS = 1000;
 // GitHub OAuth scopes required by PRO's tools
 const REQUIRED_GITHUB_SCOPES = ['repo', 'project', 'read:org'];
-// TTL for cached CIMD fetches (1 hour) — avoids re-fetching on every authorize
+// TTL for resolved Client ID Metadata Documents (1 hour) — avoids re-fetching
+// on every authorize/token call
 const CIMD_CACHE_TTL_MS = 60 * 60 * 1000;
+// TTL for remembering a CIMD URL that failed to resolve, so a flood of bogus
+// URL client_ids does not become a flood of outbound fetches
+const CIMD_NEGATIVE_CACHE_TTL_MS = 5 * 60 * 1000;
+// Maximum number of CIMD clients (positive and negative entries) kept in memory
+const MAX_CIMD_CLIENTS = 1000;
+// Outbound fetch limits for CIMD documents
+const CIMD_FETCH_TIMEOUT_MS = 5 * 1000;
+const CIMD_MAX_BYTES = 64 * 1024;
+
+/**
+ * Whether a client_id has the shape of a Client ID Metadata Document URL that
+ * this server is willing to fetch.
+ *
+ * SEP-991 requires an HTTPS URL with a non-root path (the same shape the MCP
+ * SDK client enforces on its own clientMetadataUrl). On top of that, since the
+ * client_id is attacker-controlled and resolving it means an outbound request
+ * from inside the cluster, refuse everything that would turn the fetch into an
+ * SSRF probe: IP literals, loopback, single-label and cluster-internal
+ * hostnames, embedded credentials, fragments.
+ */
+export function isCimdUrl(clientId) {
+  let url;
+  try {
+    url = new URL(clientId);
+  } catch {
+    return false;
+  }
+  if (url.protocol !== 'https:') return false;
+  if (url.pathname === '' || url.pathname === '/') return false;
+  if (url.username || url.password || url.hash) return false;
+
+  const host = url.hostname;
+  if (net.isIP(host.replace(/^\[|\]$/g, '')) !== 0) return false;
+  if (host === 'localhost' || host.endsWith('.localhost')) return false;
+  if (!host.includes('.')) return false;
+  if (/\.(local|localdomain|internal|svc|home\.arpa)$/.test(host)) return false;
+  return true;
+}
 
 /**
  * Create the GitHub OAuth provider.
@@ -44,8 +100,9 @@ const CIMD_CACHE_TTL_MS = 60 * 60 * 1000;
 export function createGitHubOAuthProvider(config) {
   const { clientId, clientSecret } = config;
 
-  // Trusted client IDs (CIMD URLs) that can skip /register — read at creation
-  // time so tests can set the env var before calling createGitHubOAuthProvider.
+  // Trusted CIMD URLs that bypass the outbound URL policy in isCimdUrl — read
+  // at creation time so tests can set the env var before calling
+  // createGitHubOAuthProvider.
   const trustedClientIds = (process.env.OAUTH_TRUSTED_CLIENT_IDS || '')
     .split(',')
     .map(s => s.trim())
@@ -78,56 +135,126 @@ export function createGitHubOAuthProvider(config) {
   }, 60_000);
   sweepInterval.unref();
 
-  // Cache for fetched CIMDs (URL → { metadata, expiresAt })
-  const cimdCache = new Map();
+  // Resolved CIMD clients (URL client_id → { clientInfo | undefined, expiresAt }).
+  // Kept apart from `clients` so DCR churn can never evict them, and so a
+  // stale entry can keep serving while a refresh fails.
+  const cimdClients = new Map();
 
   /**
-   * Fetch a Client ID Metadata Document from a trusted CIMD URL and
-   * register the client in the local store. Returns the client info
-   * or undefined if the fetch fails or the URL is not trusted.
+   * Validate a fetched Client ID Metadata Document and turn it into the
+   * client info shape the MCP SDK handlers expect. Returns undefined (after
+   * logging why) when the document is unusable.
    */
-  async function fetchAndRegisterTrustedClient(clientId) {
-    if (!trustedClientIds.includes(clientId)) {
+  function clientInfoFromCimd(clientId, doc, trusted) {
+    const reject = (reason) => {
+      logger.warn(`OAuth: Rejected CIMD ${clientId}: ${reason}`);
       return undefined;
+    };
+    if (!doc || typeof doc !== 'object' || Array.isArray(doc)) {
+      return reject('document is not a JSON object');
     }
-
-    // Check CIMD cache
-    const cached = cimdCache.get(clientId);
-    if (cached && Date.now() < cached.expiresAt) {
-      return clients.get(clientId);
+    // The document must claim the URL it was fetched from as its client_id.
+    // Trusted (allowlisted) documents may omit it, but must not contradict it.
+    if (doc.client_id !== clientId && !(trusted && doc.client_id === undefined)) {
+      return reject(`client_id ${JSON.stringify(doc.client_id)} does not match the document URL`);
     }
+    const redirectUris = doc.redirect_uris;
+    if (!Array.isArray(redirectUris) || redirectUris.length === 0 ||
+        !redirectUris.every(u => typeof u === 'string' && URL.canParse(u))) {
+      return reject('redirect_uris must be a non-empty array of URLs');
+    }
+    // A public document cannot hold a secret and we do not support
+    // private_key_jwt, so only public clients can identify via CIMD.
+    const authMethod = doc.token_endpoint_auth_method ?? 'none';
+    if (authMethod !== 'none') {
+      return reject(`unsupported token_endpoint_auth_method ${JSON.stringify(authMethod)}`);
+    }
+    const str = (v) => (typeof v === 'string' ? v : undefined);
+    return {
+      client_id: clientId,
+      client_id_issued_at: Math.floor(Date.now() / 1000),
+      client_name: str(doc.client_name),
+      client_uri: str(doc.client_uri),
+      redirect_uris: redirectUris,
+      grant_types: Array.isArray(doc.grant_types) ? doc.grant_types : ['authorization_code'],
+      response_types: Array.isArray(doc.response_types) ? doc.response_types : ['code'],
+      token_endpoint_auth_method: 'none',
+      scope: str(doc.scope)
+    };
+  }
 
+  /**
+   * Fetch a Client ID Metadata Document. Returns the parsed JSON or undefined.
+   */
+  async function fetchCimd(clientId) {
     try {
       const res = await fetch(clientId, {
-        headers: { Accept: 'application/json', 'User-Agent': 'giantswarm-pro-mcp' }
+        headers: { Accept: 'application/json', 'User-Agent': 'giantswarm-pro-mcp' },
+        redirect: 'manual',
+        signal: AbortSignal.timeout(CIMD_FETCH_TIMEOUT_MS)
       });
       if (!res.ok) {
         logger.warn(`OAuth: Failed to fetch CIMD from ${clientId}: ${res.status}`);
         return undefined;
       }
-      const metadata = await res.json();
-
-      const now = Math.floor(Date.now() / 1000);
-      const clientInfo = {
-        client_id: clientId,
-        client_id_issued_at: now,
-        client_name: metadata.client_name,
-        client_uri: metadata.client_uri,
-        redirect_uris: metadata.redirect_uris || [],
-        grant_types: metadata.grant_types || ['authorization_code'],
-        response_types: metadata.response_types || ['code'],
-        token_endpoint_auth_method: metadata.token_endpoint_auth_method || 'none',
-        scope: metadata.scope
-      };
-
-      clients.set(clientId, clientInfo);
-      cimdCache.set(clientId, { expiresAt: Date.now() + CIMD_CACHE_TTL_MS });
-      logger.info(`OAuth: Auto-registered trusted client ${clientId} (${metadata.client_name || 'unknown'})`);
-      return clientInfo;
+      const declared = Number(res.headers?.get?.('content-length'));
+      if (declared > CIMD_MAX_BYTES) {
+        logger.warn(`OAuth: Rejected CIMD ${clientId}: content-length ${declared} exceeds ${CIMD_MAX_BYTES} bytes`);
+        return undefined;
+      }
+      const text = await res.text();
+      if (text.length > CIMD_MAX_BYTES) {
+        logger.warn(`OAuth: Rejected CIMD ${clientId}: body exceeds ${CIMD_MAX_BYTES} bytes`);
+        return undefined;
+      }
+      return JSON.parse(text);
     } catch (err) {
       logger.warn(`OAuth: Error fetching CIMD from ${clientId}: ${err.message}`);
       return undefined;
     }
+  }
+
+  /**
+   * Resolve a URL client_id (SEP-991) to client info by fetching and
+   * validating its Client ID Metadata Document. Results — including failures
+   * for untrusted URLs — are cached; a trusted client's last good document
+   * keeps being served while a refresh fails. Returns undefined for anything
+   * that is not an acceptable CIMD URL or whose document does not validate.
+   */
+  async function resolveCimdClient(clientId) {
+    const trusted = trustedClientIds.includes(clientId);
+    if (!trusted && !isCimdUrl(clientId)) {
+      return undefined;
+    }
+
+    const now = Date.now();
+    const cached = cimdClients.get(clientId);
+    if (cached && now < cached.expiresAt) {
+      return cached.clientInfo;
+    }
+
+    const doc = await fetchCimd(clientId);
+    let clientInfo = doc === undefined ? undefined : clientInfoFromCimd(clientId, doc, trusted);
+
+    if (clientInfo) {
+      logger.info(`OAuth: Resolved CIMD client ${clientId} (${clientInfo.client_name || 'unknown'})`);
+    } else if (cached?.clientInfo) {
+      // Refresh failed: keep the last good document a little longer rather
+      // than locking the client out over a transient upstream problem.
+      logger.warn(`OAuth: Keeping previously resolved CIMD client ${clientId} after failed refresh`);
+      clientInfo = cached.clientInfo;
+    } else if (trusted) {
+      // Never negative-cache a trusted client: the next attempt should retry.
+      return undefined;
+    }
+
+    if (!cimdClients.has(clientId) && cimdClients.size >= MAX_CIMD_CLIENTS) {
+      const oldestKey = cimdClients.keys().next().value;
+      cimdClients.delete(oldestKey);
+    }
+    const ttl = clientInfo && clientInfo !== cached?.clientInfo ? CIMD_CACHE_TTL_MS : CIMD_NEGATIVE_CACHE_TTL_MS;
+    cimdClients.set(clientId, { clientInfo, expiresAt: now + ttl });
+    return clientInfo;
   }
 
   /**
@@ -190,8 +317,8 @@ export function createGitHubOAuthProvider(config) {
         async getClient(clientId) {
           const existing = clients.get(clientId);
           if (existing) return existing;
-          // Auto-register if this is a trusted CIMD URL
-          return await fetchAndRegisterTrustedClient(clientId);
+          // URL client_ids resolve to their Client ID Metadata Document
+          return await resolveCimdClient(clientId);
         },
 
         registerClient(clientMetadata) {

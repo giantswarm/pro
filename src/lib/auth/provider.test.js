@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { createGitHubOAuthProvider } from './provider.js';
+import { createGitHubOAuthProvider, isCimdUrl } from './provider.js';
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -110,50 +110,255 @@ describe('clientsStore.registerClient', () => {
 });
 
 // ---------------------------------------------------------------------------
-// trusted client auto-registration
+// URL client_ids (Client ID Metadata Documents, SEP-991)
 // ---------------------------------------------------------------------------
 
-describe('trusted client auto-registration', () => {
-  it('auto-registers a trusted CIMD URL on getClient', async (t) => {
-    const cimdUrl = 'https://muster.example.com/.well-known/oauth-client.json';
-    process.env.OAUTH_TRUSTED_CLIENT_IDS = cimdUrl;
+const CIMD_URL = 'https://muster.example.com/.well-known/oauth-client.json';
+const CIMD_DOC = {
+  client_id: CIMD_URL,
+  client_name: 'Muster',
+  redirect_uris: ['https://muster.example.com/oauth/callback'],
+  grant_types: ['authorization_code'],
+  response_types: ['code'],
+  token_endpoint_auth_method: 'none'
+};
+
+/**
+ * Mock fetch to serve `doc` (or fail with `status`) for every URL and count
+ * the calls. `doc` may be a function returning the document per call.
+ */
+function mockCimdFetch(t, { doc = CIMD_DOC, status = 200, headers = {} } = {}) {
+  const calls = [];
+  t.mock.method(globalThis, 'fetch', async (url) => {
+    calls.push(String(url));
+    const body = typeof doc === 'function' ? doc() : doc;
+    const text = typeof body === 'string' ? body : JSON.stringify(body);
+    return {
+      ok: status >= 200 && status < 300,
+      status,
+      headers: new Headers(headers),
+      text: async () => text
+    };
+  });
+  return calls;
+}
+
+describe('clientsStore.getClient with a CIMD URL', () => {
+  it('resolves any HTTPS CIMD URL by fetching and validating the document', async (t) => {
+    delete process.env.OAUTH_TRUSTED_CLIENT_IDS;
     const { provider } = createGitHubOAuthProvider(TEST_CONFIG);
+    const calls = mockCimdFetch(t);
 
-    t.mock.method(globalThis, 'fetch', async (url) => {
-      if (url === cimdUrl) {
-        return {
-          ok: true,
-          json: async () => ({
-            client_id: cimdUrl,
-            client_name: 'Muster',
-            redirect_uris: ['https://muster.example.com/oauth/callback'],
-            grant_types: ['authorization_code'],
-            response_types: ['code'],
-            token_endpoint_auth_method: 'none'
-          })
-        };
-      }
-      return { ok: false, status: 404 };
-    });
-
-    const client = await provider.clientsStore.getClient(cimdUrl);
-    assert.ok(client, 'trusted client should be auto-registered');
-    assert.strictEqual(client.client_id, cimdUrl);
+    const client = await provider.clientsStore.getClient(CIMD_URL);
+    assert.ok(client, 'CIMD client should resolve without an allowlist entry');
+    assert.strictEqual(client.client_id, CIMD_URL);
     assert.strictEqual(client.client_name, 'Muster');
     assert.deepStrictEqual(client.redirect_uris, ['https://muster.example.com/oauth/callback']);
+    assert.strictEqual(client.token_endpoint_auth_method, 'none');
+    assert.strictEqual(client.client_secret, undefined, 'CIMD clients are public clients');
+    assert.deepStrictEqual(calls, [CIMD_URL]);
 
-    // Second call should return from cache without fetching again
-    const cached = await provider.clientsStore.getClient(cimdUrl);
-    assert.deepStrictEqual(cached.client_id, cimdUrl);
-
-    delete process.env.OAUTH_TRUSTED_CLIENT_IDS;
+    // Second call is served from cache
+    const cached = await provider.clientsStore.getClient(CIMD_URL);
+    assert.strictEqual(cached, client);
+    assert.strictEqual(calls.length, 1, 'document fetched once');
   });
 
-  it('returns undefined for untrusted CIMD URLs', async () => {
+  it('sends a bounded, redirect-free request for the document', async (t) => {
+    const { provider } = createGitHubOAuthProvider(TEST_CONFIG);
+    let init;
+    t.mock.method(globalThis, 'fetch', async (_url, opts) => {
+      init = opts;
+      return { ok: true, status: 200, headers: new Headers(), text: async () => JSON.stringify(CIMD_DOC) };
+    });
+    await provider.clientsStore.getClient(CIMD_URL);
+    assert.strictEqual(init.redirect, 'manual');
+    assert.ok(init.signal instanceof AbortSignal, 'request carries a timeout signal');
+    assert.strictEqual(init.headers.Accept, 'application/json');
+  });
+
+  it('still resolves trusted CIMD URLs from OAUTH_TRUSTED_CLIENT_IDS', async (t) => {
+    process.env.OAUTH_TRUSTED_CLIENT_IDS = CIMD_URL;
+    try {
+      const { provider } = createGitHubOAuthProvider(TEST_CONFIG);
+      mockCimdFetch(t);
+      const client = await provider.clientsStore.getClient(CIMD_URL);
+      assert.strictEqual(client?.client_id, CIMD_URL);
+    } finally {
+      delete process.env.OAUTH_TRUSTED_CLIENT_IDS;
+    }
+  });
+
+  it('lets a trusted URL bypass the URL policy and omit client_id in its document', async (t) => {
+    const internalUrl = 'https://muster.agent-platform.svc/.well-known/oauth-client.json';
+    process.env.OAUTH_TRUSTED_CLIENT_IDS = internalUrl;
+    try {
+      const { provider } = createGitHubOAuthProvider(TEST_CONFIG);
+      const { client_id: _omitted, ...docWithoutClientId } = CIMD_DOC;
+      const calls = mockCimdFetch(t, { doc: docWithoutClientId });
+      const client = await provider.clientsStore.getClient(internalUrl);
+      assert.strictEqual(client?.client_id, internalUrl);
+      assert.deepStrictEqual(calls, [internalUrl]);
+    } finally {
+      delete process.env.OAUTH_TRUSTED_CLIENT_IDS;
+    }
+  });
+
+  it('never fetches URLs that fail the CIMD URL policy', async (t) => {
     delete process.env.OAUTH_TRUSTED_CLIENT_IDS;
     const { provider } = createGitHubOAuthProvider(TEST_CONFIG);
-    const client = await provider.clientsStore.getClient('https://untrusted.example.com/.well-known/oauth-client.json');
-    assert.strictEqual(client, undefined);
+    const calls = mockCimdFetch(t);
+    const unsafe = [
+      'http://muster.example.com/.well-known/oauth-client.json',   // not https
+      'https://muster.example.com/',                                // root path
+      'https://muster.example.com',                                 // root path
+      'https://10.0.0.1/.well-known/oauth-client.json',             // IPv4 literal
+      'https://[::1]/.well-known/oauth-client.json',                // IPv6 literal
+      'https://localhost/.well-known/oauth-client.json',            // loopback
+      'https://pro.localhost/.well-known/oauth-client.json',        // loopback
+      'https://muster/.well-known/oauth-client.json',               // single label
+      'https://muster.agent-platform.svc/.well-known/oauth-client.json',   // cluster-internal
+      'https://muster.agent-platform.svc.cluster.local/.well-known/oauth-client.json',
+      'https://metadata.internal/.well-known/oauth-client.json',
+      'https://user:pw@muster.example.com/.well-known/oauth-client.json',  // credentials
+      'https://muster.example.com/.well-known/oauth-client.json#frag',     // fragment
+      'not a url'
+    ];
+    for (const url of unsafe) {
+      assert.strictEqual(await provider.clientsStore.getClient(url), undefined, url);
+    }
+    assert.deepStrictEqual(calls, [], 'no outbound request for any of them');
+  });
+
+  it('rejects a document whose client_id does not match the URL', async (t) => {
+    const { provider } = createGitHubOAuthProvider(TEST_CONFIG);
+    mockCimdFetch(t, { doc: { ...CIMD_DOC, client_id: 'https://other.example.com/client.json' } });
+    assert.strictEqual(await provider.clientsStore.getClient(CIMD_URL), undefined);
+  });
+
+  it('rejects a document without a client_id when the URL is not trusted', async (t) => {
+    delete process.env.OAUTH_TRUSTED_CLIENT_IDS;
+    const { provider } = createGitHubOAuthProvider(TEST_CONFIG);
+    const { client_id: _omitted, ...docWithoutClientId } = CIMD_DOC;
+    mockCimdFetch(t, { doc: docWithoutClientId });
+    assert.strictEqual(await provider.clientsStore.getClient(CIMD_URL), undefined);
+  });
+
+  it('rejects confidential clients (token_endpoint_auth_method other than none)', async (t) => {
+    const { provider } = createGitHubOAuthProvider(TEST_CONFIG);
+    mockCimdFetch(t, { doc: { ...CIMD_DOC, token_endpoint_auth_method: 'client_secret_post' } });
+    assert.strictEqual(await provider.clientsStore.getClient(CIMD_URL), undefined);
+  });
+
+  it('rejects documents without usable redirect_uris', async (t) => {
+    const { provider } = createGitHubOAuthProvider(TEST_CONFIG);
+    for (const redirect_uris of [undefined, [], ['not a url'], 'https://muster.example.com/cb']) {
+      mockCimdFetch(t, { doc: { ...CIMD_DOC, redirect_uris } });
+      assert.strictEqual(await provider.clientsStore.getClient(CIMD_URL), undefined, JSON.stringify(redirect_uris));
+    }
+  });
+
+  it('rejects non-JSON, non-object and oversized documents', async (t) => {
+    const { provider } = createGitHubOAuthProvider(TEST_CONFIG);
+    mockCimdFetch(t, { doc: 'not json' });
+    assert.strictEqual(await provider.clientsStore.getClient(CIMD_URL), undefined, 'invalid JSON');
+
+    mockCimdFetch(t, { doc: [CIMD_DOC] });
+    assert.strictEqual(await provider.clientsStore.getClient(CIMD_URL), undefined, 'array');
+
+    mockCimdFetch(t, { doc: { ...CIMD_DOC, padding: 'x'.repeat(64 * 1024) } });
+    assert.strictEqual(await provider.clientsStore.getClient(CIMD_URL), undefined, 'oversized body');
+
+    mockCimdFetch(t, { headers: { 'content-length': String(10 * 1024 * 1024) } });
+    assert.strictEqual(await provider.clientsStore.getClient(CIMD_URL), undefined, 'oversized content-length');
+  });
+
+  it('returns undefined when the document cannot be fetched and caches the failure briefly', async (t) => {
+    delete process.env.OAUTH_TRUSTED_CLIENT_IDS;
+    const { provider } = createGitHubOAuthProvider(TEST_CONFIG);
+    const calls = mockCimdFetch(t, { status: 404 });
+    assert.strictEqual(await provider.clientsStore.getClient(CIMD_URL), undefined);
+    assert.strictEqual(await provider.clientsStore.getClient(CIMD_URL), undefined);
+    assert.strictEqual(calls.length, 1, 'failure is negative-cached');
+
+    // After the negative-cache TTL (5 minutes) the URL is tried again
+    const origNow = Date.now;
+    Date.now = () => origNow() + 5 * 60 * 1000 + 1;
+    try {
+      assert.strictEqual(await provider.clientsStore.getClient(CIMD_URL), undefined);
+      assert.strictEqual(calls.length, 2);
+    } finally {
+      Date.now = origNow;
+    }
+  });
+
+  it('does not negative-cache failures for trusted URLs', async (t) => {
+    process.env.OAUTH_TRUSTED_CLIENT_IDS = CIMD_URL;
+    try {
+      const { provider } = createGitHubOAuthProvider(TEST_CONFIG);
+      const calls = mockCimdFetch(t, { status: 503 });
+      assert.strictEqual(await provider.clientsStore.getClient(CIMD_URL), undefined);
+      assert.strictEqual(await provider.clientsStore.getClient(CIMD_URL), undefined);
+      assert.strictEqual(calls.length, 2, 'every attempt retries the fetch');
+    } finally {
+      delete process.env.OAUTH_TRUSTED_CLIENT_IDS;
+    }
+  });
+
+  it('re-fetches after the cache TTL and keeps the last good document if the refresh fails', async (t) => {
+    const { provider } = createGitHubOAuthProvider(TEST_CONFIG);
+    let status = 200;
+    const calls = [];
+    t.mock.method(globalThis, 'fetch', async (url) => {
+      calls.push(String(url));
+      return { ok: status === 200, status, headers: new Headers(), text: async () => JSON.stringify(CIMD_DOC) };
+    });
+
+    const first = await provider.clientsStore.getClient(CIMD_URL);
+    assert.ok(first);
+
+    // Past the 1 hour TTL, the upstream is down
+    const origNow = Date.now;
+    Date.now = () => origNow() + 60 * 60 * 1000 + 1;
+    try {
+      status = 503;
+      const stale = await provider.clientsStore.getClient(CIMD_URL);
+      assert.strictEqual(stale, first, 'previously resolved client keeps being served');
+      assert.strictEqual(calls.length, 2, 'a refresh was attempted');
+
+      // Upstream is back: the next refresh (after the short retry TTL) picks up the document again
+      status = 200;
+      Date.now = () => origNow() + 60 * 60 * 1000 + 5 * 60 * 1000 + 2;
+      const fresh = await provider.clientsStore.getClient(CIMD_URL);
+      assert.ok(fresh);
+      assert.notStrictEqual(fresh, first, 'fresh document replaces the stale one');
+      assert.strictEqual(calls.length, 3);
+    } finally {
+      Date.now = origNow;
+    }
+  });
+
+  it('survives dynamic registration churn that evicts opaque clients', async (t) => {
+    const { provider } = createGitHubOAuthProvider(TEST_CONFIG);
+    const calls = mockCimdFetch(t);
+    const cimdClient = await provider.clientsStore.getClient(CIMD_URL);
+    assert.ok(cimdClient);
+
+    // Overflow the DCR store so its oldest entries get evicted
+    const first = provider.clientsStore.registerClient({ client_name: 'first' });
+    for (let i = 0; i < 1000; i++) {
+      provider.clientsStore.registerClient({ client_name: `c${i}` });
+    }
+    assert.strictEqual(await provider.clientsStore.getClient(first.client_id), undefined, 'DCR client evicted');
+    assert.strictEqual(await provider.clientsStore.getClient(CIMD_URL), cimdClient, 'CIMD client untouched');
+    assert.strictEqual(calls.length, 1, 'and not re-fetched');
+  });
+
+  it('exposes the URL policy as isCimdUrl', () => {
+    assert.strictEqual(isCimdUrl(CIMD_URL), true);
+    assert.strictEqual(isCimdUrl('https://muster.example.com:8443/client.json'), true);
+    assert.strictEqual(isCimdUrl('https://muster.example.com/'), false);
+    assert.strictEqual(isCimdUrl('https://192.168.1.1/client.json'), false);
   });
 });
 

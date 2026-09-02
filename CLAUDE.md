@@ -47,7 +47,8 @@ Pure JavaScript (ES modules), no TypeScript. Node 20+.
 
 ### Auth Layer (`src/lib/auth/`)
 
-- **`provider.js`** — GitHub OAuth provider implementing MCP SDK's `OAuthServerProvider` interface. Handles dynamic client registration, GitHub OAuth redirect flow, local PKCE validation, and token verification via GitHub API.
+- **`provider.js`** — GitHub OAuth provider implementing MCP SDK's `OAuthServerProvider` interface. Handles dynamic client registration, URL client_ids (Client ID Metadata Documents, SEP-991: any HTTPS CIMD URL is fetched, validated and cached; the URL policy in `isCimdUrl` blocks SSRF targets), GitHub OAuth redirect flow, local PKCE validation, and token verification via GitHub API. All of this state is in memory: a restart drops dynamically registered client_ids, in-flight authorization sessions and unexchanged codes (those logins must be started over); CIMD clients such as muster and Claude Code are unaffected because their client_id is re-resolved from the URL.
+- `http.js` builds the RFC 8414 metadata itself (`createOAuthMetadata` + `client_id_metadata_document_supported: true`) and mounts it before the SDK's `mcpAuthRouter`, because the SDK offers no option for the flag. Clients only take the CIMD path when it is advertised.
 
 ### Domain Layer (`src/lib/`)
 
@@ -74,7 +75,7 @@ Pure JavaScript (ES modules), no TypeScript. Node 20+.
 - `GITHUB_OAUTH_CLIENT_ID` (optional) — GitHub OAuth App client ID. Enables OAuth 2.1 on HTTP transport.
 - `GITHUB_OAUTH_CLIENT_SECRET` (required when OAuth enabled) — GitHub OAuth App client secret
 - `OAUTH_ISSUER_URL` (optional) — Public URL of this server for OAuth metadata (defaults to `http://localhost:{port}`)
-- `OAUTH_TRUSTED_CLIENT_IDS` (optional) — Comma-separated CIMD URLs of clients that skip `/register` (e.g. muster). Their metadata is fetched from the URL and cached.
+- `OAUTH_TRUSTED_CLIENT_IDS` (optional) — Comma-separated CIMD URLs that bypass the outbound URL policy (e.g. a muster on a cluster-internal hostname) and may omit `client_id` in their document. Public HTTPS CIMD URLs are accepted without an entry here.
 
 ## CI/CD
 

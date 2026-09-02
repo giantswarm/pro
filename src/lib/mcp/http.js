@@ -42,11 +42,12 @@ const sessions = {};
 /**
  * Start the MCP server with streamable HTTP transport
  * @param {Object} options
- * @param {number} options.port - Port to listen on (default: 8080)
+ * @param {number} options.port - Port to listen on (default: 8080; 0 picks a free port)
  * @param {string} options.endpoint - MCP endpoint path (default: /mcp)
+ * @returns {Promise<import('http').Server>} the listening server
  */
 export async function startHTTPServer(options = {}) {
-  const port = options.port || parseInt(process.env.HTTP_PORT, 10) || DEFAULT_PORT;
+  const port = options.port ?? (parseInt(process.env.HTTP_PORT, 10) || DEFAULT_PORT);
   const endpoint = options.endpoint || DEFAULT_ENDPOINT;
 
   const app = express();
@@ -63,7 +64,8 @@ export async function startHTTPServer(options = {}) {
   let bearerAuthMiddleware = null;
 
   if (oauthClientId && oauthClientSecret) {
-    const { mcpAuthRouter } = await import('@modelcontextprotocol/sdk/server/auth/router.js');
+    const { mcpAuthRouter, createOAuthMetadata } = await import('@modelcontextprotocol/sdk/server/auth/router.js');
+    const { metadataHandler } = await import('@modelcontextprotocol/sdk/server/auth/handlers/metadata.js');
     const { requireBearerAuth } = await import('@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js');
     const { createGitHubOAuthProvider } = await import('../auth/provider.js');
 
@@ -74,13 +76,30 @@ export async function startHTTPServer(options = {}) {
       clientSecret: oauthClientSecret
     });
 
-    // Mount OAuth routes: /authorize, /token, /register, /.well-known/*
-    app.use(mcpAuthRouter({
+    const authRouterOptions = {
       provider,
       issuerUrl,
       scopesSupported: ['repo', 'project', 'read:org'],
       resourceName: 'Giant Swarm PRO MCP Server'
-    }));
+    };
+
+    // RFC 8414 authorization server metadata. mcpAuthRouter builds this same
+    // document internally but offers no way to extend it, so build it here,
+    // add the SEP-991 flag and mount the well-known route before the router:
+    // Express dispatches in registration order, so this copy wins over the
+    // router's own.
+    const oauthMetadata = {
+      ...createOAuthMetadata(authRouterOptions),
+      // Clients may use the HTTPS URL of their Client ID Metadata Document as
+      // client_id instead of registering (resolved in clientsStore.getClient).
+      // Muster and Claude Code pick this path only when it is advertised; it
+      // is what lets them survive a restart of this in-memory client store.
+      client_id_metadata_document_supported: true
+    };
+    app.use('/.well-known/oauth-authorization-server', metadataHandler(oauthMetadata));
+
+    // Mount OAuth routes: /authorize, /token, /register, /.well-known/*
+    app.use(mcpAuthRouter(authRouterOptions));
 
     // GitHub OAuth callback (not part of MCP spec — specific to our proxy)
     app.get('/github/callback', handleGitHubCallback);
@@ -207,8 +226,12 @@ export async function startHTTPServer(options = {}) {
   sweepInterval.unref();
 
   // Start listening
-  const httpServer = app.listen(port, () => {
-    logger.info(`MCP HTTP server listening on port ${port} (endpoint: ${endpoint})`);
+  const httpServer = await new Promise((resolve, reject) => {
+    const server = app.listen(port, () => {
+      logger.info(`MCP HTTP server listening on port ${server.address().port} (endpoint: ${endpoint})`);
+      resolve(server);
+    });
+    server.once('error', reject);
   });
 
   // Graceful shutdown
@@ -230,4 +253,6 @@ export async function startHTTPServer(options = {}) {
 
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
+
+  return httpServer;
 }
