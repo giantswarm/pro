@@ -36,6 +36,7 @@ import {
 import { logger } from '../logger.js';
 import { subIssueTools, subIssueToolHandlers } from './sub-issues.js';
 import { timelineTools, timelineToolHandlers } from './timeline.js';
+import { boardTools, boardToolHandlers } from './board.js';
 import {
   listIssueCommentsForItems,
   MAX_ITEMS_PER_CALL,
@@ -1017,7 +1018,8 @@ export const tools = [
   updateIssueLabelsTool,
   listIssueCommentsTool,
   ...subIssueTools,
-  ...timelineTools
+  ...timelineTools,
+  ...boardTools
 ];
 
 export const toolHandlers = {
@@ -1032,5 +1034,6 @@ export const toolHandlers = {
   update_issue_labels: handleUpdateIssueLabels,
   list_issue_comments: handleListIssueComments,
   ...subIssueToolHandlers,
-  ...timelineToolHandlers
+  ...timelineToolHandlers,
+  ...boardToolHandlers
 };
