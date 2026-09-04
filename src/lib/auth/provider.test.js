@@ -559,6 +559,44 @@ describe('verifyAccessToken', () => {
     assert.deepStrictEqual(authInfo.scopes, []);
   });
 
+  it('accepts a token with an empty scopes header (GitHub App user-to-server token)', async (t) => {
+    const { provider } = createGitHubOAuthProvider(TEST_CONFIG);
+    t.mock.method(globalThis, 'fetch', async () => ({
+      ok: true,
+      status: 200,
+      headers: { get: (h) => h === 'x-oauth-scopes' ? '' : null },
+      json: async () => ({ login: 'app-user' })
+    }));
+
+    const authInfo = await provider.verifyAccessToken('ghu_app_token_empty');
+    assert.strictEqual(authInfo.clientId, 'app-user');
+    assert.deepStrictEqual(authInfo.scopes, []);
+  });
+
+  it('honors the scope hierarchy: admin:org or write:org satisfies read:org', async (t) => {
+    const { provider } = createGitHubOAuthProvider(TEST_CONFIG);
+    let scopes = 'repo, project, admin:org';
+    t.mock.method(globalThis, 'fetch', async () => ({
+      ok: true,
+      status: 200,
+      headers: { get: (h) => h === 'x-oauth-scopes' ? scopes : null },
+      json: async () => ({ login: 'org-admin' })
+    }));
+
+    const admin = await provider.verifyAccessToken('gho_admin_org');
+    assert.strictEqual(admin.clientId, 'org-admin');
+
+    scopes = 'repo, project, write:org';
+    const writer = await provider.verifyAccessToken('gho_write_org');
+    assert.strictEqual(writer.clientId, 'org-admin');
+
+    scopes = 'repo, admin:org';
+    await assert.rejects(
+      () => provider.verifyAccessToken('gho_no_project'),
+      /missing required scopes: project$/
+    );
+  });
+
   it('throws when GitHub API returns non-ok status', async (t) => {
     const { provider } = createGitHubOAuthProvider(TEST_CONFIG);
     t.mock.method(globalThis, 'fetch', async () => ({
