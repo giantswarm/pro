@@ -217,6 +217,8 @@ The `board` parameter defaults to `"roadmap"` on every board-scoped tool for bac
 
 ### Read Tools
 
+- **`get_board_schema`** -- Describe a board's fields for a UI: name, type (`singleSelect`, `iteration`, `date`, `text`, `other`), the options of single-select fields and the iterations of iteration fields. The `{board}://schema` resource as a tool result.
+- **`get_item_by_issue`** -- Find the board item of one GitHub issue (URL, `owner/repo#N`, or owner/repo/number) without scanning the board; `item: null` when the issue is not on the board.
 - **`list_issues`** -- List and filter issues from a project board using generic field filters. Specify `board` to choose the board (`"roadmap"` or `"customer"`). Use `filters` (a field name-to-value map) to filter by any single-select field. Use `emptyFields` to find items missing specific field values. Read the board's schema resource first to discover available fields and valid options.
 
 - **`get_issue_details`** -- Get full details for a specific item: repository metadata, title, body text, comments with timestamps, assignees, labels, dates, and all field values. Board-independent (queries by item ID).
