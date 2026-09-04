@@ -88,9 +88,11 @@ With `--transport=streamable-http` the server picks one of three modes:
 
 In the OAuth and bearer-only modes GitHub calls run as the caller, so board
 changes are attributed to the person. Scoped tokens (classic OAuth, classic
-PAT) must cover `repo`, `project` and `read:org`; GitHub App user-to-server
-tokens and fine-grained PATs carry no scope list and are accepted as they
-are, GitHub enforcing their permissions on each call.
+PAT) must cover `repo`, `project` and `read:org` (a wider scope counts:
+`admin:org` or `write:org` for `read:org`); GitHub App user-to-server tokens
+and fine-grained PATs have no scopes -- GitHub reports an empty scope list for
+them -- and are accepted as they are, GitHub enforcing their permissions on
+each call.
 
 ### Environment Variables
 

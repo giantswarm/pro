@@ -113,6 +113,29 @@ describe('bearer-only mode', () => {
     assert.strictEqual(calls[0].auth, 'Bearer ghu_apptoken', 'the caller\'s own token is what GitHub sees');
   });
 
+  it('accepts a GitHub App user token whose scopes header is empty and serves the MCP initialize', async (t) => {
+    // GitHub answers /user for a user-to-server token with `x-oauth-scopes: `
+    // (present, empty): the token has permissions, not scopes.
+    const calls = mockGitHubUser(t, { scopes: '' });
+    const res = await request('POST', '/mcp', {
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', Authorization: 'Bearer ghu_apptoken_empty' },
+      body: INITIALIZE
+    });
+    assert.strictEqual(res.status, 200, res.body);
+    assert.match(res.body, /"protocolVersion"/);
+    assert.deepStrictEqual(calls.map(c => c.url), ['https://api.github.com/user']);
+  });
+
+  it('accepts a classic token whose wider scope covers a required one (admin:org for read:org)', async (t) => {
+    mockGitHubUser(t, { scopes: 'admin:org, project, repo, workflow' });
+    const res = await request('POST', '/mcp', {
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', Authorization: 'Bearer gho_orgadmin' },
+      body: INITIALIZE
+    });
+    assert.strictEqual(res.status, 200, res.body);
+    assert.match(res.body, /"protocolVersion"/);
+  });
+
   it('still refuses a scoped token that lacks the board scopes (403 insufficient_scope)', async (t) => {
     mockGitHubUser(t, { scopes: 'read:user' });
     const res = await request('POST', '/mcp', {

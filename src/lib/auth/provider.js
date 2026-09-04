@@ -48,8 +48,15 @@ const AUTH_SESSION_TTL_MS = 10 * 60 * 1000;
 const TOKEN_CACHE_TTL_MS = 5 * 60 * 1000;
 // Maximum number of registered MCP clients kept in memory
 const MAX_CLIENTS = 1000;
-// GitHub OAuth scopes required by PRO's tools
+// GitHub OAuth scopes required by PRO's tools, each with the scopes that
+// satisfy it: GitHub's classic scopes nest (admin:org > write:org > read:org),
+// and a token announcing the wider scope has the narrower one.
 const REQUIRED_GITHUB_SCOPES = ['repo', 'project', 'read:org'];
+const SCOPE_SATISFIED_BY = {
+  repo: ['repo'],
+  project: ['project'],
+  'read:org': ['read:org', 'write:org', 'admin:org']
+};
 // GitHub's OAuth authorization server, as the hosted GitHub MCP server names it
 // in its protected resource metadata. Used when this server runs as a plain
 // resource server (OAUTH_BEARER_ONLY) whose tokens come from GitHub directly.
@@ -103,11 +110,13 @@ export function isCimdUrl(clientId) {
  *
  * A token is valid when GitHub's /user endpoint accepts it. Classic OAuth and
  * PAT tokens announce their scopes in `x-oauth-scopes`; those must cover the
- * scopes the board tools need, so a token that cannot write is refused up
- * front. GitHub App user-to-server tokens and fine-grained PATs carry no such
- * header -- their permissions are enforced by GitHub per request -- and are
- * accepted; a missing permission surfaces as a 403 from the call that needs
- * it. Verified tokens are cached briefly; `sweep` drops expired entries.
+ * scopes the board tools need (a wider scope such as `admin:org` counts for
+ * `read:org`), so a token that cannot write is refused up front. GitHub App
+ * user-to-server tokens and fine-grained PATs have no scopes -- GitHub sends
+ * the header empty or not at all; their permissions are enforced by GitHub
+ * per request -- and are accepted; a missing permission surfaces as a 403
+ * from the call that needs it. Verified tokens are cached briefly; `sweep`
+ * drops expired entries.
  *
  * Used by the OAuth provider (tokens this server issued) and by the
  * bearer-only mode (tokens a client such as muster obtained from GitHub).
@@ -139,11 +148,15 @@ export function createGitHubTokenVerifier() {
     }
 
     // Scoped tokens (classic OAuth, classic PAT) announce their scopes; a
-    // token without the header is permission-based and checked per call.
+    // token announcing none -- header absent or empty, as for GitHub App
+    // user-to-server tokens and fine-grained PATs -- is permission-based and
+    // checked per call.
     const scopeHeader = res.headers.get('x-oauth-scopes');
     const grantedScopes = (scopeHeader || '').split(',').map(s => s.trim()).filter(Boolean);
-    if (scopeHeader !== null && scopeHeader !== undefined) {
-      const missingScopes = REQUIRED_GITHUB_SCOPES.filter(s => !grantedScopes.includes(s));
+    if (grantedScopes.length > 0) {
+      const missingScopes = REQUIRED_GITHUB_SCOPES.filter(
+        required => !SCOPE_SATISFIED_BY[required].some(scope => grantedScopes.includes(scope))
+      );
       if (missingScopes.length > 0) {
         throw new InsufficientScopeError(`GitHub token is missing required scopes: ${missingScopes.join(', ')}`);
       }
