@@ -39,7 +39,7 @@
 
 import { randomUUID } from 'crypto';
 import net from 'node:net';
-import { InvalidGrantError, UnsupportedGrantTypeError } from '@modelcontextprotocol/sdk/server/auth/errors.js';
+import { InvalidGrantError, UnsupportedGrantTypeError, InvalidTokenError, InsufficientScopeError } from '@modelcontextprotocol/sdk/server/auth/errors.js';
 import { logger } from '../logger.js';
 
 // TTL for authorization sessions (10 minutes)
@@ -50,6 +50,12 @@ const TOKEN_CACHE_TTL_MS = 5 * 60 * 1000;
 const MAX_CLIENTS = 1000;
 // GitHub OAuth scopes required by PRO's tools
 const REQUIRED_GITHUB_SCOPES = ['repo', 'project', 'read:org'];
+// GitHub's OAuth authorization server, as the hosted GitHub MCP server names it
+// in its protected resource metadata. Used when this server runs as a plain
+// resource server (OAUTH_BEARER_ONLY) whose tokens come from GitHub directly.
+export const GITHUB_AUTHORIZATION_SERVER = 'https://github.com/login/oauth';
+// Upper bound on cached verified tokens; beyond it the oldest entry is dropped.
+const TOKEN_CACHE_MAX = 10000;
 // TTL for resolved Client ID Metadata Documents (1 hour) — avoids re-fetching
 // on every authorize/token call
 const CIMD_CACHE_TTL_MS = 60 * 60 * 1000;
@@ -93,6 +99,83 @@ export function isCimdUrl(clientId) {
 }
 
 /**
+ * Create a verifier for GitHub access tokens presented as bearers.
+ *
+ * A token is valid when GitHub's /user endpoint accepts it. Classic OAuth and
+ * PAT tokens announce their scopes in `x-oauth-scopes`; those must cover the
+ * scopes the board tools need, so a token that cannot write is refused up
+ * front. GitHub App user-to-server tokens and fine-grained PATs carry no such
+ * header -- their permissions are enforced by GitHub per request -- and are
+ * accepted; a missing permission surfaces as a 403 from the call that needs
+ * it. Verified tokens are cached briefly; `sweep` drops expired entries.
+ *
+ * Used by the OAuth provider (tokens this server issued) and by the
+ * bearer-only mode (tokens a client such as muster obtained from GitHub).
+ *
+ * @returns {{ verifyAccessToken(token: string): Promise<object>, sweep(now?: number): void }}
+ */
+export function createGitHubTokenVerifier() {
+  // token → { authInfo, expiresAt }
+  const tokenCache = new Map();
+
+  async function verifyAccessToken(token) {
+    const cached = tokenCache.get(token);
+    if (cached && Date.now() < cached.expiresAt) {
+      return cached.authInfo;
+    }
+
+    const res = await fetch('https://api.github.com/user', {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/vnd.github+json',
+        'User-Agent': 'giantswarm-pro-mcp'
+      }
+    });
+
+    if (!res.ok) {
+      // An OAuthError so the bearer middleware answers 401 with a proper
+      // WWW-Authenticate challenge instead of an opaque 500.
+      throw new InvalidTokenError(`GitHub token verification failed: ${res.status}`);
+    }
+
+    // Scoped tokens (classic OAuth, classic PAT) announce their scopes; a
+    // token without the header is permission-based and checked per call.
+    const scopeHeader = res.headers.get('x-oauth-scopes');
+    const grantedScopes = (scopeHeader || '').split(',').map(s => s.trim()).filter(Boolean);
+    if (scopeHeader !== null && scopeHeader !== undefined) {
+      const missingScopes = REQUIRED_GITHUB_SCOPES.filter(s => !grantedScopes.includes(s));
+      if (missingScopes.length > 0) {
+        throw new InsufficientScopeError(`GitHub token is missing required scopes: ${missingScopes.join(', ')}`);
+      }
+    }
+
+    const user = await res.json();
+
+    const authInfo = {
+      token,
+      clientId: user.login,
+      scopes: grantedScopes,
+      expiresAt: Math.floor(Date.now() / 1000) + 3600 // 1 hour
+    };
+
+    if (tokenCache.size >= TOKEN_CACHE_MAX) {
+      tokenCache.delete(tokenCache.keys().next().value);
+    }
+    tokenCache.set(token, { authInfo, expiresAt: Date.now() + TOKEN_CACHE_TTL_MS });
+
+    return authInfo;
+  }
+
+  function sweep(now = Date.now()) {
+    for (const [key, entry] of tokenCache) {
+      if (now > entry.expiresAt) tokenCache.delete(key);
+    }
+  }
+
+  return { verifyAccessToken, sweep };
+}
+
+/**
  * Create the GitHub OAuth provider.
  *
  * @param {{ clientId: string, clientSecret: string }} config
@@ -118,8 +201,8 @@ export function createGitHubOAuthProvider(config) {
   // In-memory local auth codes (code → { githubToken, clientId, redirectUri, codeChallenge })
   const authCodes = new Map();
 
-  // Token verification cache (token → { authInfo, expiresAt })
-  const tokenCache = new Map();
+  // GitHub token verification, shared with the bearer-only mode.
+  const tokenVerifier = createGitHubTokenVerifier();
 
   // Periodic cleanup
   const sweepInterval = setInterval(() => {
@@ -130,9 +213,7 @@ export function createGitHubOAuthProvider(config) {
     for (const [key, code] of authCodes) {
       if (now > code.expiresAt) authCodes.delete(key);
     }
-    for (const [key, entry] of tokenCache) {
-      if (now > entry.expiresAt) tokenCache.delete(key);
-    }
+    tokenVerifier.sweep(now);
   }, 60_000);
   sweepInterval.unref();
 
@@ -258,54 +339,9 @@ export function createGitHubOAuthProvider(config) {
     return clientInfo;
   }
 
-  /**
-   * Verify a GitHub access token by calling the GitHub API.
-   * Validates that the token has all required scopes.
-   * Results are cached briefly to avoid per-request API calls.
-   */
+  /** Verify a GitHub access token, see createGitHubTokenVerifier. */
   async function verifyGitHubToken(token) {
-    const cached = tokenCache.get(token);
-    if (cached && Date.now() < cached.expiresAt) {
-      return cached.authInfo;
-    }
-
-    const res = await fetch('https://api.github.com/user', {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: 'application/vnd.github+json',
-        'User-Agent': 'giantswarm-pro-mcp'
-      }
-    });
-
-    if (!res.ok) {
-      throw new Error(`GitHub token verification failed: ${res.status}`);
-    }
-
-    // Parse the actual scopes granted to this token
-    const scopeHeader = res.headers.get('x-oauth-scopes') || '';
-    const grantedScopes = scopeHeader.split(',').map(s => s.trim()).filter(Boolean);
-
-    // Reject tokens that are missing required scopes
-    const missingScopes = REQUIRED_GITHUB_SCOPES.filter(s => !grantedScopes.includes(s));
-    if (missingScopes.length > 0) {
-      throw new Error(`GitHub token is missing required scopes: ${missingScopes.join(', ')}`);
-    }
-
-    const user = await res.json();
-
-    const authInfo = {
-      token,
-      clientId: user.login,
-      scopes: grantedScopes,
-      expiresAt: Math.floor(Date.now() / 1000) + 3600 // 1 hour
-    };
-
-    tokenCache.set(token, {
-      authInfo,
-      expiresAt: Date.now() + TOKEN_CACHE_TTL_MS
-    });
-
-    return authInfo;
+    return tokenVerifier.verifyAccessToken(token);
   }
 
   // -----------------------------------------------------------------------

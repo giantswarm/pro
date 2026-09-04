@@ -545,6 +545,20 @@ describe('verifyAccessToken', () => {
     );
   });
 
+  it('accepts a token without a scopes header (GitHub App / fine-grained PAT)', async (t) => {
+    const { provider } = createGitHubOAuthProvider(TEST_CONFIG);
+    t.mock.method(globalThis, 'fetch', async () => ({
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+      json: async () => ({ login: 'app-user' })
+    }));
+
+    const authInfo = await provider.verifyAccessToken('ghu_app_token');
+    assert.strictEqual(authInfo.clientId, 'app-user');
+    assert.deepStrictEqual(authInfo.scopes, []);
+  });
+
   it('throws when GitHub API returns non-ok status', async (t) => {
     const { provider } = createGitHubOAuthProvider(TEST_CONFIG);
     t.mock.method(globalThis, 'fetch', async () => ({
