@@ -113,6 +113,20 @@ describe('bearer-only mode', () => {
     assert.strictEqual(calls[0].auth, 'Bearer ghu_apptoken', 'the caller\'s own token is what GitHub sees');
   });
 
+  it('accepts a GitHub App user token whose scopes header is present but empty', async (t) => {
+    // What api.github.com actually sends for a ghu_ token: the header exists
+    // with no value. Must not be read as "announces zero scopes" (403).
+    const calls = mockGitHubUser(t, { scopes: '' });
+    // A token the verifier has not cached from the previous test.
+    const res = await request('POST', '/mcp', {
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', Authorization: 'Bearer ghu_apptoken_empty_scopes' },
+      body: INITIALIZE
+    });
+    assert.strictEqual(res.status, 200, res.body);
+    assert.match(res.body, /"protocolVersion"/);
+    assert.deepStrictEqual(calls.map(c => c.url), ['https://api.github.com/user']);
+  });
+
   it('still refuses a scoped token that lacks the board scopes (403 insufficient_scope)', async (t) => {
     mockGitHubUser(t, { scopes: 'read:user' });
     const res = await request('POST', '/mcp', {

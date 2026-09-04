@@ -138,11 +138,15 @@ export function createGitHubTokenVerifier() {
       throw new InvalidTokenError(`GitHub token verification failed: ${res.status}`);
     }
 
-    // Scoped tokens (classic OAuth, classic PAT) announce their scopes; a
-    // token without the header is permission-based and checked per call.
+    // Scoped tokens (classic OAuth, classic PAT) announce their scopes. A
+    // token that announces none is permission-based and checked per call:
+    // GitHub App user and installation tokens and fine-grained PATs come
+    // with an empty `x-oauth-scopes` header (GitHub sends the header, with
+    // no value), so an empty header must count as absent -- muster's GitHub
+    // connector hands us exactly such tokens.
     const scopeHeader = res.headers.get('x-oauth-scopes');
     const grantedScopes = (scopeHeader || '').split(',').map(s => s.trim()).filter(Boolean);
-    if (scopeHeader !== null && scopeHeader !== undefined) {
+    if (grantedScopes.length > 0) {
       const missingScopes = REQUIRED_GITHUB_SCOPES.filter(s => !grantedScopes.includes(s));
       if (missingScopes.length > 0) {
         throw new InsufficientScopeError(`GitHub token is missing required scopes: ${missingScopes.join(', ')}`);
