@@ -10,14 +10,21 @@
  *   - OAuth endpoints: /authorize, /token, /register, /.well-known/*
  *   - GitHub callback: /github/callback
  *
- * When either GITHUB_OAUTH_CLIENT_ID or GITHUB_OAUTH_CLIENT_SECRET is NOT set,
- * runs without auth (env var token mode).
+ * When OAUTH_BEARER_ONLY=true (and no GitHub OAuth App is configured), the
+ * server is a resource server only: every MCP request must carry a GitHub
+ * token as bearer, which is verified against the GitHub API and used for that
+ * request's GitHub calls. The token is obtained elsewhere -- muster's GitHub
+ * connector holds the person's grant -- so no /authorize, /token or /register
+ * exist; RFC 9728 protected resource metadata names GitHub as the
+ * authorization server.
+ *
+ * When none of the above is set, runs without auth (env var token mode).
  *
  * Each client session gets its own transport and MCP server instance,
  * following the recommended pattern from the MCP SDK.
  *
  * Endpoints:
- *   POST/GET/DELETE /mcp  - MCP streamable HTTP endpoint (auth required when OAuth enabled)
+ *   POST/GET/DELETE /mcp  - MCP streamable HTTP endpoint (auth required when OAuth or bearer-only auth is enabled)
  *   GET /healthz           - Liveness probe (always 200)
  *   GET /readyz            - Readiness probe (200 when server is connected)
  */
@@ -108,6 +115,33 @@ export async function startHTTPServer(options = {}) {
     bearerAuthMiddleware = requireBearerAuth({ verifier: provider });
 
     logger.info('OAuth 2.1 enabled — MCP clients must authenticate via GitHub');
+  } else if (process.env.OAUTH_BEARER_ONLY === 'true') {
+    const { requireBearerAuth } = await import('@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js');
+    const { metadataHandler } = await import('@modelcontextprotocol/sdk/server/auth/handlers/metadata.js');
+    const { createGitHubTokenVerifier, GITHUB_AUTHORIZATION_SERVER } = await import('../auth/provider.js');
+
+    // The public URL doubles as the resource identifier's origin.
+    const publicUrl = new URL(process.env.OAUTH_ISSUER_URL || `http://localhost:${port}`);
+    const resourceUrl = new URL(endpoint, publicUrl);
+    const protectedResourceMetadata = {
+      resource: resourceUrl.href,
+      authorization_servers: [GITHUB_AUTHORIZATION_SERVER],
+      scopes_supported: ['repo', 'project', 'read:org'],
+      bearer_methods_supported: ['header'],
+      resource_name: 'Giant Swarm PRO MCP Server'
+    };
+    // RFC 9728: path-specific document first (what the WWW-Authenticate
+    // challenge points at), root document as the fallback clients probe.
+    const metadataPath = `/.well-known/oauth-protected-resource${endpoint}`;
+    app.use(metadataPath, metadataHandler(protectedResourceMetadata));
+    app.use('/.well-known/oauth-protected-resource', metadataHandler(protectedResourceMetadata));
+
+    bearerAuthMiddleware = requireBearerAuth({
+      verifier: createGitHubTokenVerifier(),
+      resourceMetadataUrl: new URL(metadataPath, publicUrl).href
+    });
+
+    logger.info('Bearer-only auth enabled — MCP clients present GitHub tokens obtained elsewhere; no authorization server is run');
   } else {
     logger.info('OAuth not configured — using GITHUB_API_TOKEN for all requests');
   }

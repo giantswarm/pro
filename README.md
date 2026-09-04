@@ -76,9 +76,26 @@ Note: this skips the global binary, so `pro --self-update` won't be available.
 
 ## Configuration
 
+### HTTP transport authentication
+
+With `--transport=streamable-http` the server picks one of three modes:
+
+| Mode | Configuration | Who holds the GitHub credential |
+| --- | --- | --- |
+| Env token | `GITHUB_API_TOKEN` only | the server (one identity for every caller) |
+| OAuth 2.1 | `GITHUB_OAUTH_CLIENT_ID` + `GITHUB_OAUTH_CLIENT_SECRET` (+ `OAUTH_ISSUER_URL`) | this server, acting as authorization server in front of GitHub; each caller signs in through it |
+| Bearer-only | `OAUTH_BEARER_ONLY=true` (+ `OAUTH_ISSUER_URL`) | the caller: every `/mcp` request carries a GitHub token as bearer, verified via the GitHub API and used for that request. No `/authorize`, `/token`, `/register`; `/.well-known/oauth-protected-resource[/mcp]` names `https://github.com/login/oauth` as the authorization server. Made for an MCP aggregator such as muster that holds the person's GitHub grant itself. |
+
+In the OAuth and bearer-only modes GitHub calls run as the caller, so board
+changes are attributed to the person. Scoped tokens (classic OAuth, classic
+PAT) must cover `repo`, `project` and `read:org`; GitHub App user-to-server
+tokens and fine-grained PATs carry no scope list and are accepted as they
+are, GitHub enforcing their permissions on each call.
+
 ### Environment Variables
 
-- `GITHUB_API_TOKEN` (required): GitHub PAT with `project:write` and `repo:write` scopes.
+- `GITHUB_API_TOKEN` (required for stdio and the env-token HTTP mode): GitHub PAT with `project:write` and `repo:write` scopes.
+- `OAUTH_BEARER_ONLY` (optional, HTTP transport): `true` selects the bearer-only mode described above.
 - `HTTP_PORT` (optional): Port for HTTP transport (default: 8080).
 
 ## Transport Modes

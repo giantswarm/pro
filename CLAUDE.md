@@ -65,7 +65,7 @@ Pure JavaScript (ES modules), no TypeScript. Node 20+.
 - **Generic field filtering**: No hardcoded field names. LLMs read the board's schema resource to discover fields, then pass field name/value pairs as filters.
 - **Board registry pattern**: `resolveBoardId()` maps board names ("roadmap", "customer") to GitHub project node IDs.
 - **Dual transport**: stdio for local clients, HTTP for remote deployment — same server code.
-- **Dual auth**: `GITHUB_API_TOKEN` env var for stdio/local use; OAuth 2.1 via GitHub for HTTP transport (when `GITHUB_OAUTH_CLIENT_ID` is set). Per-request tokens are threaded through the entire call chain.
+- **Three auth modes**: `GITHUB_API_TOKEN` env var for stdio/local use; OAuth 2.1 via GitHub for HTTP transport (when `GITHUB_OAUTH_CLIENT_ID` is set); bearer-only for HTTP transport (`OAUTH_BEARER_ONLY=true`: GitHub tokens obtained elsewhere are verified and used per request, no authorization server). Per-request tokens are threaded through the entire call chain. `createGitHubTokenVerifier` (provider.js) is the shared verifier: scoped tokens must cover `repo`, `project`, `read:org`; GitHub App / fine-grained tokens carry no scopes header and are accepted, GitHub enforcing their permissions per call.
 - **Public repo safety**: Creating issues in `giantswarm/roadmap` (public) requires explicit `confirmPublicSafe=true`. Posting a comment via `close_issue`/`reopen_issue` on an issue in any public repository requires the same `confirmPublicSafe=true` guard; the close/reopen state change itself is ungated.
 
 ## Environment Variables
@@ -74,6 +74,7 @@ Pure JavaScript (ES modules), no TypeScript. Node 20+.
 - `HTTP_PORT` (optional, default 8080) — for HTTP transport
 - `GITHUB_OAUTH_CLIENT_ID` (optional) — GitHub OAuth App client ID. Enables OAuth 2.1 on HTTP transport.
 - `GITHUB_OAUTH_CLIENT_SECRET` (required when OAuth enabled) — GitHub OAuth App client secret
+- `OAUTH_BEARER_ONLY` (optional) — `true` runs the HTTP transport as a plain resource server: every `/mcp` request must carry a GitHub token as bearer (verified via the GitHub API, then used for that request's GitHub calls); no `/authorize`, `/token` or `/register` are served, and RFC 9728 protected resource metadata at `/.well-known/oauth-protected-resource[/mcp]` names `https://github.com/login/oauth` as the authorization server. For clients that hold the person's GitHub grant themselves (muster's GitHub connector). Ignored when a GitHub OAuth App is configured.
 - `OAUTH_ISSUER_URL` (optional) — Public URL of this server for OAuth metadata (defaults to `http://localhost:{port}`)
 - `OAUTH_TRUSTED_CLIENT_IDS` (optional) — Comma-separated CIMD URLs that bypass the outbound URL policy (e.g. a muster on a cluster-internal hostname) and may omit `client_id` in their document. Public HTTPS CIMD URLs are accepted without an entry here.
 
