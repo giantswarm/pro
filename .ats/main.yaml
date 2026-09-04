@@ -6,5 +6,4 @@
 # exist". Skipping keeps CI green while still validating that the chart packages
 # cleanly via build-chart. Add `tests/ats` smoke scenarios and drop `smoke` from
 # skip-steps to enable real deploy testing.
-smoke-tests-cluster-type: kind
 skip-steps: [smoke, functional, upgrade]
