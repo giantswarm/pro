@@ -1,0 +1,14 @@
+# Values for the app-test-suite smoke (tests/ats/test_smoke.py) on the bare kind cluster
+# the generated execute-chart-tests job creates. Layered over the chart defaults, see
+# .ats/main.yaml (app-tests-app-config-file).
+
+image:
+  # Branch builds publish no image (build-image runs with push: false) and the orb stamps
+  # appVersion with the dev version, so the chart's default tag exists in no registry.
+  # Pin the latest release; bump it when the chart needs a newer image.
+  tag: "1.10.2"
+
+# The default env reads GITHUB_API_TOKEN from a Secret (pro-github-token) that the chart
+# does not create. The streamable-http transport starts without a token; the smoke only
+# checks that the Deployment comes up and passes its /healthz and /readyz probes.
+env: []

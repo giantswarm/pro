@@ -1,9 +1,9 @@
-# app-test-suite config for the generated `execute-chart-tests` CI job.
-#
-# All test steps are skipped: app-test-suite's smoke scenario runs pytest tests
-# from `tests/ats`, which this repo does not yet have. Without that directory the
-# job errors with "the configured test source code directory 'tests/ats' doesn't
-# exist". Skipping keeps CI green while still validating that the chart packages
-# cleanly via build-chart. Add `tests/ats` smoke scenarios and drop `smoke` from
-# skip-steps to enable real deploy testing.
-skip-steps: [smoke, functional, upgrade]
+# app-test-suite (ats >= 1.0) config for the generated execute-chart-tests CircleCI job.
+# ats creates a kind cluster, applies its bundled CRDs, installs the packaged chart with
+# `helm upgrade --install --wait` and runs `uv run pytest -m smoke` in tests/ats.
+app-tests-deploy-namespace: pro
+app-tests-app-config-file: tests/ats/smoke-values.yaml
+
+# functional: no functional tests yet.
+# upgrade: needs upgrade-tests-app-catalog-url pointing at the released chart; not wired.
+skip-steps: [functional, upgrade]
