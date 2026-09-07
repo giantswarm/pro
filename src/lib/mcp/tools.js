@@ -42,6 +42,7 @@ import {
   MAX_ITEMS_PER_CALL,
   DEFAULT_MAX_PER_ISSUE
 } from '../comments.js';
+import { READ_ONLY, additiveWrite, destructiveWrite } from './annotations.js';
 
 const BOARD_NAMES = Object.keys(BOARDS);
 
@@ -77,6 +78,7 @@ async function resolveSingleItemIssue(itemId, token) {
 
 export const listIssuesTool = {
   name: 'list_issues',
+  annotations: READ_ONLY,
   description: 'List and filter issues from a project board (roadmap or customer). Uses generic field filters -- read the board\'s schema resource first (e.g. roadmap://schema or customer://schema) to discover available fields and valid option values. Returns compact items with `repo` (nameWithOwner), `private` flag, `state` (OPEN/CLOSED), `createdAt`/`updatedAt` timestamps, `closedAt` (only present when the item is closed), and a `fields` map (only non-empty values). The repo URL is always https://github.com/{repo}.',
   inputSchema: {
     type: 'object',
@@ -212,6 +214,7 @@ export async function handleListIssues(args, extra) {
 
 export const getIssueDetailsTool = {
   name: 'get_issue_details',
+  annotations: READ_ONLY,
   description: 'Get detailed information about a specific issue including repository metadata, title, description, comments, assignees, labels, and field values.',
   inputSchema: {
     type: 'object',
@@ -249,6 +252,7 @@ export async function handleGetIssueDetails(args, extra) {
 
 export const updateIssueFieldTool = {
   name: 'update_issue_field',
+  annotations: destructiveWrite(),
   description: 'Update a field value for an issue on a project board. Supports single-select fields (Status, Kind, Team, etc.) and iteration fields (Quarter). Also supports date fields (Start Date, Target Date) when a specific date is known. The server resolves field and option names to internal IDs automatically. To clear/unset a field instead of setting it, pass `clear: true` (and omit `value`) -- this works for single-select, iteration, and date fields.',
   inputSchema: {
     type: 'object',
@@ -381,6 +385,7 @@ export async function handleUpdateIssueField(args, extra) {
 
 export const createIssueInProjectTool = {
   name: 'create_issue_in_project',
+  annotations: additiveWrite(),
   description: 'Create a new GitHub Issue in a specified repository and add it to a project board. Supports optional initial status, assignees, and labels. For public repos, only create sanitized, non-customer-specific content. If applying labels fails after the issue has already been created and added to the board, the issue is NOT rolled back -- the response reports success with a `warning` explaining that labels were not applied.',
   inputSchema: {
     type: 'object',
@@ -564,6 +569,7 @@ export async function handleCreateIssueInProject(args, extra) {
 
 export const addExistingIssueTool = {
   name: 'add_existing_issue',
+  annotations: additiveWrite({ idempotent: true }),
   description: 'Add an existing GitHub issue to a project board. At least one of issueUrl or issueNodeId must be provided.',
   inputSchema: {
     type: 'object',
@@ -643,6 +649,7 @@ export async function handleAddExistingIssue(args, extra) {
 
 export const archiveItemTool = {
   name: 'archive_item',
+  annotations: destructiveWrite(),
   description: 'Archive a project item, removing it from the active board view without deleting the underlying issue.',
   inputSchema: {
     type: 'object',
@@ -695,6 +702,7 @@ export async function handleArchiveItem(args, extra) {
 
 export const closeIssueTool = {
   name: 'close_issue',
+  annotations: destructiveWrite(),
   description: 'Close the GitHub issue underlying a single project board item. Board-independent (queries by item ID). Optionally posts a comment before closing. Operates on exactly one item per call -- there is no bulk close. Comments on issues in public repos require confirmPublicSafe=true. This does not change the board\'s Status field -- unless the board has GitHub\'s built-in "item closed -> set Status" workflow enabled, pair this call with update_issue_field if the board Status should reflect the closure.',
   inputSchema: {
     type: 'object',
@@ -778,6 +786,7 @@ export async function handleCloseIssue(args, extra) {
 
 export const reopenIssueTool = {
   name: 'reopen_issue',
+  annotations: destructiveWrite(),
   description: 'Reopen the GitHub issue underlying a single project board item. Board-independent (queries by item ID). Optionally posts a comment before reopening. Operates on exactly one item per call -- there is no bulk reopen. Comments on issues in public repos require confirmPublicSafe=true. This does not change the board\'s Status field -- unless the board has GitHub\'s built-in "item closed -> set Status" workflow enabled, pair this call with update_issue_field if the board Status should reflect the reopening.',
   inputSchema: {
     type: 'object',
@@ -842,6 +851,7 @@ export async function handleReopenIssue(args, extra) {
 
 export const updateIssueLabelsTool = {
   name: 'update_issue_labels',
+  annotations: destructiveWrite(),
   description: 'Add and/or remove labels on the issue underlying a project board item. At least one of addLabels or removeLabels must be provided. Labels being added must already exist in the repository -- non-existent labels are rejected with an error listing them, rather than being auto-created.',
   inputSchema: {
     type: 'object',
@@ -947,6 +957,7 @@ export async function handleUpdateIssueLabels(args, extra) {
 
 export const listIssueCommentsTool = {
   name: 'list_issue_comments',
+  annotations: READ_ONLY,
   description: `Fetch comments for multiple board items in a single call. Board-independent (queries by item ID). Resolves each item to its underlying GitHub issue and returns the comment author, timestamps, and body for each. Bounded response: max ${MAX_ITEMS_PER_CALL} itemIds per call, and only the newest ${DEFAULT_MAX_PER_ISSUE} comments per issue by default (override with maxPerIssue); long comment bodies are truncated with an explicit truncation indicator. Each comment includes \`createdAt\`, plus \`updatedAt\` when it differs from \`createdAt\` (i.e. the comment was edited). Ordering differs by mode: without \`since\`, the newest comments by creation time are kept; with \`since\`, the newest comments by last-updated time are kept (so a recently-edited older comment survives ahead of an untouched newer one, and its \`updatedAt\` shows why). The response's \`itemCount\` counts result items (including error entries), not comments.`,
   inputSchema: {
     type: 'object',

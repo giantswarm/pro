@@ -19,6 +19,7 @@ import {
   reprioritizeSubIssue
 } from '../sub-issues.js';
 import { logger } from '../logger.js';
+import { READ_ONLY, additiveWrite, destructiveWrite } from './annotations.js';
 
 /**
  * Extract the GitHub token from MCP request extra context.
@@ -62,6 +63,7 @@ function compactIssue(issue) {
 
 export const listSubIssuesTool = {
   name: 'list_sub_issues',
+  annotations: READ_ONLY,
   description: 'List the sub-issues of a GitHub issue. Provide the parent issue as a URL (e.g. "https://github.com/owner/repo/issues/1"), short ref ("owner/repo#1"), or explicit owner/repo/issue_number.',
   inputSchema: {
     type: 'object',
@@ -123,6 +125,7 @@ export async function handleListSubIssues(args, extra) {
 
 export const addSubIssueTool = {
   name: 'add_sub_issue',
+  annotations: additiveWrite({ idempotent: true }),
   description: 'Add a sub-issue to a parent issue. Provide the parent issue and the child issue to add. The child can be specified as a URL/ref (subIssueUrl) or integer ID (subIssueId).',
   inputSchema: {
     type: 'object',
@@ -197,6 +200,7 @@ export async function handleAddSubIssue(args, extra) {
 
 export const removeSubIssueTool = {
   name: 'remove_sub_issue',
+  annotations: destructiveWrite(),
   description: 'Remove a sub-issue from a parent issue. Provide the parent issue and the child issue to remove.',
   inputSchema: {
     type: 'object',
@@ -255,6 +259,7 @@ export async function handleRemoveSubIssue(args, extra) {
 
 export const getParentIssueTool = {
   name: 'get_parent_issue',
+  annotations: READ_ONLY,
   description: 'Get the parent issue of a given issue. Returns null if the issue has no parent.',
   inputSchema: {
     type: 'object',
@@ -296,6 +301,7 @@ export async function handleGetParentIssue(args, extra) {
 
 export const reprioritizeSubIssueTool = {
   name: 'reprioritize_sub_issue',
+  annotations: destructiveWrite(),
   description: 'Reorder a sub-issue within its parent\'s sub-issue list. Specify either afterUrl/afterId (place after that issue) or beforeUrl/beforeId (place before that issue).',
   inputSchema: {
     type: 'object',
@@ -462,6 +468,7 @@ export function extractIssueRef(text, fallbackOwner, fallbackRepo) {
 
 export const migrateTaskListTool = {
   name: 'migrate_task_list_to_sub_issues',
+  annotations: destructiveWrite({ idempotent: false }),
   description: 'Convert markdown task-list items in an issue body into sub-issues. Parses lines like "- [ ] https://github.com/o/r/issues/1", "- [x] owner/repo#1", or "- [ ] #1" (same-repo). Optionally removes converted lines from the issue body.',
   inputSchema: {
     type: 'object',
