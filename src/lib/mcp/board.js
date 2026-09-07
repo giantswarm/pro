@@ -10,6 +10,7 @@ import { graphQLWithAuth } from '../api.js';
 import { resolveBoardId, DEFAULT_BOARD } from '../project.js';
 import { parseIssueRef } from '../rest-api.js';
 import { logger } from '../logger.js';
+import { READ_ONLY } from './annotations.js';
 
 function extractToken(extra) {
   return extra?.authInfo?.token;
@@ -40,6 +41,7 @@ export function describeField(field) {
 
 export const getBoardSchemaTool = {
   name: 'get_board_schema',
+  annotations: READ_ONLY,
   description: 'Describe the fields of a project board (roadmap or customer) the way a UI needs them: name, type (singleSelect, iteration, date, text, other), the options a single-select field accepts and the iterations of an iteration field. The same information as the {board}://schema resource, as a tool result.',
   inputSchema: {
     type: 'object',
@@ -110,6 +112,7 @@ const ISSUE_PROJECT_ITEM_QUERY = `
 
 export const getItemByIssueTool = {
   name: 'get_item_by_issue',
+  annotations: READ_ONLY,
   description: 'Find the project board item of one GitHub issue -- given as a URL, a short ref ("owner/repo#N") or owner/repo/issue_number -- without scanning the board. Returns the item id, title, url, state and field values, or item: null when the issue is not on the board.',
   inputSchema: {
     type: 'object',

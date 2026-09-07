@@ -55,6 +55,49 @@ describe('tools exports', () => {
       assert.ok(tool.inputSchema.properties, `${tool.name} missing properties`);
     }
   });
+
+  // The MCP annotations are what a client -- or muster's read-only toolset
+  // preset, an annotation predicate -- uses to tell reads from writes. A tool
+  // without them counts as a destructive write by the MCP defaults.
+  const readOnlyTools = [
+    'list_issues',
+    'get_issue_details',
+    'list_issue_comments',
+    'list_sub_issues',
+    'get_parent_issue',
+    'get_issue_timeline',
+    'get_board_schema',
+    'get_item_by_issue'
+  ];
+  const additiveWrites = ['create_issue_in_project', 'add_existing_issue', 'add_sub_issue'];
+
+  it('every tool declares readOnlyHint, destructiveHint and idempotentHint', () => {
+    for (const tool of tools) {
+      assert.ok(tool.annotations, `${tool.name} has no annotations`);
+      for (const hint of ['readOnlyHint', 'destructiveHint', 'idempotentHint']) {
+        assert.strictEqual(typeof tool.annotations[hint], 'boolean', `${tool.name} leaves ${hint} unset`);
+      }
+    }
+  });
+
+  it('exactly the read tools are readOnlyHint true, and none of them destructive', () => {
+    const actual = tools.filter((t) => t.annotations.readOnlyHint).map((t) => t.name).sort();
+    assert.deepStrictEqual(actual, [...readOnlyTools].sort());
+    for (const tool of tools) {
+      if (tool.annotations.readOnlyHint) {
+        assert.strictEqual(tool.annotations.destructiveHint, false, `${tool.name} is read-only yet destructive`);
+        assert.strictEqual(tool.annotations.idempotentHint, true, `${tool.name} is read-only yet not idempotent`);
+      }
+    }
+  });
+
+  it('writes are destructive unless they only add', () => {
+    for (const tool of tools) {
+      if (tool.annotations.readOnlyHint) continue;
+      const additive = additiveWrites.includes(tool.name);
+      assert.strictEqual(tool.annotations.destructiveHint, !additive, `${tool.name}: destructiveHint should be ${!additive}`);
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------

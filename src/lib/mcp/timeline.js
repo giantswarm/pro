@@ -9,6 +9,7 @@
 import { resolveItemIssues } from '../items.js';
 import { getIssueTimeline, MAX_TIMELINE_EVENTS } from '../timeline.js';
 import { logger } from '../logger.js';
+import { READ_ONLY } from './annotations.js';
 
 /**
  * Extract the GitHub token from MCP request extra context.
@@ -25,6 +26,7 @@ function extractToken(extra) {
 
 export const getIssueTimelineTool = {
   name: 'get_issue_timeline',
+  annotations: READ_ONLY,
   description: `Get the activity timeline for a project board item's underlying issue: label changes, assignments, milestones, renames, cross-references, and close reasons. Returns compact events ordered chronologically (oldest first); when more than ${MAX_TIMELINE_EVENTS} events qualify, only the most recent ${MAX_TIMELINE_EVENTS} are returned (see \`truncated\` in the response). No server-side date/type filters exist on this endpoint, so \`since\`/\`until\`/\`eventTypes\` are applied client-side -- pass full ISO 8601 timestamps (not just a date) for precise since/until cutoffs.`,
   inputSchema: {
     type: 'object',
