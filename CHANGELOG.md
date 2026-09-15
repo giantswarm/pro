@@ -13,6 +13,7 @@
 - A trusted CIMD client could be evicted from the client store once 1000 dynamic registrations accumulated, answering `invalid_client` until the CIMD cache expired. CIMD clients now live in their own store.
 - The HTTP server startup resolves once the port is bound and rejects on listen errors (previously an `EADDRINUSE` surfaced as an unhandled `error` event).
 - Trusted client auto-registration via `OAUTH_TRUSTED_CLIENT_IDS` env var: CIMD URLs in the allowlist are fetched and registered on first use, enabling muster to authenticate via OAuth without dynamic client registration
+- Drop the version badges from the chart README template so a release PR's `Chart.yaml` version bump no longer leaves `README.md` stale and fails the helm-docs pre-commit hook.
 
 ### Fixed
 - Streamable HTTP transport now creates a new transport and MCP server per session, fixing "Server already initialized" errors when multiple clients connect
