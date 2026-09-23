@@ -10,6 +10,7 @@
 - `OAUTH_TRUSTED_CLIENT_IDS` now only exempts URLs from that policy (and lets their document omit `client_id`); public CIMD URLs need no entry.
 
 ### Fixed
+- The `helm.sh/chart` label is valid for any chart version: the 63-character cut of a long version (a branch build, or the `<version>+<digest>` helm-controller installs) could end in `.`, `_` or `-`, and the API server refused every object carrying it. The whole trailing run is now trimmed.
 - A trusted CIMD client could be evicted from the client store once 1000 dynamic registrations accumulated, answering `invalid_client` until the CIMD cache expired. CIMD clients now live in their own store.
 - The HTTP server startup resolves once the port is bound and rejects on listen errors (previously an `EADDRINUSE` surfaced as an unhandled `error` event).
 - Trusted client auto-registration via `OAUTH_TRUSTED_CLIENT_IDS` env var: CIMD URLs in the allowlist are fetched and registered on first use, enabling muster to authenticate via OAuth without dynamic client registration
