@@ -99,6 +99,7 @@ each call.
 - `GITHUB_API_TOKEN` (required for stdio and the env-token HTTP mode): GitHub PAT with `project:write` and `repo:write` scopes.
 - `OAUTH_BEARER_ONLY` (optional, HTTP transport): `true` selects the bearer-only mode described above.
 - `HTTP_PORT` (optional): Port for HTTP transport (default: 8080).
+- `PRO_VERSION` (set by the Helm chart): the version the server reports in its startup log and MCP `serverInfo`, the image tag the chart deploys. Unset, the server reports the `package.json` version, which the npm package carries from its release tag; a checkout reports `0.0.0-dev`.
 
 ## Transport Modes
 

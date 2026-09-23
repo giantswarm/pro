@@ -35,6 +35,15 @@ most 63 characters and begins and ends alphanumeric: the cut of a long version
 {{- end }}
 
 {{/*
+The image tag, the version the container runs: image.tag, default the
+appVersion the release build sets from the tag. The server reports it
+(PRO_VERSION), so both stay one value.
+*/}}
+{{- define "pro.imageTag" -}}
+{{- .Values.image.tag | default .Chart.AppVersion }}
+{{- end }}
+
+{{/*
 Common labels
 */}}
 {{- define "pro.labels" -}}
