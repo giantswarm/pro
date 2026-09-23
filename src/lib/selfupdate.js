@@ -9,7 +9,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { version } from './version.js';
+import { version, isDevBuild } from './version.js';
 import { logger } from './logger.js';
 
 const GITHUB_REPO = 'giantswarm/pro';
@@ -38,8 +38,8 @@ function isNewer(localVersion, remoteVersion) {
 export async function selfUpdate() {
   const currentVersion = version;
 
-  if (!currentVersion || currentVersion === 'dev' || currentVersion === '0.0.0') {
-    throw new Error('Cannot self-update a development version');
+  if (isDevBuild) {
+    throw new Error(`Cannot self-update a development build (${currentVersion})`);
   }
 
   logger.info(`Current version: ${currentVersion}`);
