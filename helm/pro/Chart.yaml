@@ -7,7 +7,6 @@ type: application
 version: 0.2.0
 appVersion: "2.0.0"
 home: https://github.com/giantswarm/pro
-icon: https://s.giantswarm.io/app-icons/1/png/default-app-icon.png
 sources:
   - https://github.com/giantswarm/pro
 maintainers:
@@ -19,5 +18,3 @@ keywords:
   - project-management
   - mcp
   - github-projects
-annotations:
-  io.giantswarm.application.team: planeteers
