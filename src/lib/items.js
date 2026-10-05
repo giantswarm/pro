@@ -381,12 +381,18 @@ export async function listItems(options) {
 
     const projectQuery = queryTerms.join(' ');
 
+    // totalCount is computed by GitHub for the query as sent (server-side
+    // filters applied), including items whose content we cannot read.
+    let totalCount = null;
     const allItems = await fetchPaginated(
       LIST_ITEMS_QUERY,
       { projectId: boardId, first, filterQuery: projectQuery || null },
       result => {
         if (!result?.node?.items) {
           return { nodes: [], pageInfo: { hasNextPage: false } };
+        }
+        if (typeof result.node.items.totalCount === 'number') {
+          totalCount = result.node.items.totalCount;
         }
         return {
           nodes: result.node.items.nodes || [],
@@ -406,20 +412,38 @@ export async function listItems(options) {
       });
     }
 
+    // Items with null content, or issue content without a title, come from
+    // repos the caller's GitHub identity cannot read. They are dropped like
+    // before, but counted so callers can tell a complete result from one with
+    // items missing. Draft issues and pull requests (no Issue fields selected)
+    // are dropped too but are not "hidden": list_issues only lists issues.
+    // emptyFields is checked first so items removed by the caller's own
+    // filters are never counted.
+    function isUnreadable(content) {
+      return !content || ((!content.__typename || content.__typename === 'Issue') && !content.title);
+    }
+
+    let hidden = 0;
     const filtered = allItems.filter(item => {
       if (!item.fieldValues || !item.fieldValues.nodes) return false;
-      if (!item.content || !item.content.title) return false;
 
       for (const fieldName of emptyFields) {
         if (hasNonEmptyField(item, fieldName)) {
           return false;
         }
       }
+
+      if (!item.content || !item.content.title) {
+        if (isUnreadable(item.content)) hidden++;
+        return false;
+      }
       return true;
     });
 
     return {
       status: 'success',
+      hidden,
+      totalCount,
       data: filtered.map(item => {
         // Build compact fields map, omitting empty values
         const fields = {};

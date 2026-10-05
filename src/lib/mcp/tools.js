@@ -79,7 +79,7 @@ async function resolveSingleItemIssue(itemId, token) {
 export const listIssuesTool = {
   name: 'list_issues',
   annotations: READ_ONLY,
-  description: 'List and filter issues from a project board (roadmap or customer). Uses generic field filters -- read the board\'s schema resource first (e.g. roadmap://schema or customer://schema) to discover available fields and valid option values. Returns compact items with `repo` (nameWithOwner), `private` flag, `state` (OPEN/CLOSED), `createdAt`/`updatedAt` timestamps, `closedAt` (only present when the item is closed), and a `fields` map (only non-empty values). The repo URL is always https://github.com/{repo}.',
+  description: 'List and filter issues from a project board (roadmap or customer). Uses generic field filters -- read the board\'s schema resource first (e.g. roadmap://schema or customer://schema) to discover available fields and valid option values. Returns compact items with `repo` (nameWithOwner), `private` flag, `state` (OPEN/CLOSED), `createdAt`/`updatedAt` timestamps, `closedAt` (only present when the item is closed), and a `fields` map (only non-empty values). The repo URL is always https://github.com/{repo}. Next to `count` (items returned), `hidden` is the number of matching items left out because their content could not be read (typically issues in private repos the server\'s GitHub identity cannot access), and `totalCount` is GitHub\'s count of items matching the server-side query (unreadable items, draft issues and pull requests included). `hidden > 0` means the result is incomplete.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -198,6 +198,8 @@ export async function handleListIssues(args, extra) {
         type: 'text',
         text: JSON.stringify({
           count: result.data.length,
+          hidden: result.hidden ?? 0,
+          ...(typeof result.totalCount === 'number' ? { totalCount: result.totalCount } : {}),
           issues: result.data
         })
       }]

@@ -167,6 +167,7 @@ const LIST_ITEMS_QUERY = `
               }
             }
             content {
+              __typename
               ... on Issue {
                 title
                 number

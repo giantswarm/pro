@@ -129,6 +129,88 @@ describe('listItems - response mapping', () => {
   });
 });
 
+describe('listItems - unreadable items', () => {
+  it('drops items with null content or content without a title and counts them as hidden', async (t) => {
+    const calls = [];
+    const readable = makeItem();
+    const nullContent = { id: 'item-2', fieldValues: { nodes: [] }, content: null };
+    const noTitle = { id: 'item-3', fieldValues: { nodes: [] }, content: { __typename: 'Issue' } };
+    mockGraphQLFetch(t, {
+      node: { items: { totalCount: 3, nodes: [readable, nullContent, noTitle], pageInfo: { hasNextPage: false } } }
+    }, calls);
+
+    process.env.GITHUB_API_TOKEN = 'test-token';
+    const result = await listItems({ boardId: 'board-1' });
+
+    assert.equal(result.status, 'success');
+    assert.deepEqual(result.data.map(e => e.id), ['item-1']);
+    assert.equal(result.hidden, 2);
+    assert.equal(result.totalCount, 3);
+  });
+
+  it('drops draft issues and pull requests without counting them as hidden', async (t) => {
+    const calls = [];
+    const draft = { id: 'item-2', fieldValues: { nodes: [] }, content: { __typename: 'DraftIssue' } };
+    const pr = { id: 'item-3', fieldValues: { nodes: [] }, content: { __typename: 'PullRequest' } };
+    mockGraphQLFetch(t, {
+      node: { items: { totalCount: 3, nodes: [makeItem(), draft, pr], pageInfo: { hasNextPage: false } } }
+    }, calls);
+
+    process.env.GITHUB_API_TOKEN = 'test-token';
+    const result = await listItems({ boardId: 'board-1' });
+
+    assert.deepEqual(result.data.map(e => e.id), ['item-1']);
+    assert.equal(result.hidden, 0);
+    assert.equal(result.totalCount, 3);
+  });
+
+  it('reports hidden: 0 and passes GitHub totalCount through when every item is readable', async (t) => {
+    const calls = [];
+    mockGraphQLFetch(t, {
+      node: { items: { totalCount: 1, nodes: [makeItem()], pageInfo: { hasNextPage: false } } }
+    }, calls);
+
+    process.env.GITHUB_API_TOKEN = 'test-token';
+    const result = await listItems({ boardId: 'board-1' });
+
+    assert.equal(result.hidden, 0);
+    assert.equal(result.totalCount, 1);
+    assert.equal(result.data.length, 1);
+  });
+
+  it('does not count items removed by the emptyFields filter as hidden', async (t) => {
+    const withTeam = makeItem();
+    withTeam.fieldValues.nodes = [{ name: 'Planeteers', field: { name: 'Team' } }];
+    const fieldsResponse = {
+      node: { fields: { nodes: [{ __typename: 'ProjectV2SingleSelectField', id: 'F_1', name: 'Team', options: [] }], pageInfo: { hasNextPage: false } } }
+    };
+    const itemsResponse = {
+      node: { items: { totalCount: 3, nodes: [
+        withTeam,
+        { id: 'item-2', fieldValues: { nodes: [] }, content: null },
+        { id: 'item-3', fieldValues: { nodes: [{ name: 'Planeteers', field: { name: 'Team' } }] }, content: null }
+      ], pageInfo: { hasNextPage: false } } }
+    };
+    t.mock.method(globalThis, 'fetch', async (url, init) => {
+      const body = JSON.parse(init.body);
+      const data = body.query.includes('GetProjectItems') ? itemsResponse : fieldsResponse;
+      return {
+        status: 200,
+        url: 'https://api.github.com/graphql',
+        headers: new Headers({ 'content-type': 'application/json' }),
+        text: async () => JSON.stringify({ data })
+      };
+    });
+
+    process.env.GITHUB_API_TOKEN = 'test-token';
+    const result = await listItems({ boardId: 'board-1', emptyFields: ['Team'] });
+
+    assert.equal(result.status, 'success', result.error);
+    assert.equal(result.data.length, 0);
+    assert.equal(result.hidden, 1);
+  });
+});
+
 describe('resolveItemIssues', () => {
   it('resolves items to their issue refs, preserving input order', async (t) => {
     const calls = [];
