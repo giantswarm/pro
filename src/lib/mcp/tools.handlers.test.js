@@ -305,6 +305,45 @@ describe('handleCreateIssueInProject (handler wiring)', () => {
     assert.match(payload.warning, /labels were not applied|applying labels failed/i);
     assert.match(payload.warning, /secondary rate limit exceeded/);
   });
+
+  it('names the repository and the missing permission when GitHub refuses the issue creation', async () => {
+    let addToBoardCalled = false;
+    graphQLImpl = async (query) => {
+      if (query === REPO_ID_QUERY) return { repository: { id: 'R_1' } };
+      if (query === CREATE_ISSUE_MUTATION) {
+        const err = new Error('Request failed due to following response errors:\n - Resource not accessible by integration');
+        err.errors = [{ type: 'FORBIDDEN', message: 'Resource not accessible by integration' }];
+        throw err;
+      }
+      if (query === ADD_ITEM_TO_PROJECT_MUTATION) addToBoardCalled = true;
+      throw new Error(`unexpected query in this test: ${query.slice(0, 40)}`);
+    };
+
+    const result = await handleCreateIssueInProject({
+      repository: 'devctl',
+      title: 'Test issue'
+    });
+
+    assert.ok(result.error);
+    assert.match(result.error, /giantswarm\/devctl/);
+    assert.match(result.error, /issues:write/);
+    assert.match(result.error, /No issue was created/);
+    assert.strictEqual(addToBoardCalled, false);
+  });
+
+  it('passes other creation errors through unchanged', async () => {
+    graphQLImpl = async (query) => {
+      if (query === REPO_ID_QUERY) return { repository: { id: 'R_1' } };
+      throw new Error('was submitted too quickly');
+    };
+
+    const result = await handleCreateIssueInProject({
+      repository: 'giantswarm/devctl',
+      title: 'Test issue'
+    });
+
+    assert.strictEqual(result.error, 'was submitted too quickly');
+  });
 });
 
 // ---------------------------------------------------------------------------

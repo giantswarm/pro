@@ -388,7 +388,7 @@ export async function handleUpdateIssueField(args, extra) {
 export const createIssueInProjectTool = {
   name: 'create_issue_in_project',
   annotations: additiveWrite(),
-  description: 'Create a new GitHub Issue in a specified repository and add it to a project board. Supports optional initial status, assignees, and labels. For public repos, only create sanitized, non-customer-specific content. If applying labels fails after the issue has already been created and added to the board, the issue is NOT rolled back -- the response reports success with a `warning` explaining that labels were not applied.',
+  description: 'Create a new GitHub Issue in a specified repository and add it to a project board. Supports optional initial status, assignees, and labels. For public repos, only create sanitized, non-customer-specific content. If applying labels fails after the issue has already been created and added to the board, the issue is NOT rolled back -- the response reports success with a `warning` explaining that labels were not applied. If GitHub refuses the creation (the token lacks issues:write on the repository, e.g. a GitHub App token outside its installation), the error names the repository and the missing permission and no issue is created.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -431,6 +431,31 @@ export const createIssueInProjectTool = {
     required: ['repository', 'title']
   }
 };
+
+/**
+ * Whether a GitHub API error is a permission refusal: GraphQL reports it as a
+ * FORBIDDEN error ("Resource not accessible by integration" for a GitHub App
+ * token outside its installation's repositories or permissions), REST as 403.
+ * @param {Error} error
+ * @returns {boolean}
+ */
+export function isPermissionRefusal(error) {
+  return error?.status === 403 ||
+    (Array.isArray(error?.errors) && error.errors.some(e => e?.type === 'FORBIDDEN')) ||
+    /Resource not accessible by integration/i.test(error?.message || '');
+}
+
+/**
+ * The error returned when GitHub refuses to create an issue in a repository.
+ * @param {string} owner
+ * @param {string} repo
+ * @returns {string}
+ */
+export function issueCreationRefusedMessage(owner, repo) {
+  return `No issue was created: GitHub refused to create an issue in ${owner}/${repo} because the token lacks the issues:write permission there. ` +
+    'A token issued by a GitHub App (for example through muster\'s GitHub sign-in) can only write to the repositories the App\'s installation covers; ' +
+    `ask an organization owner to add ${owner}/${repo} to that installation, or create the issue elsewhere and use add_existing_issue.`;
+}
 
 export async function handleCreateIssueInProject(args, extra) {
   try {
@@ -494,12 +519,21 @@ export async function handleCreateIssueInProject(args, extra) {
     }
 
     // Create the issue
-    const createResult = await graphQLWithAuth(CREATE_ISSUE_MUTATION, {
-      repositoryId,
-      title: args.title,
-      body: args.body || '',
-      assigneeIds: assigneeIds.length > 0 ? assigneeIds : undefined
-    }, token);
+    let createResult;
+    try {
+      createResult = await graphQLWithAuth(CREATE_ISSUE_MUTATION, {
+        repositoryId,
+        title: args.title,
+        body: args.body || '',
+        assigneeIds: assigneeIds.length > 0 ? assigneeIds : undefined
+      }, token);
+    } catch (error) {
+      if (isPermissionRefusal(error)) {
+        logger.error('MCP: Issue creation refused', { repository: `${owner}/${repo}`, error: error.message });
+        return { error: issueCreationRefusedMessage(owner, repo) };
+      }
+      throw error;
+    }
 
     const issue = createResult.createIssue.issue;
 
