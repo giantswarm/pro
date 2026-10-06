@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- `list_issues` returns `hidden` (items dropped because their content is unreadable, e.g. in private repos the server's identity cannot access) and `totalCount` (GitHub's count for the server-side query) next to `count`, so callers can tell a complete result from a filtered one ([#166](https://github.com/giantswarm/pro/issues/166)).
 - OAuth authorization server metadata advertises `client_id_metadata_document_supported: true`, and any HTTPS Client ID Metadata Document URL (SEP-991) is accepted as `client_id` on `/authorize` and `/token`. Muster and Claude Code take this path only when it is advertised; it frees them from dynamically registered client_ids that vanish whenever the pod restarts.
 
 ### Changed

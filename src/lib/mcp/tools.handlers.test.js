@@ -25,9 +25,11 @@ const realItems = await import('../items.js');
 let resolveItemIssuesImpl = async () => {
   throw new Error('resolveItemIssues not stubbed for this test');
 };
+let listItemsImpl = (...args) => realItems.listItems(...args);
 mock.module(new URL('../items.js', import.meta.url).href, {
   exports: {
     ...realItems,
+    listItems: (...args) => listItemsImpl(...args),
     resolveItemIssues: (...args) => resolveItemIssuesImpl(...args)
   }
 });
@@ -45,7 +47,7 @@ mock.module(new URL('../api.js', import.meta.url).href, {
 
 const { octokit } = await import('../rest-api.js');
 const { REPO_ID_QUERY, CREATE_ISSUE_MUTATION, ADD_ITEM_TO_PROJECT_MUTATION } = await import('../project.js');
-const { handleUpdateIssueLabels, handleCreateIssueInProject } = await import('./tools.js');
+const { handleUpdateIssueLabels, handleCreateIssueInProject, handleListIssues } = await import('./tools.js');
 
 // ---------------------------------------------------------------------------
 // handleUpdateIssueLabels: handler wiring
@@ -302,5 +304,39 @@ describe('handleCreateIssueInProject (handler wiring)', () => {
     assert.strictEqual(payload.labels, undefined);
     assert.match(payload.warning, /labels were not applied|applying labels failed/i);
     assert.match(payload.warning, /secondary rate limit exceeded/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// handleListIssues: completeness fields
+// ---------------------------------------------------------------------------
+
+describe('handleListIssues (result completeness)', () => {
+  it('returns hidden and totalCount next to count, keeping count as the number of issues returned', async (t) => {
+    t.after(() => { listItemsImpl = (...args) => realItems.listItems(...args); });
+    listItemsImpl = async () => ({
+      status: 'success',
+      hidden: 2,
+      totalCount: 5,
+      data: [{ id: 'PVTI_1', title: 'a' }, { id: 'PVTI_2', title: 'b' }, { id: 'PVTI_3', title: 'c' }]
+    });
+
+    const result = await handleListIssues({ board: 'roadmap' });
+    const payload = JSON.parse(result.content[0].text);
+    assert.strictEqual(payload.count, 3);
+    assert.strictEqual(payload.hidden, 2);
+    assert.strictEqual(payload.totalCount, 5);
+    assert.strictEqual(payload.issues.length, 3);
+  });
+
+  it('reports hidden: 0 and omits totalCount when the lookup did not provide one', async (t) => {
+    t.after(() => { listItemsImpl = (...args) => realItems.listItems(...args); });
+    listItemsImpl = async () => ({ status: 'success', data: [] });
+
+    const result = await handleListIssues({});
+    const payload = JSON.parse(result.content[0].text);
+    assert.strictEqual(payload.count, 0);
+    assert.strictEqual(payload.hidden, 0);
+    assert.ok(!('totalCount' in payload));
   });
 });
