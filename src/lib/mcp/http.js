@@ -51,11 +51,15 @@ const sessions = {};
  * @param {Object} options
  * @param {number} options.port - Port to listen on (default: 8080; 0 picks a free port)
  * @param {string} options.endpoint - MCP endpoint path (default: /mcp)
+ * @param {number} options.sessionTtlMs - Idle time after which a session is evicted (default: 30 minutes)
+ * @param {number} options.sessionSweepIntervalMs - How often idle sessions are swept (default: 5 minutes)
  * @returns {Promise<import('http').Server>} the listening server
  */
 export async function startHTTPServer(options = {}) {
   const port = options.port ?? (parseInt(process.env.HTTP_PORT, 10) || DEFAULT_PORT);
   const endpoint = options.endpoint || DEFAULT_ENDPOINT;
+  const sessionTtlMs = options.sessionTtlMs ?? SESSION_TTL_MS;
+  const sessionSweepIntervalMs = options.sessionSweepIntervalMs ?? SESSION_SWEEP_INTERVAL_MS;
 
   const app = express();
   // Trust exactly 1 proxy hop (Envoy Gateway). express-rate-limit requires
@@ -208,11 +212,13 @@ export async function startHTTPServer(options = {}) {
         await transport.handleRequest(req, res, req.body);
         return;
       } else if (sessionId) {
-        // Session ID provided but not found — expired or invalid
-        res.status(400).json({
+        // Session ID provided but not found — expired or invalid. The MCP
+        // spec (Streamable HTTP, session management) requires 404 here: it is
+        // the client's signal to start a new session with a fresh initialize.
+        res.status(404).json({
           jsonrpc: '2.0',
           error: {
-            code: -32000,
+            code: -32001,
             message: 'Session not found or expired'
           },
           id: null
@@ -246,7 +252,7 @@ export async function startHTTPServer(options = {}) {
   const sweepInterval = setInterval(() => {
     const now = Date.now();
     for (const sessionId in sessions) {
-      if (now - sessions[sessionId].lastActivity > SESSION_TTL_MS) {
+      if (now - sessions[sessionId].lastActivity > sessionTtlMs) {
         logger.info(`Evicting idle session: ${sessionId}`);
         try {
           sessions[sessionId].transport.close();
@@ -256,7 +262,7 @@ export async function startHTTPServer(options = {}) {
         delete sessions[sessionId];
       }
     }
-  }, SESSION_SWEEP_INTERVAL_MS);
+  }, sessionSweepIntervalMs);
   sweepInterval.unref();
 
   // Start listening

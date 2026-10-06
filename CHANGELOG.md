@@ -11,6 +11,7 @@
 - `OAUTH_TRUSTED_CLIENT_IDS` now only exempts URLs from that policy (and lets their document omit `client_id`); public CIMD URLs need no entry.
 
 ### Fixed
+- A request carrying an unknown, closed or idle-evicted MCP session id is answered with HTTP 404 (JSON-RPC error `-32001`), as the MCP Streamable HTTP spec requires, instead of 400. Clients take the 404 as the signal to initialize a new session, so a client that went idle past the 30-minute session TTL recovers on its next call instead of failing every call with "Session not found or expired" ([#170](https://github.com/giantswarm/pro/issues/170)).
 - The deployed server reports its release version in the startup log and MCP `serverInfo` instead of `0.0.0`: the chart passes the image tag it deploys as `PRO_VERSION`. A checkout reports `0.0.0-dev`, and `--self-update` refuses it as a development build.
 - The `helm.sh/chart` label is valid for any chart version: the 63-character cut of a long version (a branch build, or the `<version>+<digest>` helm-controller installs) could end in `.`, `_` or `-`, and the API server refused every object carrying it. The whole trailing run is now trimmed.
 - A trusted CIMD client could be evicted from the client store once 1000 dynamic registrations accumulated, answering `invalid_client` until the CIMD cache expired. CIMD clients now live in their own store.
