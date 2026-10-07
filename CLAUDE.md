@@ -53,7 +53,7 @@ Pure JavaScript (ES modules), no TypeScript. Node 20+.
 ### Domain Layer (`src/lib/`)
 
 - **`project.js`** — Board registry (board name → project ID mapping), all GraphQL queries and mutations
-- **`items.js`** — Issue listing with server-side filtering, issue detail fetching, field updates, and `resolveItemIssues` — the single batched item→issue resolution helper (issue node ID, owner/repo/number, repo visibility) used by every tool that only needs the issue ref (close/reopen, labels, timeline, comments)
+- **`items.js`** — Issue listing with server-side filtering, issue detail fetching, field updates, and `resolveItemIssues` — the single batched item→issue resolution helper (issue node ID, owner/repo/number, repo visibility) used by every tool that only needs the issue ref (close/reopen, labels, timeline, comments); and `resolveBoardItem`, which resolves one item by its project item ID and checks its board before a board write (update_issue_field, archive_item), naming a missing or misplaced item
 - **`fields.js`** — Field discovery and fuzzy matching (case-insensitive, emoji/special char normalization)
 - **`api.js`** — Authenticated GraphQL client with cursor-based pagination
 - **`rest-api.js`** — Octokit REST client for sub-issues and timeline endpoints (not available via GraphQL)

@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 
 process.env.GITHUB_API_TOKEN = 'test-token';
 
-const { handleUpdateIssueField, tools } = await import('./tools.js');
+const { handleUpdateIssueField, handleArchiveItem, tools } = await import('./tools.js');
+const { BOARDS } = await import('../project.js');
 
 function parseResult(result) {
   return JSON.parse(result.content[0].text);
@@ -39,6 +40,13 @@ function fieldsPage(fields) {
       }
     }
   };
+}
+
+const ROADMAP = BOARDS.roadmap;
+
+// The board-item lookup response for an item on the roadmap board.
+function boardItem(id = 'PVTI_x', { projectId = ROADMAP.id, projectNumber = ROADMAP.number, issue = { number: 142, repository: { nameWithOwner: 'giantswarm/kagent-upstream' } } } = {}) {
+  return { node: { id, project: { id: projectId, number: projectNumber }, content: issue } };
 }
 
 const QUARTER_FIELD = {
@@ -90,6 +98,7 @@ describe('handleUpdateIssueField clear path (#124)', () => {
   it('invokes the clear mutation, not the update mutation', async (t) => {
     const calls = mockGraphQLSequence(t, [
       fieldsPage([QUARTER_FIELD]),
+      boardItem(),
       { clearProjectV2ItemFieldValue: { projectV2Item: { id: 'PVTI_x' } } }
     ]);
 
@@ -106,7 +115,7 @@ describe('handleUpdateIssueField clear path (#124)', () => {
 
     // Second GraphQL call is the clear mutation, carrying the resolved field id
     // and no value input.
-    const mutation = calls[1];
+    const mutation = calls[2];
     assert.match(mutation.query, /clearProjectV2ItemFieldValue/);
     assert.doesNotMatch(mutation.query, /updateProjectV2ItemFieldValue/);
     assert.strictEqual(mutation.variables.fieldId, 'PVTIF_quarter');
@@ -116,6 +125,7 @@ describe('handleUpdateIssueField clear path (#124)', () => {
   it('clears a single-select field via the clear mutation', async (t) => {
     const calls = mockGraphQLSequence(t, [
       fieldsPage([STATUS_FIELD]),
+      boardItem(),
       { clearProjectV2ItemFieldValue: { projectV2Item: { id: 'PVTI_x' } } }
     ]);
 
@@ -129,13 +139,13 @@ describe('handleUpdateIssueField clear path (#124)', () => {
     assert.strictEqual(payload.success, true);
     assert.strictEqual(payload.cleared, true);
 
-    const mutation = calls[1];
+    const mutation = calls[2];
     assert.match(mutation.query, /clearProjectV2ItemFieldValue/);
     assert.strictEqual(mutation.variables.fieldId, 'PVTSSF_status');
   });
 
   it('returns a clean error when neither value nor clear is provided', async (t) => {
-    mockGraphQLSequence(t, [fieldsPage([QUARTER_FIELD])]);
+    mockGraphQLSequence(t, [fieldsPage([QUARTER_FIELD]), boardItem()]);
 
     const result = await handleUpdateIssueField({
       itemId: 'PVTI_x',
@@ -148,9 +158,9 @@ describe('handleUpdateIssueField clear path (#124)', () => {
   });
 
   it('treats clear:false like a normal update and still requires a value', async (t) => {
-    // Only the fields query should fire -- the missing-value guard returns
+    // Only the fields and item lookups fire -- the missing-value guard returns
     // before any mutation, so no clear/update mutation response is queued.
-    const calls = mockGraphQLSequence(t, [fieldsPage([QUARTER_FIELD])]);
+    const calls = mockGraphQLSequence(t, [fieldsPage([QUARTER_FIELD]), boardItem()]);
 
     const result = await handleUpdateIssueField({
       itemId: 'PVTI_x',
@@ -160,8 +170,8 @@ describe('handleUpdateIssueField clear path (#124)', () => {
 
     assert.ok(result.error, 'expected an error');
     assert.match(result.error, /value is required/i);
-    // No second GraphQL call -- clear:false did not trigger the clear path.
-    assert.strictEqual(calls.length, 1);
+    // Fields and item lookups only -- clear:false did not trigger the clear path.
+    assert.strictEqual(calls.length, 2);
   });
 });
 
@@ -173,6 +183,7 @@ describe('handleUpdateIssueField separator matching (#123)', () => {
   it('resolves a slash-separated value against a space-separated iteration title', async (t) => {
     const calls = mockGraphQLSequence(t, [
       fieldsPage([QUARTER_FIELD]),
+      boardItem(),
       { updateProjectV2ItemFieldValue: { projectV2Item: { id: 'PVTI_x' } } }
     ]);
 
@@ -186,8 +197,126 @@ describe('handleUpdateIssueField separator matching (#123)', () => {
     assert.strictEqual(payload.success, true);
     assert.strictEqual(payload.value, 'Q4 2026');
 
-    const mutation = calls[1];
+    const mutation = calls[2];
     assert.match(mutation.query, /updateProjectV2ItemFieldValue/);
     assert.deepStrictEqual(mutation.variables.value, { iterationId: 'iter-q4' });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Named errors for a missing item or field (#178)
+// ---------------------------------------------------------------------------
+
+describe('handleUpdateIssueField named errors (#178)', () => {
+  it('sets Status on an item of a fork repository resolved by its project item id', async (t) => {
+    const calls = mockGraphQLSequence(t, [
+      fieldsPage([STATUS_FIELD]),
+      boardItem('PVTI_fork'),
+      { updateProjectV2ItemFieldValue: { projectV2Item: { id: 'PVTI_fork' } } }
+    ]);
+
+    const result = await handleUpdateIssueField({ itemId: 'PVTI_fork', fieldName: 'Status', value: 'done' });
+
+    const payload = parseResult(result);
+    assert.strictEqual(payload.success, true);
+    assert.strictEqual(payload.value, 'Done');
+    assert.strictEqual(calls[1].variables.itemId, 'PVTI_fork');
+    assert.deepStrictEqual(calls[2].variables.value, { singleSelectOptionId: 'opt-done' });
+  });
+
+  it('names a missing fieldName instead of throwing a TypeError', async (t) => {
+    const calls = mockGraphQLSequence(t, []);
+
+    const result = await handleUpdateIssueField({ itemId: 'PVTI_x', field: 'Status', value: 'Done' });
+
+    assert.match(result.error, /^fieldName is required/);
+    assert.match(result.error, /roadmap board \(#273\)/);
+    assert.doesNotMatch(result.error, /toLowerCase/);
+    assert.strictEqual(calls.length, 0);
+  });
+
+  it('names a missing itemId', async (t) => {
+    mockGraphQLSequence(t, []);
+
+    const result = await handleUpdateIssueField({ fieldName: 'Status', value: 'Done' });
+
+    assert.match(result.error, /^itemId is required/);
+  });
+
+  it('names a field that is not on the board', async (t) => {
+    const calls = mockGraphQLSequence(t, [fieldsPage([STATUS_FIELD])]);
+
+    const result = await handleUpdateIssueField({ itemId: 'PVTI_x', fieldName: 'Stage', value: 'Alpha' });
+
+    assert.match(result.error, /^Field 'Stage' not on the roadmap board \(#273\)/);
+    assert.strictEqual(calls.length, 1);
+  });
+
+  it('skips a field node without a name instead of throwing', async (t) => {
+    mockGraphQLSequence(t, [
+      fieldsPage([{ __typename: 'ProjectV2Field' }, STATUS_FIELD]),
+      boardItem(),
+      { updateProjectV2ItemFieldValue: { projectV2Item: { id: 'PVTI_x' } } }
+    ]);
+
+    const result = await handleUpdateIssueField({ itemId: 'PVTI_x', fieldName: 'Status', value: 'Todo' });
+
+    assert.strictEqual(parseResult(result).success, true);
+  });
+
+  it('names an item id that resolves to no project item, before any write', async (t) => {
+    const calls = mockGraphQLSequence(t, [fieldsPage([STATUS_FIELD]), { node: null }]);
+
+    const result = await handleUpdateIssueField({ itemId: 'PVTI_gone', fieldName: 'Status', value: 'Done' });
+
+    assert.match(result.error, /^No item 'PVTI_gone' on the roadmap board \(#273\)/);
+    assert.strictEqual(calls.length, 2);
+  });
+
+  it('names an item id GitHub answers with NOT_FOUND', async (t) => {
+    let n = 0;
+    t.mock.method(globalThis, 'fetch', async () => {
+      const body = n++ === 0
+        ? { data: fieldsPage([STATUS_FIELD]) }
+        : { data: { node: null }, errors: [{ type: 'NOT_FOUND', path: ['node'], message: "Could not resolve to a node with the global id of 'PVTI_bogus'" }] };
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'content-type': 'application/json; charset=utf-8' }
+      });
+    });
+
+    const result = await handleUpdateIssueField({ itemId: 'PVTI_bogus', fieldName: 'Status', value: 'Done' });
+
+    assert.match(result.error, /^No item 'PVTI_bogus' on the roadmap board \(#273\)/);
+    assert.strictEqual(n, 2);
+  });
+
+  it('names the issue when its item belongs to another project', async (t) => {
+    const calls = mockGraphQLSequence(t, [
+      fieldsPage([STATUS_FIELD]),
+      boardItem('PVTI_personal', {
+        projectId: 'PVT_other',
+        projectNumber: 7,
+        issue: { number: 592, repository: { nameWithOwner: 'teemow/beekeeper' } }
+      })
+    ]);
+
+    const result = await handleUpdateIssueField({ itemId: 'PVTI_personal', fieldName: 'Status', value: 'Done' });
+
+    assert.strictEqual(result.error, "No item for teemow/beekeeper#592 on the roadmap board (#273): item 'PVTI_personal' belongs to project #7.");
+    assert.strictEqual(calls.length, 2);
+  });
+});
+
+describe('handleArchiveItem item lookup (#178)', () => {
+  it('names an item that is not on the board instead of archiving', async (t) => {
+    const calls = mockGraphQLSequence(t, [
+      boardItem('PVTI_y', { projectId: BOARDS.roadmap.id, projectNumber: BOARDS.roadmap.number })
+    ]);
+
+    const result = await handleArchiveItem({ itemId: 'PVTI_y', board: 'customer' });
+
+    assert.match(result.error, /^No item for giantswarm\/kagent-upstream#142 on the customer board \(#345\)/);
+    assert.strictEqual(calls.length, 1);
   });
 });

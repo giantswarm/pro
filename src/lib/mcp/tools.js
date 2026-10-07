@@ -14,7 +14,7 @@
  *   - list_issue_comments: Fetch comments across multiple board items in one call
  */
 
-import { listItems, getItemByID, resolveItemIssues, updateItemField, clearItemField } from '../items.js';
+import { listItems, getItemByID, resolveItemIssues, resolveBoardItem, updateItemField, clearItemField } from '../items.js';
 import { findFieldByName, findMatchingOption, findMatchingIteration } from '../fields.js';
 import { graphQLWithAuth } from '../api.js';
 import { findMissingLabels, listIssueLabels, addLabelsToIssue, removeLabelFromIssue } from '../rest-api.js';
@@ -288,16 +288,28 @@ export const updateIssueFieldTool = {
 export async function handleUpdateIssueField(args, extra) {
   try {
     const token = extractToken(extra);
-    const board = args.board || DEFAULT_BOARD;
+    const board = (args.board || DEFAULT_BOARD).toLowerCase();
     const boardId = resolveBoardId(board);
+    const boardName = `the ${board} board (#${BOARDS[board].number})`;
     logger.info('MCP: Updating issue field', { ...args, board });
+
+    if (typeof args.itemId !== 'string' || args.itemId.trim() === '') {
+      return { error: `itemId is required: the project item ID of the issue on ${boardName} (get_item_by_issue returns it).` };
+    }
+    if (typeof args.fieldName !== 'string' || args.fieldName.trim() === '') {
+      return { error: `fieldName is required: the name of a field on ${boardName} (e.g. Status). Read the board schema resource for the fields.` };
+    }
 
     const field = await findFieldByName(args.fieldName, boardId, token);
     if (!field) {
       return {
-        error: `Field '${args.fieldName}' not found on the ${board} board. Only single-select, iteration, and date fields can be updated.`
+        error: `Field '${args.fieldName}' not on ${boardName}. Only single-select, iteration, and date fields can be updated.`
       };
     }
+
+    // The item is resolved by its project item ID before any write, so a
+    // wrong or misplaced ID is named instead of failing inside the mutation.
+    await resolveBoardItem(args.itemId, board, token);
 
     // Clear path -- clearProjectV2ItemFieldValue takes only the field ID and
     // works uniformly across single-select, iteration, and date fields, so it
@@ -330,7 +342,7 @@ export async function handleUpdateIssueField(args, extra) {
       const option = findMatchingOption(field.options, args.value);
       if (!option) {
         return {
-          error: `Value '${args.value}' not found in ${args.fieldName} options. Available: ${field.options.map(o => o.name).join(', ')}`
+          error: `Value '${args.value}' not found in ${args.fieldName} options. Available: ${(field.options || []).map(o => o.name).join(', ')}`
         };
       }
       value = { singleSelectOptionId: option.id };
@@ -710,6 +722,8 @@ export async function handleArchiveItem(args, extra) {
     const board = args.board || DEFAULT_BOARD;
     const boardId = resolveBoardId(board);
     logger.info('MCP: Archiving item', { itemId: args.itemId, board });
+
+    await resolveBoardItem(args.itemId, board, token);
 
     await graphQLWithAuth(ARCHIVE_ITEM_MUTATION, {
       projectId: boardId,
