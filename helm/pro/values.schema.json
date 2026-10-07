@@ -122,10 +122,7 @@
                     "type": "boolean"
                 },
                 "minAvailable": {
-                    "type": [
-                        "integer",
-                        "string"
-                    ]
+                    "type": "integer"
                 }
             }
         },
@@ -242,11 +239,7 @@
                     "type": "integer"
                 },
                 "sessionAffinity": {
-                    "type": "string",
-                    "enum": [
-                        "None",
-                        "ClientIP"
-                    ]
+                    "type": "string"
                 }
             }
         },
@@ -276,7 +269,7 @@
             "type": "array",
             "items": {
                 "type": "object",
-                "additionalProperties": true,
+                "additionalProperties": false,
                 "properties": {
                     "maxSkew": {
                         "type": "integer"
