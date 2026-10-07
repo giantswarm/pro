@@ -3,11 +3,13 @@
 ## [Unreleased]
 
 ### Added
+- `GITHUB_APP_SLUG` pins the bearer-only mode to one GitHub App: only a user access token of that App (a `ghu_` token whose installations, as GitHub lists them for it, are all the App's) is accepted, anything else is answered 401. With pro's own App `giantswarm-pro`, installed on every repository and pinned in muster, every write is the person's own capped by that App's permissions, and `create_issue_in_project` reaches any repository the person can write to ([#176](https://github.com/giantswarm/pro/issues/176)).
 - The chart runs two replicas by default, on different nodes (preferred pod anti-affinity) and spread over zones, with a PodDisruptionBudget (`minAvailable: 1`) and `sessionAffinity: ClientIP` on the Service, so an evicted pod (a drain, a spot interruption) no longer leaves the server refusing connections ([#173](https://github.com/giantswarm/pro/issues/173)).
 - `list_issues` returns `hidden` (items dropped because their content is unreadable, e.g. in private repos the server's identity cannot access) and `totalCount` (GitHub's count for the server-side query) next to `count`, so callers can tell a complete result from a filtered one ([#166](https://github.com/giantswarm/pro/issues/166)).
 - OAuth authorization server metadata advertises `client_id_metadata_document_supported: true`, and any HTTPS Client ID Metadata Document URL (SEP-991) is accepted as `client_id` on `/authorize` and `/token`. Muster and Claude Code take this path only when it is advertised; it frees them from dynamically registered client_ids that vanish whenever the pod restarts.
 
 ### Changed
+- `create_issue_in_project`'s refusal names what an App user token needs to write: the person's write access and the App's installation on the repository.
 - CIMD documents are validated (`client_id` must equal the URL, non-empty `redirect_uris`, public client only) and the fetch is guarded against SSRF: HTTPS only, no IP literals, loopback, single-label or cluster-internal hostnames, no redirects, 5 s timeout, 64 KiB cap. Failed lookups are negative-cached for 5 minutes; a previously resolved document keeps being served while a refresh fails.
 - `OAUTH_TRUSTED_CLIENT_IDS` now only exempts URLs from that policy (and lets their document omit `client_id`); public CIMD URLs need no entry.
 
