@@ -141,11 +141,11 @@ export async function startHTTPServer(options = {}) {
     app.use('/.well-known/oauth-protected-resource', metadataHandler(protectedResourceMetadata));
 
     bearerAuthMiddleware = requireBearerAuth({
-      verifier: createGitHubTokenVerifier(),
+      verifier: createGitHubTokenVerifier({ appSlug: process.env.GITHUB_APP_SLUG || undefined }),
       resourceMetadataUrl: new URL(metadataPath, publicUrl).href
     });
 
-    logger.info('Bearer-only auth enabled — MCP clients present GitHub tokens obtained elsewhere; no authorization server is run');
+    logger.info(`Bearer-only auth enabled — MCP clients present GitHub tokens obtained elsewhere${process.env.GITHUB_APP_SLUG ? `, user access tokens of the GitHub App ${process.env.GITHUB_APP_SLUG} only` : ''}; no authorization server is run`);
   } else {
     logger.info('OAuth not configured — using GITHUB_API_TOKEN for all requests');
   }

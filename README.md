@@ -98,6 +98,7 @@ each call.
 
 - `GITHUB_API_TOKEN` (required for stdio and the env-token HTTP mode): GitHub PAT with `project:write` and `repo:write` scopes.
 - `OAUTH_BEARER_ONLY` (optional, HTTP transport): `true` selects the bearer-only mode described above.
+- `GITHUB_APP_SLUG` (optional, bearer-only mode): the slug of the GitHub App whose user access tokens alone are accepted (`giantswarm-pro`, pro's own App, installed on every repository of the organization). Every write is then the person's own, capped by that App's permissions on the repository at hand; a token of another App, an OAuth App or a PAT is answered 401.
 - `HTTP_PORT` (optional): Port for HTTP transport (default: 8080).
 - `PRO_VERSION` (set by the Helm chart): the version the server reports in its startup log and MCP `serverInfo`, the image tag the chart deploys. Unset, the server reports the `package.json` version, which the npm package carries from its release tag; a checkout reports `0.0.0-dev`.
 

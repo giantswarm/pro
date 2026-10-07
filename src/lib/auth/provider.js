@@ -121,9 +121,17 @@ export function isCimdUrl(clientId) {
  * Used by the OAuth provider (tokens this server issued) and by the
  * bearer-only mode (tokens a client such as muster obtained from GitHub).
  *
+ * With `appSlug` (bearer-only mode, `GITHUB_APP_SLUG`) only a user access
+ * token of that GitHub App is accepted: a `ghu_` token whose installations,
+ * as GitHub lists them for a user token (`GET /user/installations`, only the
+ * issuing App's), are all the App's. Every write is then the person's own,
+ * capped by that App's permissions on the repository at hand; a token of any
+ * other App, OAuth App or PAT is refused with 401.
+ *
+ * @param {{ appSlug?: string }} [options]
  * @returns {{ verifyAccessToken(token: string): Promise<object>, sweep(now?: number): void }}
  */
-export function createGitHubTokenVerifier() {
+export function createGitHubTokenVerifier({ appSlug } = {}) {
   // token → { authInfo, expiresAt }
   const tokenCache = new Map();
 
@@ -164,6 +172,10 @@ export function createGitHubTokenVerifier() {
 
     const user = await res.json();
 
+    if (appSlug) {
+      await requireAppUserToken(token, appSlug);
+    }
+
     const authInfo = {
       token,
       clientId: user.login,
@@ -186,6 +198,32 @@ export function createGitHubTokenVerifier() {
   }
 
   return { verifyAccessToken, sweep };
+}
+
+/**
+ * Refuse a token that is not a user access token of the GitHub App `appSlug`.
+ * @param {string} token
+ * @param {string} appSlug
+ */
+async function requireAppUserToken(token, appSlug) {
+  const refusal = `GitHub token is not a user access token of the GitHub App ${appSlug}`;
+  if (!token.startsWith('ghu_')) {
+    throw new InvalidTokenError(refusal);
+  }
+  const res = await fetch('https://api.github.com/user/installations?per_page=100', {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'giantswarm-pro-mcp'
+    }
+  });
+  if (!res.ok) {
+    throw new InvalidTokenError(`GitHub App installation lookup failed: ${res.status}`);
+  }
+  const { installations = [] } = await res.json();
+  if (installations.length === 0 || installations.some(i => i.app_slug !== appSlug)) {
+    throw new InvalidTokenError(refusal);
+  }
 }
 
 /**
