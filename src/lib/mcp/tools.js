@@ -148,7 +148,10 @@ export const listIssuesTool = {
         enum: ['completed', 'not planned', 'reopened'],
         description: 'Filter by close reason. Only applies to closed items.'
       }
-    }
+    },
+    // A top-level string argument that is not listed here is taken as a field
+    // filter (e.g. Team: "Bumblebee"), the same as filters.Team.
+    additionalProperties: { type: 'string' }
   }
 };
 

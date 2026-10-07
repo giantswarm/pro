@@ -39,9 +39,11 @@ Pure JavaScript (ES modules), no TypeScript. Node 20+.
 
 ### MCP Layer (`src/lib/mcp/`)
 
-- **`server.js`** — Creates MCP server, registers handlers for `list_tools`, `call_tool`, `list_resources`, `read_resource`
-- **`tools.js`** — 10 tool definitions and handlers (list_issues, get_issue_details, update_issue_field, create_issue_in_project, add_existing_issue, archive_item, close_issue, reopen_issue, update_issue_labels, list_issue_comments), plus 6 more re-exported from sub-issues.js and 1 more re-exported from timeline.js (17 total)
+- **`server.js`** — Creates MCP server, registers handlers for `list_tools`, `call_tool`, `list_resources`, `read_resource`. `call_tool` validates every call's arguments against the tool's declared `inputSchema` (`validate.js`) before the handler runs
+- **`validate.js`** — `validateToolArguments`: refuses missing required, unknown top-level (unless the schema declares `additionalProperties`, as list_issues does for field filters) and mistyped arguments, naming each and listing the accepted arguments; exact string spellings of numbers and booleans are converted, null optionals dropped
+- **`tools.js`** — 10 tool definitions and handlers (list_issues, get_issue_details, update_issue_field, create_issue_in_project, add_existing_issue, archive_item, close_issue, reopen_issue, update_issue_labels, list_issue_comments), plus 6 more re-exported from sub-issues.js, 1 from timeline.js and 2 from board.js (19 total)
 - **`sub-issues.js`** — Sub-issue tools (list, add, remove, get_parent)
+- **`board.js`** — `get_board_schema` and `get_item_by_issue` (an issue's board item without a board scan)
 - **`timeline.js`** — `get_issue_timeline` tool: compact activity timeline (labels, assignments, milestones, renames, cross-references, close reasons) for an issue, resolved from a board item
 - **`resources.js`** — Per-board schema and overview resources (e.g. `roadmap://schema`)
 

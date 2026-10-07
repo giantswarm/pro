@@ -28,6 +28,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 
 import { tools, toolHandlers } from './tools.js';
+import { validateToolArguments } from './validate.js';
 import { listResources, readResource } from './resources.js';
 import { logger } from '../logger.js';
 import { version } from '../version.js';
@@ -36,6 +37,8 @@ import { version } from '../version.js';
  * Create and configure the MCP server
  * @returns {Server} - Configured MCP server instance
  */
+const toolsByName = new Map(tools.map(tool => [tool.name, tool]));
+
 export function createMCPServer() {
   const server = new Server(
     {
@@ -77,7 +80,14 @@ export function createMCPServer() {
     }
 
     try {
-      const result = await handler(args || {}, extra);
+      // Every call is checked against the tool's declared inputSchema, so no
+      // handler runs with a missing, unknown or mistyped argument.
+      const validated = validateToolArguments(toolsByName.get(name), args);
+      if (validated.error) {
+        throw new Error(validated.error);
+      }
+
+      const result = await handler(validated.args, extra);
 
       // If result has an error, throw it
       if (result.error) {
