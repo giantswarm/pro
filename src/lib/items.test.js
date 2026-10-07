@@ -211,6 +211,82 @@ describe('listItems - unreadable items', () => {
   });
 });
 
+describe('listItems - limit and paging', () => {
+  it('asks for one page of limit items and reports the cut with the cursor to continue', async (t) => {
+    const calls = [];
+    mockGraphQLFetch(t, {
+      node: { items: { totalCount: 2900, nodes: [makeItem()], pageInfo: { hasNextPage: true, endCursor: 'c1' } } }
+    }, calls);
+
+    process.env.GITHUB_API_TOKEN = 'test-token';
+    const result = await listItems({ boardId: 'board-1', limit: 1 });
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].variables.first, 1);
+    assert.equal(result.status, 'success');
+    assert.equal(result.data.length, 1);
+    assert.equal(result.totalCount, 2900);
+    assert.equal(result.truncated, true);
+    assert.equal(result.nextCursor, 'c1');
+  });
+
+  it('reads whole pages and is never cut without a limit', async (t) => {
+    const calls = [];
+    mockGraphQLFetch(t, {
+      node: { items: { totalCount: 1, nodes: [makeItem()], pageInfo: { hasNextPage: false, endCursor: 'c1' } } }
+    }, calls);
+
+    process.env.GITHUB_API_TOKEN = 'test-token';
+    const result = await listItems({ boardId: 'board-1' });
+
+    assert.equal(calls[0].variables.first, 100);
+    assert.equal(result.truncated, false);
+    assert.ok(!('nextCursor' in result), 'nextCursor is only given for a cut result');
+  });
+
+  it('continues from the given cursor', async (t) => {
+    const calls = [];
+    mockGraphQLFetch(t, {
+      node: { items: { nodes: [], pageInfo: { hasNextPage: false } } }
+    }, calls);
+
+    process.env.GITHUB_API_TOKEN = 'test-token';
+    await listItems({ boardId: 'board-1', limit: 5, after: 'c9' });
+
+    assert.equal(calls[0].variables.after, 'c9');
+  });
+
+  it('does not count hidden items toward the limit and asks the next page for the rest', async (t) => {
+    const calls = [];
+    const second = makeItem();
+    second.id = 'item-2';
+    const pages = {
+      start: { totalCount: 5, nodes: [{ id: 'item-h', fieldValues: { nodes: [] }, content: null }, makeItem()], pageInfo: { hasNextPage: true, endCursor: 'c2' } },
+      c2: { totalCount: 5, nodes: [second], pageInfo: { hasNextPage: true, endCursor: 'c3' } }
+    };
+    t.mock.method(globalThis, 'fetch', async (url, init) => {
+      const body = JSON.parse(init.body);
+      calls.push(body.variables);
+      return {
+        status: 200,
+        url: 'https://api.github.com/graphql',
+        headers: new Headers({ 'content-type': 'application/json' }),
+        text: async () => JSON.stringify({ data: { node: { items: pages[body.variables.after ?? 'start'] } } })
+      };
+    });
+
+    process.env.GITHUB_API_TOKEN = 'test-token';
+    const result = await listItems({ boardId: 'board-1', limit: 2 });
+
+    assert.deepEqual(calls.map(c => [c.first, c.after ?? null]), [[2, null], [1, 'c2']]);
+    assert.deepEqual(result.data.map(e => e.id), ['item-1', 'item-2']);
+    assert.equal(result.hidden, 1);
+    assert.equal(result.totalCount, 5);
+    assert.equal(result.truncated, true);
+    assert.equal(result.nextCursor, 'c3');
+  });
+});
+
 describe('resolveItemIssues', () => {
   it('resolves items to their issue refs, preserving input order', async (t) => {
     const calls = [];

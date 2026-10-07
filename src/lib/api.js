@@ -62,26 +62,52 @@ export async function graphQLWithAuth(query, variables = {}, token) {
  * @returns {Promise<Array>} - All results
  */
 export async function fetchPaginated(query, variables, getNextPage, token) {
-  const allItems = [];
-  let hasNextPage = true;
-  let after = null;
+  const { nodes } = await fetchBounded(query, variables, getNextPage, token);
+  return nodes;
+}
 
-  while (hasNextPage) {
+/**
+ * Fetch a cursor-paginated connection page by page, keeping the nodes `keep`
+ * accepts, until `limit` nodes are kept (0: every page) or the pages run out.
+ * Each page asks GitHub for no more nodes than are still missing, capped at
+ * `variables.first`, so a small limit costs one small request. A page that
+ * announces a next page without a cursor ends the fetch instead of repeating.
+ * @param {string} query - GraphQL query taking $first and $after
+ * @param {Object} variables - Query variables; `first` caps the page size
+ * @param {Function} getNextPage - Function to extract { nodes, pageInfo } from a result
+ * @param {string} [token] - Optional per-request token (falls back to GITHUB_API_TOKEN)
+ * @param {Object} [options]
+ * @param {string|null} [options.after] - Cursor to continue from (an earlier endCursor)
+ * @param {number} [options.limit] - Nodes to keep before stopping; 0 keeps every node
+ * @param {Function} [options.keep] - Node predicate; a rejected node does not count
+ * @returns {Promise<{nodes: Array, hasNextPage: boolean, endCursor: string|null}>}
+ *   `hasNextPage` is true when the fetch stopped at the limit with pages
+ *   left; `endCursor` continues from there.
+ */
+export async function fetchBounded(query, variables, getNextPage, token, { after = null, limit = 0, keep = () => true } = {}) {
+  const nodes = [];
+  let hasNextPage = true;
+  let endCursor = after;
+
+  while (hasNextPage && (limit === 0 || nodes.length < limit)) {
     const queryVars = { ...variables };
-    if (after) {
-      queryVars.after = after;
+    if (endCursor) {
+      queryVars.after = endCursor;
+    }
+    if (limit > 0) {
+      queryVars.first = Math.min(variables.first ?? limit, limit - nodes.length);
     }
 
     const result = await graphQLWithAuth(query, queryVars, token);
-    const pageInfo = getNextPage(result);
+    const page = getNextPage(result);
 
-    if (pageInfo.nodes && Array.isArray(pageInfo.nodes)) {
-      allItems.push(...pageInfo.nodes);
+    if (Array.isArray(page.nodes)) {
+      nodes.push(...page.nodes.filter(keep));
     }
 
-    hasNextPage = pageInfo.pageInfo && pageInfo.pageInfo.hasNextPage;
-    after = pageInfo.pageInfo && pageInfo.pageInfo.endCursor;
+    endCursor = page.pageInfo?.endCursor || null;
+    hasNextPage = Boolean(page.pageInfo?.hasNextPage && endCursor);
   }
 
-  return allItems;
+  return { nodes, hasNextPage, endCursor };
 }

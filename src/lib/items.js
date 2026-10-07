@@ -7,7 +7,7 @@
  * without console output.
  */
 
-import { fetchPaginated, graphQLWithAuth } from './api.js';
+import { fetchBounded, graphQLWithAuth } from './api.js';
 import {
   LIST_ITEMS_QUERY,
   ISSUE_DETAIL_QUERY,
@@ -243,8 +243,12 @@ function resolveRepositoryName(repository) {
  * @param {string} [options.created] - Filter by creation date (e.g. ">@today-90d")
  * @param {string} [options.closed] - Filter by closed date (e.g. ">@today-30d")
  * @param {string} [options.reason] - Filter by close reason: "completed", "not planned", or "reopened"
+ * @param {number} [options.limit] - Stop after this many listed items (0: every item). The
+ *   GraphQL pages are sized to the remainder, so a small limit is one small request.
+ * @param {string} [options.after] - Cursor of an earlier, cut result (its nextCursor) to continue from
  * @param {string} [options.token] - Optional per-request GitHub token
- * @returns {Promise<Object>} - Result with status and data
+ * @returns {Promise<Object>} - Result with status and data; `truncated` is true when the
+ *   limit stopped the listing with items left, and `nextCursor` then continues it
  */
 export async function listItems(options) {
   const first = 100;
@@ -252,7 +256,8 @@ export async function listItems(options) {
     const {
       boardId, repository = null, filters = {}, emptyFields = [],
       assignee = null, label = null, state = null, keyword = null,
-      updated = null, created = null, closed = null, reason = null, token
+      updated = null, created = null, closed = null, reason = null,
+      limit = 0, after = null, token
     } = options;
 
     if (!boardId) {
@@ -429,27 +434,6 @@ export async function listItems(options) {
 
     const projectQuery = queryTerms.join(' ');
 
-    // totalCount is computed by GitHub for the query as sent (server-side
-    // filters applied), including items whose content we cannot read.
-    let totalCount = null;
-    const allItems = await fetchPaginated(
-      LIST_ITEMS_QUERY,
-      { projectId: boardId, first, filterQuery: projectQuery || null },
-      result => {
-        if (!result?.node?.items) {
-          return { nodes: [], pageInfo: { hasNextPage: false } };
-        }
-        if (typeof result.node.items.totalCount === 'number') {
-          totalCount = result.node.items.totalCount;
-        }
-        return {
-          nodes: result.node.items.nodes || [],
-          pageInfo: result.node.items.pageInfo || { hasNextPage: false }
-        };
-      },
-      token
-    );
-
     // Generic empty-field filtering (supports single-select, text, date, and iteration fields)
     function hasNonEmptyField(item, fieldName) {
       return item.fieldValues.nodes.some(node => {
@@ -472,7 +456,7 @@ export async function listItems(options) {
     }
 
     let hidden = 0;
-    const filtered = allItems.filter(item => {
+    function isListed(item) {
       if (!item.fieldValues || !item.fieldValues.nodes) return false;
 
       for (const fieldName of emptyFields) {
@@ -486,13 +470,39 @@ export async function listItems(options) {
         return false;
       }
       return true;
-    });
+    }
+
+    // totalCount is computed by GitHub for the query as sent (server-side
+    // filters applied), including items whose content we cannot read.
+    // The pages are read until `limit` listed items are collected, so
+    // `hidden` counts the unreadable items among the pages read.
+    let totalCount = null;
+    const { nodes: items, hasNextPage, endCursor } = await fetchBounded(
+      LIST_ITEMS_QUERY,
+      { projectId: boardId, first, filterQuery: projectQuery || null },
+      result => {
+        if (!result?.node?.items) {
+          return { nodes: [], pageInfo: { hasNextPage: false } };
+        }
+        if (typeof result.node.items.totalCount === 'number') {
+          totalCount = result.node.items.totalCount;
+        }
+        return {
+          nodes: result.node.items.nodes || [],
+          pageInfo: result.node.items.pageInfo || { hasNextPage: false }
+        };
+      },
+      token,
+      { after, limit, keep: isListed }
+    );
 
     return {
       status: 'success',
       hidden,
       totalCount,
-      data: filtered.map(item => {
+      truncated: hasNextPage,
+      ...(hasNextPage ? { nextCursor: endCursor } : {}),
+      data: items.map(item => {
         // Build compact fields map, omitting empty values
         const fields = {};
         if (item.fieldValues?.nodes) {
