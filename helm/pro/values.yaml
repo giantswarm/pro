@@ -46,11 +46,9 @@ podDisruptionBudget:
   enabled: true
   minAvailable: 1
 
-# Spread the replicas over nodes and zones, so one lost node leaves one up.
+# Spread the replicas over zones; the default affinity (when `affinity` is
+# empty) prefers a different node for each replica.
 topologySpreadConstraints:
-  - maxSkew: 1
-    topologyKey: kubernetes.io/hostname
-    whenUnsatisfiable: ScheduleAnyway
   - maxSkew: 1
     topologyKey: topology.kubernetes.io/zone
     whenUnsatisfiable: ScheduleAnyway
