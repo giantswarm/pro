@@ -1,5 +1,8 @@
 # Default values for pro
-replicaCount: 1
+# Two replicas keep the server answering while one pod is evicted (a node
+# drain, a spot interruption). MCP sessions live in the pod that created
+# them, so the Service pins each client to one pod (service.sessionAffinity).
+replicaCount: 2
 
 image:
   repository: gsoci.azurecr.io/giantswarm/pro
@@ -34,6 +37,23 @@ securityContext:
 service:
   type: ClusterIP
   port: 8080
+  # ClientIP keeps a client's MCP session on the pod that holds it; after that
+  # pod goes away the client gets 404 for the session and initializes anew.
+  sessionAffinity: ClientIP
+
+# A voluntary disruption (a drain) never takes the last ready pod.
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# Spread the replicas over nodes and zones, so one lost node leaves one up.
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: ScheduleAnyway
+  - maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: ScheduleAnyway
 
 route:
   enabled: false
