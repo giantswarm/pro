@@ -76,10 +76,13 @@ async function resolveSingleItemIssue(itemId, token) {
 // Tool: list_issues
 // ---------------------------------------------------------------------------
 
+/** Items list_issues returns when the call names no `limit`. */
+export const DEFAULT_LIST_LIMIT = 50;
+
 export const listIssuesTool = {
   name: 'list_issues',
   annotations: READ_ONLY,
-  description: 'List and filter issues from a project board (roadmap or customer). Uses generic field filters -- read the board\'s schema resource first (e.g. roadmap://schema or customer://schema) to discover available fields and valid option values. Returns compact items with `repo` (nameWithOwner), `private` flag, `state` (OPEN/CLOSED), `createdAt`/`updatedAt` timestamps, `closedAt` (only present when the item is closed), and a `fields` map (only non-empty values). The repo URL is always https://github.com/{repo}. Next to `count` (items returned), `hidden` is the number of matching items left out because their content could not be read (typically issues in private repos the server\'s GitHub identity cannot access), and `totalCount` is GitHub\'s count of items matching the server-side query (unreadable items, draft issues and pull requests included). `hidden > 0` means the result is incomplete.',
+  description: `List and filter issues from a project board (roadmap or customer). Uses generic field filters -- read the board's schema resource first (e.g. roadmap://schema or customer://schema) to discover available fields and valid option values. Returns at most \`limit\` items (default ${DEFAULT_LIST_LIMIT}; 0 for every matching item, slow on a large board) as compact entries with \`repo\` (nameWithOwner), \`private\` flag, \`state\` (OPEN/CLOSED), \`createdAt\`/\`updatedAt\` timestamps, \`closedAt\` (only present when the item is closed), and a \`fields\` map (only non-empty values). The repo URL is always https://github.com/{repo}. Next to \`count\` (items returned), \`hidden\` is the number of matching items left out because their content could not be read (typically issues in private repos the server's GitHub identity cannot access), and \`totalCount\` is GitHub's count of items matching the server-side query (unreadable items, draft issues and pull requests included). \`hidden > 0\` means the result is incomplete. \`truncated: true\` means the limit cut the list with items left: pass \`nextCursor\` as \`cursor\` with the same filters to continue.`,
   inputSchema: {
     type: 'object',
     properties: {
@@ -87,6 +90,15 @@ export const listIssuesTool = {
         type: 'string',
         enum: BOARD_NAMES,
         description: 'Which board to query. Defaults to "roadmap".'
+      },
+      limit: {
+        type: 'integer',
+        minimum: 0,
+        description: `Maximum number of items to return. Defaults to ${DEFAULT_LIST_LIMIT}; 0 returns every matching item (slow on a large board). A cut result says so with \`truncated: true\` and \`nextCursor\`.`
+      },
+      cursor: {
+        type: 'string',
+        description: 'Continue a cut result: the `nextCursor` of the previous call, with the same filters.'
       },
       repository: {
         type: 'string',
@@ -142,7 +154,8 @@ export const listIssuesTool = {
 
 export const KNOWN_LIST_PARAMS = new Set([
   'board', 'project', 'repository', 'filters', 'emptyFields',
-  'assignee', 'label', 'state', 'keyword', 'updated', 'created', 'closed', 'reason'
+  'assignee', 'label', 'state', 'keyword', 'updated', 'created', 'closed', 'reason',
+  'limit', 'cursor'
 ]);
 
 // Board field names are single words (Team, Kind, Status), so simple
@@ -157,6 +170,14 @@ export async function handleListIssues(args, extra) {
     const board = args.board || args.project || DEFAULT_BOARD;
     const boardId = resolveBoardId(board);
 
+    const limit = args.limit ?? DEFAULT_LIST_LIMIT;
+    if (!Number.isInteger(limit) || limit < 0) {
+      return { error: `limit must be a whole number of items (default ${DEFAULT_LIST_LIMIT}; 0 for every matching item), got ${JSON.stringify(args.limit)}.` };
+    }
+    if (args.cursor !== undefined && (typeof args.cursor !== 'string' || args.cursor.trim() === '')) {
+      return { error: `cursor must be the nextCursor string of a previous list_issues call, got ${JSON.stringify(args.cursor)}.` };
+    }
+
     const filters = { ...(args.filters || {}) };
     for (const [key, value] of Object.entries(args)) {
       if (KNOWN_LIST_PARAMS.has(key) || typeof value !== 'string') continue;
@@ -170,7 +191,7 @@ export async function handleListIssues(args, extra) {
       emptyFields: args.emptyFields, assignee: args.assignee,
       label: args.label, state: args.state, keyword: args.keyword,
       updated: args.updated, created: args.created, closed: args.closed,
-      reason: args.reason
+      reason: args.reason, limit, cursor: args.cursor
     });
 
     const result = await listItems({
@@ -186,6 +207,8 @@ export async function handleListIssues(args, extra) {
       created: args.created || null,
       closed: args.closed || null,
       reason: args.reason || null,
+      limit,
+      after: args.cursor || null,
       token
     });
 
@@ -200,6 +223,8 @@ export async function handleListIssues(args, extra) {
           count: result.data.length,
           hidden: result.hidden ?? 0,
           ...(typeof result.totalCount === 'number' ? { totalCount: result.totalCount } : {}),
+          truncated: result.truncated === true,
+          ...(result.truncated === true && result.nextCursor ? { nextCursor: result.nextCursor } : {}),
           issues: result.data
         })
       }]

@@ -6,6 +6,7 @@ process.env.GITHUB_API_TOKEN = 'test-token';
 const {
   listIssuesTool,
   KNOWN_LIST_PARAMS,
+  DEFAULT_LIST_LIMIT,
   handleCreateIssueInProject,
   handleUpdateIssueLabels,
   tools,
@@ -32,6 +33,18 @@ describe('listIssuesTool schema', () => {
   it('KNOWN_LIST_PARAMS includes created and closed', () => {
     assert.ok(KNOWN_LIST_PARAMS.has('created'));
     assert.ok(KNOWN_LIST_PARAMS.has('closed'));
+  });
+
+  it('takes a limit (whole number, 0 for everything) and a cursor, and names the default', () => {
+    const { limit, cursor } = listIssuesTool.inputSchema.properties;
+    assert.strictEqual(limit.type, 'integer');
+    assert.strictEqual(limit.minimum, 0);
+    assert.ok(limit.description.includes(`Defaults to ${DEFAULT_LIST_LIMIT}`), 'limit description names the default');
+    assert.strictEqual(cursor.type, 'string');
+    assert.ok(listIssuesTool.description.includes(`default ${DEFAULT_LIST_LIMIT}`), 'tool description names the default');
+    assert.ok(listIssuesTool.description.includes('`truncated: true`'), 'tool description names the cut marker');
+    assert.ok(KNOWN_LIST_PARAMS.has('limit'));
+    assert.ok(KNOWN_LIST_PARAMS.has('cursor'));
   });
 });
 

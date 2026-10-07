@@ -60,5 +60,5 @@ export {
 } from './lib/timeline.js';
 
 // Low-level GitHub clients for anything not covered above
-export { graphQLWithAuth, fetchPaginated } from './lib/api.js';
+export { graphQLWithAuth, fetchPaginated, fetchBounded } from './lib/api.js';
 export { getOctokit, parseIssueRef, resolveIssueId } from './lib/rest-api.js';

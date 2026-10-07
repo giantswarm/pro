@@ -47,7 +47,7 @@ mock.module(new URL('../api.js', import.meta.url).href, {
 
 const { octokit } = await import('../rest-api.js');
 const { REPO_ID_QUERY, CREATE_ISSUE_MUTATION, ADD_ITEM_TO_PROJECT_MUTATION } = await import('../project.js');
-const { handleUpdateIssueLabels, handleCreateIssueInProject, handleListIssues } = await import('./tools.js');
+const { handleUpdateIssueLabels, handleCreateIssueInProject, handleListIssues, DEFAULT_LIST_LIMIT } = await import('./tools.js');
 
 // ---------------------------------------------------------------------------
 // handleUpdateIssueLabels: handler wiring
@@ -349,6 +349,77 @@ describe('handleCreateIssueInProject (handler wiring)', () => {
 // ---------------------------------------------------------------------------
 // handleListIssues: completeness fields
 // ---------------------------------------------------------------------------
+
+describe('handleListIssues (limit and paging)', () => {
+  function captureListItems(t, answer = { status: 'success', data: [], truncated: false }) {
+    t.after(() => { listItemsImpl = (...args) => realItems.listItems(...args); });
+    const seen = [];
+    listItemsImpl = async (options) => { seen.push(options); return answer; };
+    return seen;
+  }
+
+  it('bounds the list to the default limit when the call names none', async (t) => {
+    const seen = captureListItems(t);
+
+    const result = await handleListIssues({});
+
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].limit, DEFAULT_LIST_LIMIT);
+    assert.strictEqual(seen[0].after, null);
+    const payload = JSON.parse(result.content[0].text);
+    assert.strictEqual(payload.truncated, false);
+    assert.ok(!('nextCursor' in payload));
+  });
+
+  it('passes an explicit limit, 0 included, and the cursor through', async (t) => {
+    const seen = captureListItems(t);
+
+    await handleListIssues({ limit: 1, cursor: 'c1' });
+    await handleListIssues({ limit: 0 });
+
+    assert.strictEqual(seen[0].limit, 1);
+    assert.strictEqual(seen[0].after, 'c1');
+    assert.strictEqual(seen[1].limit, 0);
+    assert.strictEqual(seen[1].after, null);
+  });
+
+  it('refuses a limit that is not a whole number of items, naming it, without listing', async (t) => {
+    const seen = captureListItems(t);
+
+    for (const bad of [-1, 1.5, 'ten', true]) {
+      const result = await handleListIssues({ limit: bad });
+      assert.match(result.error, /^limit must be a whole number of items/, `limit ${JSON.stringify(bad)}`);
+      assert.ok(result.error.includes(JSON.stringify(bad)), 'the refusal quotes the value');
+      assert.ok(result.error.includes(`default ${DEFAULT_LIST_LIMIT}`), 'the refusal names the default');
+    }
+    assert.strictEqual(seen.length, 0);
+  });
+
+  it('refuses an empty or non-string cursor, naming it', async (t) => {
+    const seen = captureListItems(t);
+
+    for (const bad of ['', '  ', 5]) {
+      const result = await handleListIssues({ cursor: bad });
+      assert.match(result.error, /^cursor must be the nextCursor string/, `cursor ${JSON.stringify(bad)}`);
+    }
+    assert.strictEqual(seen.length, 0);
+  });
+
+  it('reports a cut list with truncated and the cursor to continue', async (t) => {
+    captureListItems(t, {
+      status: 'success', hidden: 0, totalCount: 2900, truncated: true, nextCursor: 'c50',
+      data: [{ id: 'PVTI_1', title: 'a' }]
+    });
+
+    const result = await handleListIssues({ limit: 1 });
+
+    const payload = JSON.parse(result.content[0].text);
+    assert.strictEqual(payload.count, 1);
+    assert.strictEqual(payload.totalCount, 2900);
+    assert.strictEqual(payload.truncated, true);
+    assert.strictEqual(payload.nextCursor, 'c50');
+  });
+});
 
 describe('handleListIssues (result completeness)', () => {
   it('returns hidden and totalCount next to count, keeping count as the number of issues returned', async (t) => {
