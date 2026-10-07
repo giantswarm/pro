@@ -31,8 +31,8 @@ export const DEFAULT_BOARD = 'roadmap';
  * Board registry mapping human-readable keys to project IDs and metadata.
  */
 export const BOARDS = {
-  roadmap: { id: ROADMAP_BOARD_ID, name: 'Roadmap Board' },
-  customer: { id: CUSTOMER_BOARD_ID, name: 'Customer Board' }
+  roadmap: { id: ROADMAP_BOARD_ID, number: 273, name: 'Roadmap Board' },
+  customer: { id: CUSTOMER_BOARD_ID, number: 345, name: 'Customer Board' }
 };
 
 /**
@@ -412,6 +412,30 @@ const USER_ID_QUERY = `
   }
 `;
 
+// Single item lookup by its project item ID: the board it belongs to and the
+// issue behind it, so writes can name a missing or misplaced item.
+const BOARD_ITEM_QUERY = `
+  query GetBoardItem($itemId: ID!) {
+    node(id: $itemId) {
+      ... on ProjectV2Item {
+        id
+        project {
+          id
+          number
+        }
+        content {
+          ... on Issue {
+            number
+            repository {
+              nameWithOwner
+            }
+          }
+        }
+      }
+    }
+  }
+`;
+
 // Batched lookup: resolve a list of ProjectV2Item IDs to their underlying
 // issue's node ID, repository + number in a single round trip, using GitHub's
 // root-level `nodes(ids:)` query. The response array is in the same order
@@ -497,6 +521,7 @@ export {
   ISSUE_NODE_ID_QUERY,
   USER_ID_QUERY,
   ITEM_ISSUE_REFS_QUERY,
+  BOARD_ITEM_QUERY,
   CLOSE_ISSUE_MUTATION,
   REOPEN_ISSUE_MUTATION,
   ADD_COMMENT_MUTATION

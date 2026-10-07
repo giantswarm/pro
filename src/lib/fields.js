@@ -54,10 +54,12 @@ const UPDATABLE_FIELD_TYPES = new Set([
  * @returns {Promise<Object|null>} - The field object or null if not found
  */
 export async function findFieldByName(fieldName, boardId, token) {
+  if (typeof fieldName !== 'string') return null;
   const allFields = await listFields(boardId, token);
 
+  const wanted = fieldName.toLowerCase();
   const field = allFields.find(field => {
-    if (field.name.toLowerCase() !== fieldName.toLowerCase()) return false;
+    if (field?.name?.toLowerCase() !== wanted) return false;
     if (UPDATABLE_FIELD_TYPES.has(field.__typename)) return true;
     // ProjectV2Field with dataType DATE
     if (field.__typename === 'ProjectV2Field' && field.dataType === 'DATE') return true;
@@ -74,7 +76,7 @@ export async function findFieldByName(fieldName, boardId, token) {
  * @returns {Object|null} - Matching option or null
  */
 export function findMatchingOption(options, optionName) {
-  if (!optionName) return null;
+  if (!optionName || !Array.isArray(options)) return null;
 
   // Try direct match first
   const exactMatch = options.find(option => option.name === optionName);

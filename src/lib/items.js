@@ -12,6 +12,9 @@ import {
   LIST_ITEMS_QUERY,
   ISSUE_DETAIL_QUERY,
   ITEM_ISSUE_REFS_QUERY,
+  BOARD_ITEM_QUERY,
+  BOARDS,
+  DEFAULT_BOARD,
   UPDATE_ITEM_FIELD_MUTATION,
   CLEAR_ITEM_FIELD_MUTATION
 } from './project.js';
@@ -146,6 +149,51 @@ export async function resolveItemIssues(itemIds, token) {
   });
 
   return refs;
+}
+
+/**
+ * Resolve one project item by its project item ID and check it is on the
+ * given board. Writes against a board (field updates, archiving) call this
+ * first so a wrong, deleted or misplaced item ID fails with an error that
+ * names the item and the board instead of a GraphQL or type error.
+ * @param {string} itemId - Project item (PVTI) ID
+ * @param {string} boardKey - Board key (e.g. "roadmap", "customer")
+ * @param {string} [token] - Optional per-request GitHub token
+ * @returns {Promise<{id: string, issue: string|null}>} - The item, with its
+ *   issue as "owner/repo#N" (null for draft issues and unreadable content)
+ * @throws {Error} - When the item does not exist or is on another board
+ */
+export async function resolveBoardItem(itemId, boardKey, token) {
+  const key = (boardKey || DEFAULT_BOARD).toLowerCase();
+  const board = BOARDS[key];
+  if (!board) {
+    throw new Error(`Unknown board '${boardKey}'. Valid boards: ${Object.keys(BOARDS).join(', ')}`);
+  }
+  const boardName = `the ${key} board (#${board.number})`;
+
+  let node = null;
+  try {
+    const result = await graphQLWithAuth(BOARD_ITEM_QUERY, { itemId }, token);
+    node = result?.node;
+  } catch (error) {
+    // GitHub answers an unknown node ID with a NOT_FOUND error.
+    if (!error.errors?.some(e => e.type === 'NOT_FOUND')) throw error;
+  }
+
+  if (!node?.project?.id) {
+    throw new Error(`No item '${itemId}' on ${boardName}: the item ID does not resolve to a project item. Look it up with get_item_by_issue.`);
+  }
+
+  const content = node.content;
+  const issue = content?.number && content.repository?.nameWithOwner
+    ? `${content.repository.nameWithOwner}#${content.number}`
+    : null;
+
+  if (node.project.id !== board.id) {
+    throw new Error(`No item for ${issue || `'${itemId}'`} on ${boardName}: item '${itemId}' belongs to project #${node.project.number}.`);
+  }
+
+  return { id: node.id, issue };
 }
 
 /**
@@ -320,7 +368,7 @@ export async function listItems(options) {
 
     // Validate emptyFields names against actual board fields
     if (emptyFields.length > 0) {
-      const allFieldNames = allFields.map(f => f.name.toLowerCase());
+      const allFieldNames = allFields.map(f => f?.name?.toLowerCase());
       for (const fn of emptyFields) {
         if (!allFieldNames.some(n => n === fn.toLowerCase())) {
           const available = allFields.map(f => f.name);
@@ -341,7 +389,7 @@ export async function listItems(options) {
 
         const field = allFields.find(fieldNode =>
           fieldNode.__typename === 'ProjectV2SingleSelectField' &&
-          fieldNode.name.toLowerCase() === fieldName.toLowerCase()
+          fieldNode.name?.toLowerCase() === fieldName.toLowerCase()
         );
 
         if (!field) {
