@@ -40,7 +40,7 @@ Pure JavaScript (ES modules), no TypeScript. Node 20+.
 ### MCP Layer (`src/lib/mcp/`)
 
 - **`server.js`** — Creates MCP server, registers handlers for `list_tools`, `call_tool`, `list_resources`, `read_resource`. `call_tool` validates every call's arguments against the tool's declared `inputSchema` (`validate.js`) before the handler runs
-- **`validate.js`** — `validateToolArguments`: refuses missing required, unknown top-level (unless the schema declares `additionalProperties`, as list_issues does for field filters) and mistyped arguments, naming each and listing the accepted arguments; exact string spellings of numbers and booleans are converted, null optionals dropped
+- **`validate.js`** — `validateToolArguments`: refuses missing required, unknown top-level and mistyped arguments, naming each and listing the accepted arguments (a free-form map is always a declared object property such as list_issues' `filters`, never the top level); exact string spellings of numbers and booleans are converted, null optionals dropped
 - **`tools.js`** — 10 tool definitions and handlers (list_issues, get_issue_details, update_issue_field, create_issue_in_project, add_existing_issue, archive_item, close_issue, reopen_issue, update_issue_labels, list_issue_comments), plus 6 more re-exported from sub-issues.js, 1 from timeline.js and 2 from board.js (19 total)
 - **`sub-issues.js`** — Sub-issue tools (list, add, remove, get_parent)
 - **`board.js`** — `get_board_schema` and `get_item_by_issue` (an issue's board item without a board scan)
@@ -64,7 +64,7 @@ Pure JavaScript (ES modules), no TypeScript. Node 20+.
 
 ### Key Design Decisions
 
-- **Generic field filtering**: No hardcoded field names. LLMs read the board's schema resource to discover fields, then pass field name/value pairs as filters.
+- **Generic field filtering**: No hardcoded field names. LLMs read the board's schema resource to discover fields, then pass field name/value pairs under list_issues' `filters` map, the only place for them.
 - **Board registry pattern**: `resolveBoardId()` maps board names ("roadmap", "customer") to GitHub project node IDs.
 - **Dual transport**: stdio for local clients, HTTP for remote deployment — same server code.
 - **Three auth modes**: `GITHUB_API_TOKEN` env var for stdio/local use; OAuth 2.1 via GitHub for HTTP transport (when `GITHUB_OAUTH_CLIENT_ID` is set); bearer-only for HTTP transport (`OAUTH_BEARER_ONLY=true`: GitHub tokens obtained elsewhere are verified and used per request, no authorization server). Per-request tokens are threaded through the entire call chain. `createGitHubTokenVerifier` (provider.js) is the shared verifier: scoped tokens must cover `repo`, `project`, `read:org`; GitHub App / fine-grained tokens carry no scopes header and are accepted, GitHub enforcing their permissions per call. With `GITHUB_APP_SLUG` the verifier accepts only user access tokens of that GitHub App (pro's own `giantswarm-pro`, pinned in muster), so no write goes through another App's token.

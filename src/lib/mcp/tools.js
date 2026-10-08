@@ -82,7 +82,7 @@ export const DEFAULT_LIST_LIMIT = 50;
 export const listIssuesTool = {
   name: 'list_issues',
   annotations: READ_ONLY,
-  description: `List and filter issues from a project board (roadmap or customer). Uses generic field filters -- read the board's schema resource first (e.g. roadmap://schema or customer://schema) to discover available fields and valid option values. Returns at most \`limit\` items (default ${DEFAULT_LIST_LIMIT}; 0 for every matching item, slow on a large board) as compact entries with \`repo\` (nameWithOwner), \`private\` flag, \`state\` (OPEN/CLOSED), \`createdAt\`/\`updatedAt\` timestamps, \`closedAt\` (only present when the item is closed), and a \`fields\` map (only non-empty values). The repo URL is always https://github.com/{repo}. Next to \`count\` (items returned), \`hidden\` is the number of matching items left out because their content could not be read (typically issues in private repos the server's GitHub identity cannot access), and \`totalCount\` is GitHub's count of items matching the server-side query (unreadable items, draft issues and pull requests included). \`hidden > 0\` means the result is incomplete. \`truncated: true\` means the limit cut the list with items left: pass \`nextCursor\` as \`cursor\` with the same filters to continue.`,
+  description: `List and filter issues from a project board (roadmap or customer). Uses generic field filters -- read the board's schema resource first (e.g. roadmap://schema or customer://schema) to discover available fields and valid option values. Field filters go under \`filters\` only (e.g. \`filters: {"Team": "Honey Badger", "Status": "Backlog"}\`); any other top-level argument that is not listed here is refused with an error naming it. Earlier releases took an unknown top-level string argument as a field filter: a call with \`Team: "X"\` becomes \`filters: {"Team": "X"}\`. Returns at most \`limit\` items (default ${DEFAULT_LIST_LIMIT}; 0 for every matching item, slow on a large board) as compact entries with \`repo\` (nameWithOwner), \`private\` flag, \`state\` (OPEN/CLOSED), \`createdAt\`/\`updatedAt\` timestamps, \`closedAt\` (only present when the item is closed), and a \`fields\` map (only non-empty values). The repo URL is always https://github.com/{repo}. Next to \`count\` (items returned), \`hidden\` is the number of matching items left out because their content could not be read (typically issues in private repos the server's GitHub identity cannot access), and \`totalCount\` is GitHub's count of items matching the server-side query (unreadable items, draft issues and pull requests included). \`hidden > 0\` means the result is incomplete. \`truncated: true\` means the limit cut the list with items left: pass \`nextCursor\` as \`cursor\` with the same filters to continue.`,
   inputSchema: {
     type: 'object',
     properties: {
@@ -106,7 +106,7 @@ export const listIssuesTool = {
       },
       filters: {
         type: 'object',
-        description: 'Field filter map: keys are field names (e.g. "Status", "Team", "Kind"), values are the desired option value. Read the board schema resource first to discover available fields and valid options.',
+        description: 'Field filter map: keys are field names (e.g. "Status", "Team", "Kind"), values are the desired option value. Read the board schema resource first to discover available fields and valid options. The only place for a field filter: a field name given as a top-level argument is refused.',
         additionalProperties: { type: 'string' }
       },
       emptyFields: {
@@ -148,29 +148,14 @@ export const listIssuesTool = {
         enum: ['completed', 'not planned', 'reopened'],
         description: 'Filter by close reason. Only applies to closed items.'
       }
-    },
-    // A top-level string argument that is not listed here is taken as a field
-    // filter (e.g. Team: "Bumblebee"), the same as filters.Team.
-    additionalProperties: { type: 'string' }
+    }
   }
 };
-
-export const KNOWN_LIST_PARAMS = new Set([
-  'board', 'project', 'repository', 'filters', 'emptyFields',
-  'assignee', 'label', 'state', 'keyword', 'updated', 'created', 'closed', 'reason',
-  'limit', 'cursor'
-]);
-
-// Board field names are single words (Team, Kind, Status), so simple
-// word-boundary capitalization is sufficient here.
-function titleCase(str) {
-  return str.replace(/\b\w/g, c => c.toUpperCase());
-}
 
 export async function handleListIssues(args, extra) {
   try {
     const token = extractToken(extra);
-    const board = args.board || args.project || DEFAULT_BOARD;
+    const board = args.board || DEFAULT_BOARD;
     const boardId = resolveBoardId(board);
 
     const limit = args.limit ?? DEFAULT_LIST_LIMIT;
@@ -181,13 +166,7 @@ export async function handleListIssues(args, extra) {
       return { error: `cursor must be the nextCursor string of a previous list_issues call, got ${JSON.stringify(args.cursor)}.` };
     }
 
-    const filters = { ...(args.filters || {}) };
-    for (const [key, value] of Object.entries(args)) {
-      if (KNOWN_LIST_PARAMS.has(key) || typeof value !== 'string') continue;
-      const fieldName = titleCase(key);
-      logger.warn(`MCP: list_issues auto-forwarding top-level param "${key}" to filters["${fieldName}"]`);
-      filters[fieldName] = value;
-    }
+    const filters = args.filters || {};
 
     logger.info('MCP: Listing issues', {
       board, repository: args.repository, filters,

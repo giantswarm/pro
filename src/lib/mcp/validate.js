@@ -10,8 +10,10 @@
  * HOW:
  * - Every call is checked against the inputSchema the tool declares, before
  *   the handler runs: missing required arguments, unknown top-level arguments
- *   (unless the schema allows additional properties) and wrong types are all
- *   named in one refusal, together with the arguments the tool accepts
+ *   and wrong types are all named in one refusal, together with the arguments
+ *   the tool accepts. A top-level argument is one the schema lists: a free-form
+ *   map is a declared object property (list_issues' filters), never the top
+ *   level, so a misspelled argument can never pass as something else
  * - A string that spells a number or a boolean exactly is taken as that value
  *   for a number, integer or boolean argument, as handlers always did; null
  *   for an optional argument means the argument is left out
@@ -84,12 +86,19 @@ export function describeArguments(inputSchema) {
     .join(', ');
 }
 
-/** A hint for an unknown argument: a name that differs only in case, or how to get an itemId. */
+/**
+ * A hint for an unknown argument: a name that differs only in case, how to get
+ * an itemId, or where a board field (capitalized, like Team or Status; every
+ * argument is camelCase) goes on a tool that takes a filters map.
+ */
 function hintFor(name, properties, toolName) {
   const sameName = Object.keys(properties).find(p => p.toLowerCase() === name.toLowerCase());
   if (sameName) return ` (did you mean ${sameName}?)`;
-  if (properties.itemId && !properties[name] && /^issue(Url|_number|NodeId)$|^(owner|repo)$/.test(name)) {
+  if (properties.itemId && /^issue(Url|_number|NodeId)$|^(owner|repo)$/.test(name)) {
     return ` (${toolName} takes the itemId of the board item: get_item_by_issue returns it for an issue URL)`;
+  }
+  if (properties.filters?.type === 'object' && /^[A-Z]/.test(name)) {
+    return ` (a field filter goes under filters: {${JSON.stringify(name)}: "..."})`;
   }
   return '';
 }
@@ -106,7 +115,6 @@ export function validateToolArguments(tool, args) {
   const schema = tool.inputSchema || {};
   const properties = schema.properties || {};
   const required = schema.required || [];
-  const extra = schema.additionalProperties;
   const problems = [];
 
   if (args !== undefined && args !== null && !JSON_TYPES.object(args)) {
@@ -122,12 +130,8 @@ export function validateToolArguments(tool, args) {
 
   for (const [name, raw] of Object.entries(given)) {
     if (raw === undefined || (raw === null && !required.includes(name))) continue;
-    const propSchema = properties[name] ?? (typeof extra === 'object' ? extra : null);
+    const propSchema = properties[name];
     if (!propSchema) {
-      if (extra === true) {
-        result[name] = raw;
-        continue;
-      }
       problems.push(`unknown argument: ${name}${hintFor(name, properties, tool.name)}`);
       continue;
     }

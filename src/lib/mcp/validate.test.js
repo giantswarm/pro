@@ -50,13 +50,12 @@ describe('validateToolArguments, every tool', () => {
       }
 
       it('names an unknown argument', () => {
-        // list_issues takes any extra string argument as a field filter, so its
-        // unknown argument has to be of another type to be refused.
-        const { error } = validateToolArguments(tool, { ...validArgs(tool), bogusArgument: 1 });
-        const expected = tool.inputSchema.additionalProperties
-          ? `${tool.name}: bogusArgument must be string, got number 1. ${accepted}`
-          : `${tool.name}: unknown argument: bogusArgument. ${accepted}`;
-        assert.equal(error, expected);
+        const { error } = validateToolArguments(tool, { ...validArgs(tool), bogusArgument: 'x' });
+        assert.equal(error, `${tool.name}: unknown argument: bogusArgument. ${accepted}`);
+      });
+
+      it('declares no additional top-level properties', () => {
+        assert.equal(tool.inputSchema.additionalProperties, undefined);
       });
 
       const [firstName, firstSchema] = Object.entries(properties)[0];
@@ -125,9 +124,21 @@ describe('validateToolArguments', () => {
     assert.match(validateToolArguments(byName('get_item_by_issue'), { issue_number: 'one' }).error, /^get_item_by_issue: issue_number must be number, got string "one"\./);
   });
 
-  it('keeps extra string arguments of list_issues as field filters', () => {
-    assert.deepEqual(validateToolArguments(byName('list_issues'), { Team: 'Bumblebee', project: 'customer' }),
-      { args: { Team: 'Bumblebee', project: 'customer' } });
+  it('passes a filters map of list_issues through as given', () => {
+    assert.deepEqual(validateToolArguments(byName('list_issues'), { board: 'customer', filters: { Team: 'Tenet', Status: 'Blocked' } }),
+      { args: { board: 'customer', filters: { Team: 'Tenet', Status: 'Blocked' } } });
+  });
+
+  it('refuses a field filter given as a top-level argument of list_issues, pointing at filters', () => {
+    const { error } = validateToolArguments(byName('list_issues'), { Team: 'Tenet', filters: { Status: 'Blocked' } });
+    assert.match(error, /^list_issues: unknown argument: Team \(a field filter goes under filters: \{"Team": "\.\.\."\}\)\. Accepted arguments: /);
+  });
+
+  it('refuses a misspelled argument of list_issues without a filters hint', () => {
+    const { error } = validateToolArguments(byName('list_issues'), { keywrod: 'gateway' });
+    assert.match(error, /^list_issues: unknown argument: keywrod\. Accepted arguments: /);
+    const { error: aliased } = validateToolArguments(byName('list_issues'), { project: 'customer' });
+    assert.match(aliased, /^list_issues: unknown argument: project\. Accepted arguments: board \("roadmap" \| "customer"\), /);
   });
 
   it('checks the values of a filters map', () => {
@@ -158,6 +169,14 @@ describe('call_tool refuses invalid arguments before the handler runs', () => {
     const result = await client.callTool({ name: 'get_issue_details', arguments: { issueUrl: 'giantswarm/pro#169' } });
     assert.equal(result.isError, true);
     assert.match(result.content[0].text, /^Error: get_issue_details: missing required argument: itemId; unknown argument: issueUrl /);
+    await client.close();
+  });
+
+  it('list_issues with a field filter at the top level', async () => {
+    const client = await connect();
+    const result = await client.callTool({ name: 'list_issues', arguments: { board: 'roadmap', Team: 'Tenet' } });
+    assert.equal(result.isError, true);
+    assert.match(result.content[0].text, /^Error: list_issues: unknown argument: Team \(a field filter goes under filters: \{"Team": "\.\.\."\}\)\. Accepted arguments: /);
     await client.close();
   });
 });

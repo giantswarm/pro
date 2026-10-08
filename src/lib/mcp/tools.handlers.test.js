@@ -371,6 +371,17 @@ describe('handleListIssues (limit and paging)', () => {
     assert.ok(!('nextCursor' in payload));
   });
 
+  it('passes the filters map to the lookup as given and forwards no other key as a filter', async (t) => {
+    const seen = captureListItems(t);
+
+    await handleListIssues({ board: 'customer', filters: { Team: 'Tenet', Status: 'Blocked' }, keyword: 'gateway' });
+    await handleListIssues({});
+
+    assert.deepStrictEqual(seen[0].filters, { Team: 'Tenet', Status: 'Blocked' });
+    assert.strictEqual(seen[0].keyword, 'gateway');
+    assert.deepStrictEqual(seen[1].filters, {});
+  });
+
   it('passes an explicit limit, 0 included, and the cursor through', async (t) => {
     const seen = captureListItems(t);
 

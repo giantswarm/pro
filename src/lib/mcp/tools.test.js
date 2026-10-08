@@ -5,7 +5,6 @@ process.env.GITHUB_API_TOKEN = 'test-token';
 
 const {
   listIssuesTool,
-  KNOWN_LIST_PARAMS,
   DEFAULT_LIST_LIMIT,
   handleCreateIssueInProject,
   handleUpdateIssueLabels,
@@ -21,18 +20,12 @@ describe('listIssuesTool schema', () => {
     assert.strictEqual(listIssuesTool.inputSchema.properties.closed.type, 'string');
   });
 
-  it('every schema property is a known top-level list_issues param', () => {
-    for (const key of Object.keys(listIssuesTool.inputSchema.properties)) {
-      assert.ok(
-        KNOWN_LIST_PARAMS.has(key),
-        `schema property "${key}" is not in KNOWN_LIST_PARAMS -- it would be misrouted into filters`
-      );
-    }
-  });
-
-  it('KNOWN_LIST_PARAMS includes created and closed', () => {
-    assert.ok(KNOWN_LIST_PARAMS.has('created'));
-    assert.ok(KNOWN_LIST_PARAMS.has('closed'));
+  it('takes field filters under filters only and says so', () => {
+    const { filters } = listIssuesTool.inputSchema.properties;
+    assert.deepStrictEqual(filters.additionalProperties, { type: 'string' });
+    assert.strictEqual(listIssuesTool.inputSchema.additionalProperties, undefined, 'no top-level key doubles as a field filter');
+    assert.ok(listIssuesTool.description.includes('Field filters go under `filters` only'), 'tool description names the only place for a field filter');
+    assert.ok(listIssuesTool.description.includes('Earlier releases took an unknown top-level string argument as a field filter'), 'tool description carries the migration note');
   });
 
   it('takes a limit (whole number, 0 for everything) and a cursor, and names the default', () => {
@@ -43,8 +36,6 @@ describe('listIssuesTool schema', () => {
     assert.strictEqual(cursor.type, 'string');
     assert.ok(listIssuesTool.description.includes(`default ${DEFAULT_LIST_LIMIT}`), 'tool description names the default');
     assert.ok(listIssuesTool.description.includes('`truncated: true`'), 'tool description names the cut marker');
-    assert.ok(KNOWN_LIST_PARAMS.has('limit'));
-    assert.ok(KNOWN_LIST_PARAMS.has('cursor'));
   });
 });
 
