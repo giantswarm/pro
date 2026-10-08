@@ -10,6 +10,7 @@
 - OAuth authorization server metadata advertises `client_id_metadata_document_supported: true`, and any HTTPS Client ID Metadata Document URL (SEP-991) is accepted as `client_id` on `/authorize` and `/token`. Muster and Claude Code take this path only when it is advertised; it frees them from dynamically registered client_ids that vanish whenever the pod restarts.
 
 ### Changed
+- `list_issues` takes field filters under `filters` only and refuses any other top-level argument it does not declare, like every other tool: `Team: "X"` becomes `filters: {"Team": "X"}` (the refusal says so for a capitalized field name), and the undeclared `project` alias of `board` is gone. Before, the schema's top-level `additionalProperties` let a misspelled argument pass as a field filter ([#184](https://github.com/giantswarm/pro/issues/184)).
 - `create_issue_in_project`'s refusal names what an App user token needs to write: the person's write access and the App's installation on the repository.
 - CIMD documents are validated (`client_id` must equal the URL, non-empty `redirect_uris`, public client only) and the fetch is guarded against SSRF: HTTPS only, no IP literals, loopback, single-label or cluster-internal hostnames, no redirects, 5 s timeout, 64 KiB cap. Failed lookups are negative-cached for 5 minutes; a previously resolved document keeps being served while a refresh fails.
 - `OAUTH_TRUSTED_CLIENT_IDS` now only exempts URLs from that policy (and lets their document omit `client_id`); public CIMD URLs need no entry.
