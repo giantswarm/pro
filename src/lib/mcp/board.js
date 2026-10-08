@@ -84,8 +84,8 @@ export async function handleGetBoardSchema(args, extra) {
  * node. The number narrows the board query; the node id decides.
  */
 const ISSUE_BOARD_ITEM_QUERY = `
-  query IssueBoardItem($url: URI!, $boardId: ID!, $itemQuery: String!, $after: String) {
-    resource(url: $url) {
+  query IssueBoardItem($resourceUrl: URI!, $boardId: ID!, $itemQuery: String!, $after: String) {
+    resource(url: $resourceUrl) {
       __typename
       ... on Issue { id number title url state repository { nameWithOwner } }
       ... on PullRequest { id number title url state repository { nameWithOwner } }
@@ -181,7 +181,7 @@ export async function handleGetItemByIssue(args, extra) {
     do {
       const result = await graphQLWithAuth(
         ISSUE_BOARD_ITEM_QUERY,
-        { url, boardId, itemQuery: `repo:${owner}/${repo} ${issue_number}`, after },
+        { resourceUrl: url, boardId, itemQuery: `repo:${owner}/${repo} ${issue_number}`, after },
         token
       );
       issue = result?.resource;
