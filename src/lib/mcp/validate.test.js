@@ -76,7 +76,7 @@ describe('validateToolArguments', () => {
     const { error } = validateToolArguments(byName('update_issue_field'), { itemId: 'PVTI_1', fieldname: 'Status', value: 'Done' });
     assert.equal(error,
       'update_issue_field: missing required argument: fieldName; unknown argument: fieldname (did you mean fieldName?). ' +
-      'Accepted arguments: itemId (string, required), fieldName (string, required), value (string), clear (boolean), board ("roadmap" | "customer").');
+      'Accepted arguments: itemId (string), issueUrl (string), fieldName (string, required), value (string), clear (boolean), board ("roadmap" | "customer").');
   });
 
   it('points get_issue_details given an issueUrl to get_item_by_issue', () => {
@@ -160,7 +160,7 @@ describe('call_tool refuses invalid arguments before the handler runs', () => {
     const client = await connect();
     const result = await client.callTool({ name: 'update_issue_field', arguments: { itemId: 'PVTI_1', field: 'Status', value: 'Done' } });
     assert.equal(result.isError, true);
-    assert.match(result.content[0].text, /^Error: update_issue_field: missing required argument: fieldName; unknown argument: field\. Accepted arguments: /);
+    assert.match(result.content[0].text, /^Error: update_issue_field: missing required argument: fieldName; unknown argument: field \(did you mean fieldName\?\)\. Accepted arguments: /);
     await client.close();
   });
 

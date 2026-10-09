@@ -36,7 +36,7 @@ import {
 import { logger } from '../logger.js';
 import { subIssueTools, subIssueToolHandlers } from './sub-issues.js';
 import { timelineTools, timelineToolHandlers } from './timeline.js';
-import { boardTools, boardToolHandlers } from './board.js';
+import { boardTools, boardToolHandlers, findBoardItemByIssue } from './board.js';
 import {
   listIssueCommentsForItems,
   MAX_ITEMS_PER_CALL,
@@ -262,13 +262,17 @@ export async function handleGetIssueDetails(args, extra) {
 export const updateIssueFieldTool = {
   name: 'update_issue_field',
   annotations: destructiveWrite(),
-  description: 'Update a field value for an issue on a project board. Supports single-select fields (Status, Kind, Team, etc.) and iteration fields (Quarter). Also supports date fields (Start Date, Target Date) when a specific date is known. The server resolves field and option names to internal IDs automatically. To clear/unset a field instead of setting it, pass `clear: true` (and omit `value`) -- this works for single-select, iteration, and date fields.',
+  description: 'Update a field value for an issue on a project board. Name the item by itemId, or by issueUrl (the issue\'s URL or owner/repo#N, resolved to its item on the board). Supports single-select fields (Status, Kind, Team, etc.) and iteration fields (Quarter). Also supports date fields (Start Date, Target Date) when a specific date is known. The server resolves field and option names to internal IDs automatically. To clear/unset a field instead of setting it, pass `clear: true` (and omit `value`) -- this works for single-select, iteration, and date fields.',
   inputSchema: {
     type: 'object',
     properties: {
       itemId: {
         type: 'string',
-        description: 'The ID of the project item to update'
+        description: 'The ID of the project item to update. Pass this or issueUrl.'
+      },
+      issueUrl: {
+        type: 'string',
+        description: 'The issue (or pull request) whose board item to update, as a URL or owner/repo#N. Pass this or itemId.'
       },
       fieldName: {
         type: 'string',
@@ -288,9 +292,31 @@ export const updateIssueFieldTool = {
         description: 'Which board the item belongs to. Defaults to "roadmap".'
       }
     },
-    required: ['itemId', 'fieldName']
+    required: ['fieldName']
   }
 };
+
+/**
+ * The project item ID a call names: its itemId, or the board item of its
+ * issueUrl. Returns {itemId, onBoard} (onBoard: found on the board itself) or
+ * {error} naming what is missing or wrong.
+ */
+async function resolveItemArg(args, board, boardName, token) {
+  const hasItemId = typeof args.itemId === 'string' && args.itemId.trim() !== '';
+  const hasIssueUrl = typeof args.issueUrl === 'string' && args.issueUrl.trim() !== '';
+  if (hasItemId && hasIssueUrl) {
+    return { error: `Pass itemId or issueUrl, not both: they name the same board item.` };
+  }
+  if (hasItemId) return { itemId: args.itemId };
+  if (!hasIssueUrl) {
+    return { error: `itemId or issueUrl is required: the project item ID of the issue on ${boardName}, or the issue's URL (owner/repo#N).` };
+  }
+  const found = await findBoardItemByIssue({ issueUrl: args.issueUrl }, board, token);
+  if (!found.item) {
+    return { error: `No item for ${args.issueUrl} on ${boardName}: ${found.reason} Add it with add_existing_issue.` };
+  }
+  return { itemId: found.item.id, onBoard: true };
+}
 
 export async function handleUpdateIssueField(args, extra) {
   try {
@@ -300,12 +326,13 @@ export async function handleUpdateIssueField(args, extra) {
     const boardName = `the ${board} board (#${BOARDS[board].number})`;
     logger.info('MCP: Updating issue field', { ...args, board });
 
-    if (typeof args.itemId !== 'string' || args.itemId.trim() === '') {
-      return { error: `itemId is required: the project item ID of the issue on ${boardName} (get_item_by_issue returns it).` };
-    }
     if (typeof args.fieldName !== 'string' || args.fieldName.trim() === '') {
       return { error: `fieldName is required: the name of a field on ${boardName} (e.g. Status). Read the board schema resource for the fields.` };
     }
+
+    const resolved = await resolveItemArg(args, board, boardName, token);
+    if (resolved.error) return { error: resolved.error };
+    const { itemId, onBoard } = resolved;
 
     const field = await findFieldByName(args.fieldName, boardId, token);
     if (!field) {
@@ -316,19 +343,19 @@ export async function handleUpdateIssueField(args, extra) {
 
     // The item is resolved by its project item ID before any write, so a
     // wrong or misplaced ID is named instead of failing inside the mutation.
-    await resolveBoardItem(args.itemId, board, token);
+    if (!onBoard) await resolveBoardItem(itemId, board, token);
 
     // Clear path -- clearProjectV2ItemFieldValue takes only the field ID and
     // works uniformly across single-select, iteration, and date fields, so it
     // short-circuits before the per-type value resolution below.
     if (args.clear === true) {
-      await clearItemField(args.itemId, field.id, boardId, token);
+      await clearItemField(itemId, field.id, boardId, token);
       return {
         content: [{
           type: 'text',
           text: JSON.stringify({
             success: true,
-            itemId: args.itemId,
+            itemId: itemId,
             field: args.fieldName,
             cleared: true
           })
@@ -381,14 +408,14 @@ export async function handleUpdateIssueField(args, extra) {
       };
     }
 
-    await updateItemField(args.itemId, field.id, value, boardId, token);
+    await updateItemField(itemId, field.id, value, boardId, token);
 
     return {
       content: [{
         type: 'text',
         text: JSON.stringify({
           success: true,
-          itemId: args.itemId,
+          itemId: itemId,
           field: args.fieldName,
           value: resolvedName
         })
