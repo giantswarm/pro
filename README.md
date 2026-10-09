@@ -234,7 +234,7 @@ The `board` parameter defaults to `"roadmap"` on every board-scoped tool for bac
 
 ### Write Tools
 
-- **`update_issue_field`** -- Update a single-select field value. Provide human-readable field and option names; the server resolves them to GitHub node IDs. Specify `board` to target the correct board.
+- **`update_issue_field`** -- Update a single-select, iteration or date field value. Name the item by `itemId` or by the issue as `issueUrl` (URL or `owner/repo#N`); provide human-readable field and option names; the server resolves them to GitHub node IDs. Specify `board` to target the correct board.
 
 - **`create_issue_in_project`** -- Create a new GitHub Issue in a repository and add it to a board. Optionally set initial status, assignees, and labels. Public issues in `giantswarm/roadmap` require `confirmPublicSafe=true`. Labels must already exist in the repository -- non-existent labels are rejected before the issue is created rather than being auto-created. If applying labels fails *after* the issue has already been created and added to the board, the issue is not rolled back -- the response reports `success: true` with a `warning` explaining that labels were not applied.
 

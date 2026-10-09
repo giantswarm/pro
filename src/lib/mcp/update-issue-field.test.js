@@ -5,6 +5,7 @@ process.env.GITHUB_API_TOKEN = 'test-token';
 
 const { handleUpdateIssueField, handleArchiveItem, tools } = await import('./tools.js');
 const { BOARDS } = await import('../project.js');
+const { validateToolArguments } = await import('./validate.js');
 
 function parseResult(result) {
   return JSON.parse(result.content[0].text);
@@ -81,8 +82,10 @@ const STATUS_FIELD = {
 describe('update_issue_field tool schema (#124)', () => {
   const tool = tools.find(t => t.name === 'update_issue_field');
 
-  it('no longer requires value (clearing needs only itemId + fieldName)', () => {
-    assert.deepStrictEqual(tool.inputSchema.required, ['itemId', 'fieldName']);
+  it('requires only fieldName: the item is named by itemId or issueUrl, value is optional for clear', () => {
+    assert.deepStrictEqual(tool.inputSchema.required, ['fieldName']);
+    assert.strictEqual(tool.inputSchema.properties.itemId.type, 'string');
+    assert.strictEqual(tool.inputSchema.properties.issueUrl.type, 'string');
   });
 
   it('exposes a boolean clear flag', () => {
@@ -240,7 +243,7 @@ describe('handleUpdateIssueField named errors (#178)', () => {
 
     const result = await handleUpdateIssueField({ fieldName: 'Status', value: 'Done' });
 
-    assert.match(result.error, /^itemId is required/);
+    assert.match(result.error, /^itemId or issueUrl is required/);
   });
 
   it('names a field that is not on the board', async (t) => {
@@ -318,5 +321,94 @@ describe('handleArchiveItem item lookup (#178)', () => {
 
     assert.match(result.error, /^No item for giantswarm\/kagent-upstream#142 on the customer board \(#345\)/);
     assert.strictEqual(calls.length, 1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The issue named by its URL (#195)
+// ---------------------------------------------------------------------------
+
+// The get_item_by_issue lookup response: the issue and its item on the board.
+function issueOnBoard(itemId = 'PVTI_issue', issue = { id: 'I_423', number: 423, repo: 'giantswarm/agentlab' }) {
+  return {
+    resource: {
+      __typename: 'Issue',
+      id: issue.id,
+      number: issue.number,
+      title: 'An issue',
+      url: `https://github.com/${issue.repo}/issues/${issue.number}`,
+      state: 'OPEN',
+      repository: { nameWithOwner: issue.repo }
+    },
+    board: {
+      items: {
+        nodes: itemId ? [{ id: itemId, content: { id: issue.id }, fieldValues: { nodes: [] } }] : [],
+        pageInfo: { hasNextPage: false, endCursor: null }
+      }
+    }
+  };
+}
+
+describe('update_issue_field with an issue URL (#195)', () => {
+  const tool = tools.find(t => t.name === 'update_issue_field');
+
+  // The call two workers made: the issue and the field named the way the other
+  // tools name them. It used to reach the handler with fieldName and itemId
+  // undefined and fail with "Cannot read properties of undefined (reading
+  // 'toLowerCase')" and GitHub's "invalid $itemId" variable error.
+  it('refuses the workers\' call shape by naming the argument, never a TypeError or $itemId error', () => {
+    const { error } = validateToolArguments(tool, { issueUrl: 'giantswarm/agentlab#423', field: 'Status', value: 'In Progress ⛏️' });
+
+    assert.match(error, /unknown argument: field \(did you mean fieldName\?\)/);
+    assert.doesNotMatch(error, /unknown argument: issueUrl/);
+    assert.doesNotMatch(error, /toLowerCase|\$itemId/);
+  });
+
+  it('names fieldName for field_name', () => {
+    const { error } = validateToolArguments(tool, { issueUrl: 'giantswarm/beekeeper#230', field_name: 'Status', value: 'Done' });
+
+    assert.match(error, /unknown argument: field_name \(did you mean fieldName\?\)/);
+  });
+
+  it('sets Status on the board item of an issue URL', async (t) => {
+    const calls = mockGraphQLSequence(t, [
+      issueOnBoard('PVTI_423'),
+      fieldsPage([STATUS_FIELD]),
+      { updateProjectV2ItemFieldValue: { projectV2Item: { id: 'PVTI_423' } } }
+    ]);
+
+    const { args } = validateToolArguments(tool, { issueUrl: 'giantswarm/agentlab#423', fieldName: 'Status', value: 'done' });
+    const result = await handleUpdateIssueField(args);
+
+    const payload = parseResult(result);
+    assert.strictEqual(payload.success, true);
+    assert.strictEqual(payload.itemId, 'PVTI_423');
+    assert.strictEqual(payload.value, 'Done');
+    assert.strictEqual(calls[0].variables.resourceUrl, 'https://github.com/giantswarm/agentlab/issues/423');
+    assert.strictEqual(calls[0].variables.boardId, ROADMAP.id);
+    // The item came from the board itself: no second item lookup before the write.
+    assert.strictEqual(calls.length, 3);
+    assert.match(calls[2].query, /updateProjectV2ItemFieldValue/);
+    assert.strictEqual(calls[2].variables.itemId, 'PVTI_423');
+    assert.deepStrictEqual(calls[2].variables.value, { singleSelectOptionId: 'opt-done' });
+  });
+
+  it('names an issue that is not on the board yet, before any write', async (t) => {
+    const calls = mockGraphQLSequence(t, [issueOnBoard(null)]);
+
+    const result = await handleUpdateIssueField({ issueUrl: 'giantswarm/agentlab#424', fieldName: 'Status', value: 'Done' });
+
+    assert.match(result.error, /^No item for giantswarm\/agentlab#424 on the roadmap board \(#273\): giantswarm\/agentlab#424 is not on the /);
+    assert.match(result.error, /add_existing_issue/);
+    assert.strictEqual(calls.length, 1);
+  });
+
+  it('refuses itemId and issueUrl together', async (t) => {
+    const calls = mockGraphQLSequence(t, []);
+
+    const result = await handleUpdateIssueField({ itemId: 'PVTI_x', issueUrl: 'giantswarm/agentlab#423', fieldName: 'Status', value: 'Done' });
+
+    assert.match(result.error, /^Pass itemId or issueUrl, not both/);
+    assert.strictEqual(calls.length, 0);
   });
 });

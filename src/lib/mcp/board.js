@@ -161,69 +161,72 @@ function resolveIssueArgs(args) {
   return { ...ref, url: `https://github.com/${ref.owner}/${ref.repo}/issues/${ref.issue_number}` };
 }
 
-function notOnBoard(reason) {
-  return { content: [{ type: 'text', text: JSON.stringify({ item: null, reason }) }] };
+/**
+ * Find the board item of one issue without scanning the board.
+ * @param {object} args - issueUrl, or owner, repo and issue_number
+ * @param {string} board - The board key (roadmap, customer)
+ * @param {string} [token] - Optional per-request GitHub token
+ * @returns {Promise<{item: object} | {item: null, reason: string}>}
+ */
+export async function findBoardItemByIssue(args, board, token) {
+  const boardId = resolveBoardId(board);
+  const boardName = BOARDS[board].name;
+  const { owner, repo, issue_number, url } = resolveIssueArgs(args);
+  const ref = `${owner}/${repo}#${issue_number}`;
+  logger.info('MCP: Looking up board item by issue', { board, owner, repo, issue_number });
+
+  let issue;
+  let node;
+  let after = null;
+  do {
+    const result = await graphQLWithAuth(
+      ISSUE_BOARD_ITEM_QUERY,
+      { resourceUrl: url, boardId, itemQuery: `repo:${owner}/${repo} ${issue_number}`, after },
+      token
+    );
+    issue = result?.resource;
+    if (!issue) {
+      return { item: null, reason: `${ref} does not exist or is not readable with this GitHub grant.` };
+    }
+    if (!issue.id) {
+      return { item: null, reason: `${url} is a ${issue.__typename}, not an issue or pull request.` };
+    }
+    const items = result?.board?.items;
+    node = items?.nodes?.find(item => item?.content?.id === issue.id);
+    after = items?.pageInfo?.hasNextPage ? items.pageInfo.endCursor : null;
+  } while (!node && after);
+
+  if (!node) {
+    return { item: null, reason: `${ref} is not on the ${boardName} (or its item is archived).` };
+  }
+
+  const fields = {};
+  for (const fieldValue of node.fieldValues?.nodes || []) {
+    const value = fieldValue?.name ?? fieldValue?.title ?? fieldValue?.date;
+    if (fieldValue?.field?.name && value) {
+      fields[fieldValue.field.name] = value;
+    }
+  }
+
+  return {
+    item: {
+      id: node.id,
+      title: issue.title,
+      number: issue.number,
+      url: issue.url,
+      repo: issue.repository.nameWithOwner,
+      state: issue.state,
+      fields
+    }
+  };
 }
 
 export async function handleGetItemByIssue(args, extra) {
   try {
     const token = extractToken(extra);
     const board = (args.board || DEFAULT_BOARD).toLowerCase();
-    const boardId = resolveBoardId(board);
-    const boardName = BOARDS[board].name;
-    const { owner, repo, issue_number, url } = resolveIssueArgs(args);
-    const ref = `${owner}/${repo}#${issue_number}`;
-    logger.info('MCP: Looking up board item by issue', { board, owner, repo, issue_number });
-
-    let issue;
-    let node;
-    let after = null;
-    do {
-      const result = await graphQLWithAuth(
-        ISSUE_BOARD_ITEM_QUERY,
-        { resourceUrl: url, boardId, itemQuery: `repo:${owner}/${repo} ${issue_number}`, after },
-        token
-      );
-      issue = result?.resource;
-      if (!issue) {
-        return notOnBoard(`${ref} does not exist or is not readable with this GitHub grant.`);
-      }
-      if (!issue.id) {
-        return notOnBoard(`${url} is a ${issue.__typename}, not an issue or pull request.`);
-      }
-      const items = result?.board?.items;
-      node = items?.nodes?.find(item => item?.content?.id === issue.id);
-      after = items?.pageInfo?.hasNextPage ? items.pageInfo.endCursor : null;
-    } while (!node && after);
-
-    if (!node) {
-      return notOnBoard(`${ref} is not on the ${boardName} (or its item is archived).`);
-    }
-
-    const fields = {};
-    for (const fieldValue of node.fieldValues?.nodes || []) {
-      const value = fieldValue?.name ?? fieldValue?.title ?? fieldValue?.date;
-      if (fieldValue?.field?.name && value) {
-        fields[fieldValue.field.name] = value;
-      }
-    }
-
-    return {
-      content: [{
-        type: 'text',
-        text: JSON.stringify({
-          item: {
-            id: node.id,
-            title: issue.title,
-            number: issue.number,
-            url: issue.url,
-            repo: issue.repository.nameWithOwner,
-            state: issue.state,
-            fields
-          }
-        })
-      }]
-    };
+    const found = await findBoardItemByIssue(args, board, token);
+    return { content: [{ type: 'text', text: JSON.stringify(found) }] };
   } catch (error) {
     logger.error('MCP: Error looking up board item by issue', { error: error.message });
     return { error: error.message };

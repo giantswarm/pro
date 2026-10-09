@@ -87,15 +87,20 @@ export function describeArguments(inputSchema) {
 }
 
 /**
- * A hint for an unknown argument: a name that differs only in case, how to get
+ * A hint for an unknown argument: a name that differs only in case or
+ * underscores (field_name for fieldName), field for fieldName, how to get
  * an itemId, or where a board field (capitalized, like Team or Status; every
  * argument is camelCase) goes on a tool that takes a filters map.
  */
 function hintFor(name, properties, toolName) {
-  const sameName = Object.keys(properties).find(p => p.toLowerCase() === name.toLowerCase());
+  const bare = n => n.toLowerCase().replace(/_/g, '');
+  const sameName = Object.keys(properties).find(p => bare(p) === bare(name));
   if (sameName) return ` (did you mean ${sameName}?)`;
+  if (properties.fieldName && bare(name) === 'field') return ' (did you mean fieldName?)';
   if (properties.itemId && /^issue(Url|_number|NodeId)$|^(owner|repo)$/.test(name)) {
-    return ` (${toolName} takes the itemId of the board item: get_item_by_issue returns it for an issue URL)`;
+    return properties.issueUrl
+      ? ` (${toolName} takes the itemId of the board item, or the issue as issueUrl: "owner/repo#N")`
+      : ` (${toolName} takes the itemId of the board item: get_item_by_issue returns it for an issue URL)`;
   }
   if (properties.filters?.type === 'object' && /^[A-Z]/.test(name)) {
     return ` (a field filter goes under filters: {${JSON.stringify(name)}: "..."})`;

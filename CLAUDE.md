@@ -43,7 +43,7 @@ Pure JavaScript (ES modules), no TypeScript. Node 20+.
 - **`validate.js`** — `validateToolArguments`: refuses missing required, unknown top-level and mistyped arguments, naming each and listing the accepted arguments (a free-form map is always a declared object property such as list_issues' `filters`, never the top level); exact string spellings of numbers and booleans are converted, null optionals dropped
 - **`tools.js`** — 10 tool definitions and handlers (list_issues, get_issue_details, update_issue_field, create_issue_in_project, add_existing_issue, archive_item, close_issue, reopen_issue, update_issue_labels, list_issue_comments), plus 6 more re-exported from sub-issues.js, 1 from timeline.js and 2 from board.js (19 total)
 - **`sub-issues.js`** — Sub-issue tools (list, add, remove, get_parent)
-- **`board.js`** — `get_board_schema` and `get_item_by_issue` (the board item of an issue of any repository, resolved with `resource(url:)` and matched by node id among the board items its repository and number narrow to, without a board scan)
+- **`board.js`** — `get_board_schema` and `get_item_by_issue` (the board item of an issue of any repository, resolved with `resource(url:)` and matched by node id among the board items its repository and number narrow to, without a board scan); `findBoardItemByIssue` is that lookup, shared with `update_issue_field`'s `issueUrl`)
 - **`timeline.js`** — `get_issue_timeline` tool: compact activity timeline (labels, assignments, milestones, renames, cross-references, close reasons) for an issue, resolved from a board item
 - **`resources.js`** — Per-board schema and overview resources (e.g. `roadmap://schema`)
 
