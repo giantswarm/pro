@@ -338,7 +338,15 @@ The `Publish package` workflow runs on every GitHub Release (created automatical
 
 ## Development
 
+Install the npm dependencies first: a fresh clone or git worktree has no `node_modules`, and every test fails until `npm ci` ran. `make test` does it for you when `node_modules` is missing.
+
 ```bash
+# Install the dependencies (once per clone or worktree)
+npm ci
+
+# Run the tests
+make test
+
 # Start the MCP server locally (stdio)
 node bin/index.js
 
