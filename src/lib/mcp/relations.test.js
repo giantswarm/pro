@@ -78,11 +78,22 @@ const node = (repo, number, state = 'OPEN') => ({
 beforeEach(() => apiModule.graphQLWithAuth.mock.resetCalls());
 
 describe('compactRelation', () => {
-  it('compacts the issues and flags a list holding more than was read', () => {
-    assert.deepEqual(compactRelation({ totalCount: 1, nodes: [node('o/r', 1)] }), {
+  it('compacts the issues and flags a list with a next page', () => {
+    assert.deepEqual(compactRelation({ totalCount: 1, pageInfo: { hasNextPage: false }, nodes: [node('o/r', 1)] }), {
       issues: [{ number: 1, title: 'Issue 1', url: 'https://github.com/o/r/issues/1', state: 'open', repository: 'o/r' }]
     });
-    assert.deepEqual(compactRelation({ totalCount: 3, nodes: [node('o/r', 1)] }).truncated, true);
+    assert.deepEqual(compactRelation({ totalCount: 3, pageInfo: { hasNextPage: true }, nodes: [node('o/r', 1)] }), {
+      issues: [{ number: 1, title: 'Issue 1', url: 'https://github.com/o/r/issues/1', state: 'open', repository: 'o/r' }],
+      truncated: true,
+      totalCount: 3
+    });
+  });
+
+  it('counts issues totalCount holds but a last page leaves out as hidden, not as truncated', () => {
+    assert.deepEqual(compactRelation({ totalCount: 3, pageInfo: { hasNextPage: false }, nodes: [node('o/r', 1), null] }), {
+      issues: [{ number: 1, title: 'Issue 1', url: 'https://github.com/o/r/issues/1', state: 'open', repository: 'o/r' }],
+      hidden: 2
+    });
   });
 
   it('counts unreadable issues as hidden, not as truncated', () => {
@@ -105,7 +116,7 @@ describe('list_issue_relations', () => {
             ...node('giantswarm/roadmap', 1),
             blockedBy: { totalCount: 1, nodes: [node('giantswarm/giantswarm', 2, 'CLOSED')] },
             blocking: { totalCount: 0, nodes: [] },
-            relatesTo: { totalCount: 2, nodes: [node('giantswarm/giantswarm', 3)] }
+            relatesTo: { totalCount: 2, pageInfo: { hasNextPage: true }, nodes: [node('giantswarm/giantswarm', 3)] }
           }
         }
       };
@@ -156,6 +167,20 @@ describe('list_issue_relations', () => {
     apiModule.graphQLWithAuth.mock.mockImplementation(async () => {
       throw Object.assign(new Error('x'), {
         errors: [{ type: 'FORBIDDEN', path: ['repository', 'issue', 'blocking'], message: 'timeout' }],
+        data: { repository: { issue: null } }
+      });
+    });
+    const result = await handleListIssueRelations({ issueUrl: 'giantswarm/roadmap#1' }, extra);
+    assert.equal(result.error, 'timeout');
+  });
+
+  it('passes on the error of the whole relation list, not one on an issue inside another list', async () => {
+    apiModule.graphQLWithAuth.mock.mockImplementation(async () => {
+      throw Object.assign(new Error('x'), {
+        errors: [
+          { type: 'FORBIDDEN', path: ['repository', 'issue', 'blockedBy', 'nodes', 0], message: 'no access' },
+          { type: 'FORBIDDEN', path: ['repository', 'issue', 'blocking'], message: 'timeout' }
+        ],
         data: { repository: { issue: null } }
       });
     });
