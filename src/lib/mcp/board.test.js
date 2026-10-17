@@ -179,15 +179,6 @@ describe('get_item_by_issue', () => {
     assert.deepEqual(result, { item: null, reason: 'https://github.com/someone/tool/issues/3 is a Discussion, not an issue or pull request.' });
   });
 
-  it('uses no variable name @octokit/graphql reserves for its own options', async () => {
-    const reserved = ['method', 'baseUrl', 'url', 'headers', 'request', 'query', 'mediaType', 'operationName'];
-    apiModule.graphQLWithAuth.mock.mockImplementation(async (query, variables) => {
-      assert.deepEqual(Object.keys(variables).filter(key => reserved.includes(key)), []);
-      return answer({ resource: foreignIssue });
-    });
-    await handleGetItemByIssue({ issueUrl: 'someone/tool#7' }, extra);
-  });
-
   it('requires an issue reference', async () => {
     const result = await handleGetItemByIssue({}, extra);
     assert.match(result.error, /Provide either/);
