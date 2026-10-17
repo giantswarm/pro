@@ -101,6 +101,91 @@ const LIST_ITEMS_OVERVIEW_QUERY = `
   }
 `;
 
+// The fields list_issues reads of each item, shared by the paged read and
+// the read by item ids (LIST_ITEMS_BY_ID_QUERY).
+const LIST_ITEM_SELECTION = `
+    id
+    fieldValues(first: 100) {
+      nodes {
+        ... on ProjectV2ItemFieldTextValue {
+          text
+          field {
+            ... on ProjectV2FieldCommon {
+              name
+            }
+          }
+        }
+        ... on ProjectV2ItemFieldDateValue {
+          date
+          field {
+            ... on ProjectV2FieldCommon {
+              name
+            }
+          }
+        }
+        ... on ProjectV2ItemFieldSingleSelectValue {
+          name
+          field {
+            ... on ProjectV2FieldCommon {
+              name
+            }
+          }
+        }
+        ... on ProjectV2ItemFieldIterationValue {
+          duration
+          iterationId
+          startDate
+          title
+          field {
+            ... on ProjectV2FieldCommon {
+              name
+            }
+          }
+        }
+        ... on ProjectV2ItemFieldMilestoneValue {
+          milestone {
+            title
+            description
+            dueOn
+          }
+          field {
+            ... on ProjectV2FieldCommon {
+              name
+            }
+          }
+        }
+      }
+    }
+    content {
+      __typename
+      ... on Issue {
+        title
+        number
+        url
+        state
+        createdAt
+        updatedAt
+        closedAt
+        repository {
+          nameWithOwner
+          isPrivate
+          url
+        }
+        assignees(first: 100) {
+          nodes {
+            login
+          }
+        }
+        labels(first: 100) {
+          nodes {
+            id
+            name
+          }
+        }
+      }
+    }
+`;
+
 // List items in a project
 const LIST_ITEMS_QUERY = `
   query GetProjectItems($projectId: ID!, $first: Int!, $after: String, $filterQuery: String) {
@@ -114,88 +199,40 @@ const LIST_ITEMS_QUERY = `
             startCursor
           }
           nodes {
-            id
-            fieldValues(first: 100) {
-              nodes {
-                ... on ProjectV2ItemFieldTextValue {
-                  text
-                  field {
-                    ... on ProjectV2FieldCommon {
-                      name
-                    }
-                  }
-                }
-                ... on ProjectV2ItemFieldDateValue {
-                  date
-                  field {
-                    ... on ProjectV2FieldCommon {
-                      name
-                    }
-                  }
-                }
-                ... on ProjectV2ItemFieldSingleSelectValue {
-                  name
-                  field {
-                    ... on ProjectV2FieldCommon {
-                      name
-                    }
-                  }
-                }
-                ... on ProjectV2ItemFieldIterationValue {
-                  duration
-                  iterationId
-                  startDate
-                  title
-                  field {
-                    ... on ProjectV2FieldCommon {
-                      name
-                    }
-                  }
-                }
-                ... on ProjectV2ItemFieldMilestoneValue {
-                  milestone {
-                    title
-                    description
-                    dueOn
-                  }
-                  field {
-                    ... on ProjectV2FieldCommon {
-                      name
-                    }
-                  }
-                }
-              }
-            }
-            content {
-              __typename
-              ... on Issue {
-                title
-                number
-                url
-                state
-                createdAt
-                updatedAt
-                closedAt
-                repository {
-                  nameWithOwner
-                  isPrivate
-                  url
-                }
-                assignees(first: 100) {
-                  nodes {
-                    login
-                  }
-                }
-                labels(first: 100) {
-                  nodes {
-                    id
-                    name
-                  }
-                }
-              }
-            }
+            ${LIST_ITEM_SELECTION}
           }
         }
+      }
+    }
+  }
+`;
+
+// The ids of a page of matching items, without their content: a cheap walk
+// of a long listing whose items are then read in parallel by id.
+const LIST_ITEM_IDS_QUERY = `
+  query GetProjectItemIds($projectId: ID!, $after: String, $filterQuery: String) {
+    node(id: $projectId) {
+      ... on ProjectV2 {
+        items(first: 100, after: $after, query: $filterQuery) {
+          pageInfo {
+            endCursor
+            hasNextPage
+          }
+          nodes {
+            id
+          }
+        }
+      }
+    }
+  }
+`;
+
+// Items by their project item ids, with the same fields as LIST_ITEMS_QUERY
+const LIST_ITEMS_BY_ID_QUERY = `
+  query GetProjectItemsById($ids: [ID!]!) {
+    nodes(ids: $ids) {
+      ... on ProjectV2Item {
+        ${LIST_ITEM_SELECTION}
       }
     }
   }
@@ -211,7 +248,7 @@ const LIST_FIELDS_QUERY = `
             __typename
             ... on ProjectV2Field { id name dataType }
             ... on ProjectV2SingleSelectField { id name dataType options { id name color description } }
-            ... on ProjectV2IterationField { id name dataType configuration { duration startDay iterations { id title duration startDate } } }
+            ... on ProjectV2IterationField { id name dataType configuration { duration startDay iterations { id title duration startDate } completedIterations { id title duration startDate } } }
           }
           pageInfo { endCursor hasNextPage }
         }
@@ -510,6 +547,8 @@ const ADD_COMMENT_MUTATION = `
 export {
   REPO_ID_QUERY,
   LIST_ITEMS_QUERY,
+  LIST_ITEM_IDS_QUERY,
+  LIST_ITEMS_BY_ID_QUERY,
   LIST_ITEMS_OVERVIEW_QUERY,
   LIST_FIELDS_QUERY,
   UPDATE_ITEM_FIELD_MUTATION,

@@ -187,4 +187,35 @@ describe('get_item_by_issue', () => {
   it('is registered as a tool', () => {
     assert.deepEqual(boardTools.map(t => t.name), ['get_board_schema', 'get_item_by_issue']);
   });
+
+  it('finds a just-created item through the issue\'s own project items, before the board search lists it (#199)', async () => {
+    apiModule.graphQLWithAuth.mock.mockImplementation(async () => answer({
+      resource: {
+        ...orgIssue,
+        projectItems: { nodes: [
+          { id: 'PVTI_elsewhere', project: { id: 'PVT_other' }, fieldValues: { nodes: [] } },
+          { id: 'PVTI_fresh', project: { id: ROADMAP_BOARD_ID }, fieldValues }
+        ] }
+      },
+      // The board's items query goes through the search index, which does
+      // not list the new item yet.
+      items: []
+    }));
+
+    const result = text(await handleGetItemByIssue({ issueUrl: 'giantswarm/giantswarm#37625' }, extra));
+
+    assert.equal(result.item.id, 'PVTI_fresh');
+    assert.deepEqual(result.item.fields, { Status: 'In Progress ⛏️', Quarter: 'Q3 2026', 'Target Date': '2026-10-01' });
+  });
+
+  it('falls back to the board search when the issue\'s project items are on other projects', async () => {
+    apiModule.graphQLWithAuth.mock.mockImplementation(async () => answer({
+      resource: { ...orgIssue, projectItems: { nodes: [{ id: 'PVTI_elsewhere', project: { id: 'PVT_other' }, fieldValues: { nodes: [] } }] } },
+      items: [{ id: 'PVTI_1', content: { id: 'I_org' }, fieldValues }]
+    }));
+
+    const result = text(await handleGetItemByIssue({ issueUrl: 'giantswarm/giantswarm#37625' }, extra));
+
+    assert.equal(result.item.id, 'PVTI_1');
+  });
 });

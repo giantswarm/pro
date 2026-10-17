@@ -76,19 +76,48 @@ export async function handleGetBoardSchema(args, extra) {
   }
 }
 
+const ITEM_FIELD_VALUES = `
+  fieldValues(first: 30) {
+    nodes {
+      ... on ProjectV2ItemFieldSingleSelectValue {
+        name
+        field { ... on ProjectV2FieldCommon { name } }
+      }
+      ... on ProjectV2ItemFieldIterationValue {
+        title
+        field { ... on ProjectV2FieldCommon { name } }
+      }
+      ... on ProjectV2ItemFieldDateValue {
+        date
+        field { ... on ProjectV2FieldCommon { name } }
+      }
+    }
+  }
+`;
+
 /**
- * The issue (or pull request) behind a URL, and the board items of its
- * repository whose text matches its number. The issue's own projectItems list
- * only projects of the issue's owner, so an issue of another repository on the
- * board is found from the board side: the item whose content is the resolved
- * node. The number narrows the board query; the node id decides.
+ * The issue (or pull request) behind a URL, its own project items, and the
+ * board items of its repository whose text matches its number.
+ *
+ * The issue's projectItems show a new item at once, but list only projects
+ * of the issue's owner. The board's items query reaches an issue of any
+ * repository, but goes through GitHub's search index, which lags a new item
+ * by minutes (pro#199). The issue's own items are tried first; the board
+ * side finds an issue of another owner: the item whose content is the
+ * resolved node. The number narrows the board query; the node id decides.
  */
 const ISSUE_BOARD_ITEM_QUERY = `
   query IssueBoardItem($resourceUrl: URI!, $boardId: ID!, $itemQuery: String!, $after: String) {
     resource(url: $resourceUrl) {
       __typename
-      ... on Issue { id number title url state repository { nameWithOwner } }
-      ... on PullRequest { id number title url state repository { nameWithOwner } }
+      ... on Issue {
+        id number title url state repository { nameWithOwner }
+        projectItems(first: 50, includeArchived: false) { nodes { id project { id } ${ITEM_FIELD_VALUES} } }
+      }
+      ... on PullRequest {
+        id number title url state repository { nameWithOwner }
+        projectItems(first: 50, includeArchived: false) { nodes { id project { id } ${ITEM_FIELD_VALUES} } }
+      }
     }
     board: node(id: $boardId) {
       ... on ProjectV2 {
@@ -100,22 +129,7 @@ const ISSUE_BOARD_ITEM_QUERY = `
               ... on Issue { id }
               ... on PullRequest { id }
             }
-            fieldValues(first: 30) {
-              nodes {
-                ... on ProjectV2ItemFieldSingleSelectValue {
-                  name
-                  field { ... on ProjectV2FieldCommon { name } }
-                }
-                ... on ProjectV2ItemFieldIterationValue {
-                  title
-                  field { ... on ProjectV2FieldCommon { name } }
-                }
-                ... on ProjectV2ItemFieldDateValue {
-                  date
-                  field { ... on ProjectV2FieldCommon { name } }
-                }
-              }
-            }
+            ${ITEM_FIELD_VALUES}
           }
         }
       }
@@ -191,6 +205,8 @@ export async function findBoardItemByIssue(args, board, token) {
     if (!issue.id) {
       return { item: null, reason: `${url} is a ${issue.__typename}, not an issue or pull request.` };
     }
+    node = issue.projectItems?.nodes?.find(item => item?.project?.id === boardId);
+    if (node) break;
     const items = result?.board?.items;
     node = items?.nodes?.find(item => item?.content?.id === issue.id);
     after = items?.pageInfo?.hasNextPage ? items.pageInfo.endCursor : null;

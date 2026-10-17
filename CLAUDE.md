@@ -41,9 +41,9 @@ Pure JavaScript (ES modules), no TypeScript. Node 20+.
 
 - **`server.js`** — Creates MCP server, registers handlers for `list_tools`, `call_tool`, `list_resources`, `read_resource`. `call_tool` validates every call's arguments against the tool's declared `inputSchema` (`validate.js`) before the handler runs
 - **`validate.js`** — `validateToolArguments`: refuses missing required, unknown top-level and mistyped arguments, naming each and listing the accepted arguments (a free-form map is always a declared object property such as list_issues' `filters`, never the top level); exact string spellings of numbers and booleans are converted, null optionals dropped
-- **`tools.js`** — 10 tool definitions and handlers (list_issues, get_issue_details, update_issue_field, create_issue_in_project, add_existing_issue, archive_item, close_issue, reopen_issue, update_issue_labels, list_issue_comments), plus 6 more re-exported from sub-issues.js, 1 from timeline.js and 2 from board.js (19 total)
+- **`tools.js`** — 11 tool definitions and handlers (list_issues, get_issue_details, update_issue_field, create_issue_in_project, add_existing_issue, archive_item, close_issue, reopen_issue, update_issue_labels, list_issue_comments, get_server_version), plus 6 more re-exported from sub-issues.js, 1 from timeline.js and 2 from board.js (20 total)
 - **`sub-issues.js`** — Sub-issue tools (list, add, remove, get_parent)
-- **`board.js`** — `get_board_schema` and `get_item_by_issue` (the board item of an issue of any repository, resolved with `resource(url:)` and matched by node id among the board items its repository and number narrow to, without a board scan); `findBoardItemByIssue` is that lookup, shared with `update_issue_field`'s `issueUrl`)
+- **`board.js`** — `get_board_schema` and `get_item_by_issue` (the board item of an issue of any repository, resolved with `resource(url:)`: first among the issue's own `projectItems`, which show a new item at once but list only projects of the issue's owner, then by node id among the board items its repository and number narrow to, a search that lags a new item by minutes; never a board scan); `findBoardItemByIssue` is that lookup, shared with `update_issue_field`'s `issueUrl`)
 - **`timeline.js`** — `get_issue_timeline` tool: compact activity timeline (labels, assignments, milestones, renames, cross-references, close reasons) for an issue, resolved from a board item
 - **`resources.js`** — Per-board schema and overview resources (e.g. `roadmap://schema`)
 
@@ -55,7 +55,7 @@ Pure JavaScript (ES modules), no TypeScript. Node 20+.
 ### Domain Layer (`src/lib/`)
 
 - **`project.js`** — Board registry (board name → project ID mapping), all GraphQL queries and mutations
-- **`items.js`** — Issue listing with server-side filtering, issue detail fetching, field updates, and `resolveItemIssues` — the single batched item→issue resolution helper (issue node ID, owner/repo/number, repo visibility) used by every tool that only needs the issue ref (close/reopen, labels, timeline, comments); and `resolveBoardItem`, which resolves one item by its project item ID and checks its board before a board write (update_issue_field, archive_item), naming a missing or misplaced item
+- **`items.js`** — Issue listing with server-side filtering (`fieldTerm` turns a `filters`/`exclude` entry of any field type into a Projects query term; a full read walks item ids and reads them by id in parallel, `readItemsInParallel`), issue detail fetching, field updates, and `resolveItemIssues` — the single batched item→issue resolution helper (issue node ID, owner/repo/number, repo visibility) used by every tool that only needs the issue ref (close/reopen, labels, timeline, comments); and `resolveBoardItem`, which resolves one item by its project item ID and checks its board before a board write (update_issue_field, archive_item), naming a missing or misplaced item
 - **`fields.js`** — Field discovery and fuzzy matching (case-insensitive, emoji/special char normalization)
 - **`api.js`** — Authenticated GraphQL client with cursor-based pagination: `fetchBounded` reads only as many pages as a limit needs (each page sized to what is still missing) and hands back the cursor to continue; `fetchPaginated` reads them all
 - **`rest-api.js`** — Octokit REST client for sub-issues and timeline endpoints (not available via GraphQL)
@@ -64,7 +64,7 @@ Pure JavaScript (ES modules), no TypeScript. Node 20+.
 
 ### Key Design Decisions
 
-- **Generic field filtering**: No hardcoded field names. LLMs read the board's schema resource to discover fields, then pass field name/value pairs under list_issues' `filters` map, the only place for them.
+- **Generic field filtering**: No hardcoded field names. LLMs read the board's schema resource to discover fields, then pass field name/value pairs under list_issues' `filters` map, the only place for them (`exclude` negates them).
 - **GraphQL variable names**: `@octokit/graphql` refuses variables named like its request options (`url`, `query`, `method`, `headers`, `request`, `baseUrl`, `mediaType`, `operationName`). The unit tests mock the client, so `src/lib/graphql-variables.test.js` reads the sources instead: every operation's declared `$variables` and the object literal passed to every `graphQLWithAuth`, `fetchBounded` and `fetchPaginated` call. Pass variables as an object literal so it can read them.
 - **Board registry pattern**: `resolveBoardId()` maps board names ("roadmap", "customer") to GitHub project node IDs.
 - **Dual transport**: stdio for local clients, HTTP for remote deployment — same server code.
