@@ -328,7 +328,8 @@ describe('handleArchiveItem item lookup (#178)', () => {
 // The issue named by its URL (#195)
 // ---------------------------------------------------------------------------
 
-// The get_item_by_issue lookup response: the issue and its item on the board.
+// The get_item_by_issue lookup response: the issue, its own project items and
+// its item on the board (each query reads the part it asks for).
 function issueOnBoard(itemId = 'PVTI_issue', issue = { id: 'I_423', number: 423, repo: 'giantswarm/agentlab' }) {
   return {
     resource: {
@@ -338,7 +339,8 @@ function issueOnBoard(itemId = 'PVTI_issue', issue = { id: 'I_423', number: 423,
       title: 'An issue',
       url: `https://github.com/${issue.repo}/issues/${issue.number}`,
       state: 'OPEN',
-      repository: { nameWithOwner: issue.repo }
+      repository: { nameWithOwner: issue.repo },
+      projectItems: { nodes: itemId ? [{ id: itemId, project: { id: ROADMAP.id }, fieldValues: { nodes: [] } }] : [] }
     },
     board: {
       items: {
@@ -385,8 +387,8 @@ describe('update_issue_field with an issue URL (#195)', () => {
     assert.strictEqual(payload.itemId, 'PVTI_423');
     assert.strictEqual(payload.value, 'Done');
     assert.strictEqual(calls[0].variables.resourceUrl, 'https://github.com/giantswarm/agentlab/issues/423');
-    assert.strictEqual(calls[0].variables.boardId, ROADMAP.id);
-    // The item came from the board itself: no second item lookup before the write.
+    // The item came from the issue's own project items: no board search and
+    // no second item lookup before the write.
     assert.strictEqual(calls.length, 3);
     assert.match(calls[2].query, /updateProjectV2ItemFieldValue/);
     assert.strictEqual(calls[2].variables.itemId, 'PVTI_423');
@@ -394,13 +396,15 @@ describe('update_issue_field with an issue URL (#195)', () => {
   });
 
   it('names an issue that is not on the board yet, before any write', async (t) => {
-    const calls = mockGraphQLSequence(t, [issueOnBoard(null)]);
+    const calls = mockGraphQLSequence(t, [issueOnBoard(null), issueOnBoard(null)]);
 
     const result = await handleUpdateIssueField({ issueUrl: 'giantswarm/agentlab#424', fieldName: 'Status', value: 'Done' });
 
     assert.match(result.error, /^No item for giantswarm\/agentlab#424 on the roadmap board \(#273\): giantswarm\/agentlab#424 is not on the /);
     assert.match(result.error, /add_existing_issue/);
-    assert.strictEqual(calls.length, 1);
+    // The issue's own project items, then the board search: no write.
+    assert.strictEqual(calls.length, 2);
+    assert.strictEqual(calls[1].variables.boardId, ROADMAP.id);
   });
 
   it('refuses itemId and issueUrl together', async (t) => {

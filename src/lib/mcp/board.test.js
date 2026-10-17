@@ -82,6 +82,10 @@ describe('get_item_by_issue', () => {
 
   it('resolves a giantswarm issue to the board item with its field values', async () => {
     apiModule.graphQLWithAuth.mock.mockImplementation(async (query, variables, token) => {
+      if (!('after' in variables)) {
+        assert.deepEqual(variables, { resourceUrl: 'https://github.com/giantswarm/giantswarm/issues/37625' });
+        return answer({ resource: orgIssue });
+      }
       assert.deepEqual(variables, {
         resourceUrl: 'https://github.com/giantswarm/giantswarm/issues/37625',
         boardId: ROADMAP_BOARD_ID,
@@ -146,6 +150,7 @@ describe('get_item_by_issue', () => {
   it('follows the narrowed board pages until the item matches', async () => {
     const calls = [];
     apiModule.graphQLWithAuth.mock.mockImplementation(async (query, variables) => {
+      if (!('after' in variables)) return answer({ resource: foreignIssue });
       calls.push(variables.after);
       return variables.after
         ? answer({ resource: foreignIssue, items: [{ id: 'PVTI_7', content: { id: 'I_foreign' }, fieldValues }] })
@@ -206,6 +211,19 @@ describe('get_item_by_issue', () => {
 
     assert.equal(result.item.id, 'PVTI_fresh');
     assert.deepEqual(result.item.fields, { Status: 'In Progress ⛏️', Quarter: 'Q3 2026', 'Target Date': '2026-10-01' });
+  });
+
+  it('falls back to the board search when reading the issue\'s project items is forbidden', async () => {
+    apiModule.graphQLWithAuth.mock.mockImplementation(async (query, variables) => {
+      if (!('after' in variables)) {
+        throw Object.assign(new Error('FORBIDDEN'), { data: { resource: orgIssue }, errors: [{ type: 'FORBIDDEN' }] });
+      }
+      return answer({ resource: orgIssue, items: [{ id: 'PVTI_1', content: { id: 'I_org' }, fieldValues }] });
+    });
+
+    const result = text(await handleGetItemByIssue({ issueUrl: 'giantswarm/giantswarm#37625' }, extra));
+
+    assert.equal(result.item.id, 'PVTI_1');
   });
 
   it('falls back to the board search when the issue\'s project items are on other projects', async () => {

@@ -286,6 +286,7 @@ function queryValueList(value, mapPart = part => part) {
 /**
  * The query term for an issue-level qualifier.
  * Dates (created, updated, closed) keep GitHub's comparison and range syntax.
+ * @returns {string|null} - The term, or null for a list without values
  * @throws {Error} When a parent issue is not a URL or owner/repo#number
  */
 function qualifierTerm(qualifier, value) {
@@ -296,15 +297,21 @@ function qualifierTerm(qualifier, value) {
       return `${qualifier}:${value}`;
     case 'reason':
       return `reason:${queryValue(value)}`;
-    case 'repo':
-      return `repo:${queryValueList(value, resolveRepositoryName)}`;
-    case 'parent-issue':
-      return `parent-issue:${queryValueList(value, part => {
+    case 'repo': {
+      const list = queryValueList(value, resolveRepositoryName);
+      return list ? `repo:${list}` : null;
+    }
+    case 'parent-issue': {
+      const list = queryValueList(value, part => {
         const { owner, repo, issue_number } = parseIssueRef(part);
         return `${owner}/${repo}#${issue_number}`;
-      })}`;
-    default:
-      return `${qualifier}:${queryValueList(value)}`;
+      });
+      return list ? `parent-issue:${list}` : null;
+    }
+    default: {
+      const list = queryValueList(value);
+      return list ? `${qualifier}:${list}` : null;
+    }
   }
 }
 
@@ -327,14 +334,16 @@ function qualifierTerm(qualifier, value) {
  * @param {string} value - Requested value, trimmed
  * @param {Object[]} allFields - The board's fields
  * @param {boolean} issueFilters - Whether issue filter names are accepted
- * @returns {string} - The query term
+ * @returns {string|null} - The query term, or null for a list without values
  * @throws {Error} Naming the unknown field or value and what is available
  */
 function fieldTerm(param, name, value, allFields, issueFilters) {
   const field = allFields.find(f => f?.name?.toLowerCase() === name.toLowerCase());
   if (!field) {
-    if (issueFilters && ISSUE_FILTER_QUALIFIERS[name]) {
-      return qualifierTerm(ISSUE_FILTER_QUALIFIERS[name], value);
+    const filterName = issueFilters &&
+      Object.keys(ISSUE_FILTER_QUALIFIERS).find(key => key.toLowerCase() === name.toLowerCase());
+    if (filterName) {
+      return qualifierTerm(ISSUE_FILTER_QUALIFIERS[filterName], value);
     }
     const available = allFields.map(f => f?.name).filter(Boolean);
     const extra = issueFilters ? `; or one of ${Object.keys(ISSUE_FILTER_QUALIFIERS).join(', ')}` : '';
@@ -360,12 +369,10 @@ function fieldTerm(param, name, value, allFields, issueFilters) {
   }
 
   if (field.__typename === 'ProjectV2IterationField') {
-    if (value.startsWith('@')) {
-      return `${queryKey}:${value}`;
-    }
     const configuration = field.configuration || {};
     const iterations = [...(configuration.iterations || []), ...(configuration.completedIterations || [])];
     const titles = value.split(',').map(part => part.trim()).filter(Boolean).map(part => {
+      if (part.startsWith('@')) return part;
       const iteration = findMatchingIteration({ configuration: { iterations } }, part);
       if (!iteration) {
         throw new Error(`${param}: iteration '${part}' not found for field '${field.name}'. Available iterations: ${iterations.map(i => i.title).join(', ')}; or "@current", "@next", "@previous"`);
@@ -392,6 +399,9 @@ function fieldTerm(param, name, value, allFields, issueFilters) {
   return `${queryKey}:${value}`;
 }
 
+/** Reads by id a full read keeps running at once. */
+const MAX_PARALLEL_READS = 6;
+
 /**
  * Read every item of a board listing from a cursor on, in board order.
  *
@@ -409,27 +419,49 @@ function fieldTerm(param, name, value, allFields, issueFilters) {
  */
 async function readItemsInParallel(boardId, filterQuery, after, token) {
   const reads = [];
-  let cursor = after;
-  try {
-    while (cursor) {
-      const result = await graphQLWithAuth(
-        LIST_ITEM_IDS_QUERY,
-        { projectId: boardId, filterQuery, after: cursor },
-        token
-      );
-      const page = result?.node?.items;
-      const ids = (page?.nodes || []).map(node => node?.id).filter(Boolean);
-      if (ids.length > 0) {
-        reads.push(graphQLWithAuth(LIST_ITEMS_BY_ID_QUERY, { ids }, token));
+  const settled = new Set();
+  let inFlight = [];
+  let failed = null;
+  const readPage = async ids => {
+    try {
+      return await graphQLWithAuth(LIST_ITEMS_BY_ID_QUERY, { ids }, token);
+    } catch (error) {
+      // An item deleted after the walk listed it is NOT_FOUND; GitHub still
+      // answers the others.
+      if (error.data && error.errors?.every(e => e.type === 'NOT_FOUND')) {
+        return error.data;
       }
-      cursor = page?.pageInfo?.hasNextPage ? page.pageInfo.endCursor : null;
+      failed ??= error;
+      throw error;
     }
-  } finally {
-    // A failed walk must not leave the reads already started unobserved.
-    for (const read of reads) read.catch(() => {});
+  };
+
+  let cursor = after;
+  while (cursor && !failed) {
+    const result = await graphQLWithAuth(
+      LIST_ITEM_IDS_QUERY,
+      { projectId: boardId, filterQuery, after: cursor },
+      token
+    );
+    const page = result?.node?.items;
+    const ids = (page?.nodes || []).map(node => node?.id).filter(Boolean);
+    if (ids.length > 0) {
+      const read = readPage(ids);
+      // Observed at once, so a read failing during the walk is no unhandled
+      // rejection; Promise.all below still reports it. At most
+      // MAX_PARALLEL_READS run at once, against GitHub's secondary limits.
+      read.then(() => settled.add(read), () => settled.add(read));
+      reads.push(read);
+      inFlight.push(read);
+      if (inFlight.length >= MAX_PARALLEL_READS) {
+        await Promise.race(inFlight).catch(() => {});
+        inFlight = inFlight.filter(r => !settled.has(r));
+      }
+    }
+    cursor = page?.pageInfo?.hasNextPage ? page.pageInfo.endCursor : null;
   }
+  if (failed) throw failed;
   const pages = await Promise.all(reads);
-  // An item deleted between the walk and the read comes back as null.
   return pages.flatMap(page => (page?.nodes || []).filter(Boolean));
 }
 
@@ -507,7 +539,8 @@ export async function listItems(options) {
           queryTerms.push(`is:${lower}`);
         }
       } else {
-        queryTerms.push(qualifierTerm(qualifier, trimmed));
+        const term = qualifierTerm(qualifier, trimmed);
+        if (term) queryTerms.push(term);
       }
     }
 
@@ -553,10 +586,12 @@ export async function listItems(options) {
 
     try {
       for (const [fieldName, value] of filterEntries) {
-        queryTerms.push(fieldTerm('filters', fieldName, value, allFields, false));
+        const term = fieldTerm('filters', fieldName, value, allFields, false);
+        if (term) queryTerms.push(term);
       }
       for (const [fieldName, value] of excludeEntries) {
-        queryTerms.push(`-${fieldTerm('exclude', fieldName, value, allFields, true)}`);
+        const term = fieldTerm('exclude', fieldName, value, allFields, true);
+        if (term) queryTerms.push(`-${term}`);
       }
     } catch (error) {
       return { status: 'error', error: error.message };

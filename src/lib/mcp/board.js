@@ -96,18 +96,15 @@ const ITEM_FIELD_VALUES = `
 `;
 
 /**
- * The issue (or pull request) behind a URL, its own project items, and the
- * board items of its repository whose text matches its number.
+ * The issue (or pull request) behind a URL, and its own project items.
  *
  * The issue's projectItems show a new item at once, but list only projects
- * of the issue's owner. The board's items query reaches an issue of any
- * repository, but goes through GitHub's search index, which lags a new item
- * by minutes (pro#199). The issue's own items are tried first; the board
- * side finds an issue of another owner: the item whose content is the
- * resolved node. The number narrows the board query; the node id decides.
+ * of the issue's owner. They are read first; ISSUE_BOARD_ITEM_QUERY finds an
+ * issue of another owner from the board side, through GitHub's search
+ * index, which lags a new item by minutes (pro#199).
  */
-const ISSUE_BOARD_ITEM_QUERY = `
-  query IssueBoardItem($resourceUrl: URI!, $boardId: ID!, $itemQuery: String!, $after: String) {
+const ISSUE_PROJECT_ITEMS_QUERY = `
+  query IssueProjectItems($resourceUrl: URI!) {
     resource(url: $resourceUrl) {
       __typename
       ... on Issue {
@@ -118,6 +115,21 @@ const ISSUE_BOARD_ITEM_QUERY = `
         id number title url state repository { nameWithOwner }
         projectItems(first: 50, includeArchived: false) { nodes { id project { id } ${ITEM_FIELD_VALUES} } }
       }
+    }
+  }
+`;
+
+/**
+ * The issue behind a URL, and the board items of its repository whose text
+ * matches its number: the item whose content is the resolved node. The
+ * number narrows the board query; the node id decides.
+ */
+const ISSUE_BOARD_ITEM_QUERY = `
+  query IssueBoardItem($resourceUrl: URI!, $boardId: ID!, $itemQuery: String!, $after: String) {
+    resource(url: $resourceUrl) {
+      __typename
+      ... on Issue { id number title url state repository { nameWithOwner } }
+      ... on PullRequest { id number title url state repository { nameWithOwner } }
     }
     board: node(id: $boardId) {
       ... on ProjectV2 {
@@ -191,8 +203,17 @@ export async function findBoardItemByIssue(args, board, token) {
 
   let issue;
   let node;
+  try {
+    issue = (await graphQLWithAuth(ISSUE_PROJECT_ITEMS_QUERY, { resourceUrl: url }, token))?.resource;
+  } catch (error) {
+    // A project of the owner the grant cannot read answers FORBIDDEN for its
+    // item; the board side below still decides.
+    issue = error.data?.resource;
+  }
+  node = issue?.projectItems?.nodes?.find(item => item?.project?.id === boardId);
+
   let after = null;
-  do {
+  while (!node) {
     const result = await graphQLWithAuth(
       ISSUE_BOARD_ITEM_QUERY,
       { resourceUrl: url, boardId, itemQuery: `repo:${owner}/${repo} ${issue_number}`, after },
@@ -205,12 +226,11 @@ export async function findBoardItemByIssue(args, board, token) {
     if (!issue.id) {
       return { item: null, reason: `${url} is a ${issue.__typename}, not an issue or pull request.` };
     }
-    node = issue.projectItems?.nodes?.find(item => item?.project?.id === boardId);
-    if (node) break;
     const items = result?.board?.items;
     node = items?.nodes?.find(item => item?.content?.id === issue.id);
     after = items?.pageInfo?.hasNextPage ? items.pageInfo.endCursor : null;
-  } while (!node && after);
+    if (!after) break;
+  }
 
   if (!node) {
     return { item: null, reason: `${ref} is not on the ${boardName} (or its item is archived).` };

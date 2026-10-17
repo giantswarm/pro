@@ -106,7 +106,11 @@ async function getSchemaResource(boardKey, token) {
       } else if (field.dataType === 'NUMBER') {
         numberFields.push(field.name);
       } else if (field.__typename === 'ProjectV2IterationField') {
-        const iterations = field.configuration?.iterations || [];
+        // Current and upcoming first, then completed: filters take either.
+        const iterations = [
+          ...(field.configuration?.iterations || []),
+          ...(field.configuration?.completedIterations || [])
+        ];
         iterationFields[field.name] = iterations.map(iter => iter.title);
       }
     }

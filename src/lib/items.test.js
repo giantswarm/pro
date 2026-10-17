@@ -439,6 +439,64 @@ describe('listItems - a full read (#194)', () => {
   });
 });
 
+describe('listItems - a full read, failures (#194 review)', () => {
+  function respond(body, status = 200) {
+    return {
+      status,
+      url: 'https://api.github.com/graphql',
+      headers: new Headers({ 'content-type': 'application/json' }),
+      text: async () => JSON.stringify(body)
+    };
+  }
+  const firstPage = { data: { node: { items: { totalCount: 3, nodes: [makeItem()], pageInfo: { hasNextPage: true, endCursor: 'c1' } } } } };
+
+  it('lists the others when an item is deleted between the walk and the read', async (t) => {
+    t.mock.method(globalThis, 'fetch', async (url, init) => {
+      const body = JSON.parse(init.body);
+      if (body.query.includes('GetProjectItemIds')) {
+        return respond({ data: { node: { items: { nodes: [{ id: 'i2' }, { id: 'gone' }], pageInfo: { hasNextPage: false } } } } });
+      }
+      if (body.query.includes('GetProjectItemsById')) {
+        return respond({
+          data: { nodes: [{ ...makeItem(), id: 'i2' }, null] },
+          errors: [{ type: 'NOT_FOUND', path: ['nodes', 1], message: 'Could not resolve to a node' }]
+        });
+      }
+      return respond(firstPage);
+    });
+
+    process.env.GITHUB_API_TOKEN = 'test-token';
+    const result = await listItems({ boardId: 'board-1' });
+
+    assert.equal(result.status, 'success', result.error);
+    assert.deepEqual(result.data.map(e => e.id), ['item-1', 'i2']);
+  });
+
+  it('stops the walk and reports the error when a read fails while the walk goes on', async (t) => {
+    const walked = [];
+    t.mock.method(globalThis, 'fetch', async (url, init) => {
+      const body = JSON.parse(init.body);
+      if (body.query.includes('GetProjectItemIds')) {
+        walked.push(body.variables.after);
+        // The next page of ids arrives after the read of this one failed.
+        await new Promise(resolve => setTimeout(resolve, 20));
+        const next = `c${walked.length + 1}`;
+        return respond({ data: { node: { items: { nodes: [{ id: `i${walked.length}` }], pageInfo: { hasNextPage: walked.length < 5, endCursor: next } } } } });
+      }
+      if (body.query.includes('GetProjectItemsById')) {
+        return respond({ message: 'Bad gateway' }, 502);
+      }
+      return respond(firstPage);
+    });
+
+    process.env.GITHUB_API_TOKEN = 'test-token';
+    const result = await listItems({ boardId: 'board-1' });
+
+    assert.equal(result.status, 'error');
+    assert.ok(walked.length < 5, `walked ${walked.length} pages after a failed read`);
+  });
+});
+
 describe('listItems - field filters of every type (#17), issue filters (#20) and exclude (#21)', () => {
   const fields = [
     { __typename: 'ProjectV2SingleSelectField', name: 'Status', dataType: 'SINGLE_SELECT', options: [{ id: 's1', name: 'Done ✅' }, { id: 's2', name: 'Inbox 📥' }] },
@@ -477,7 +535,10 @@ describe('listItems - field filters of every type (#17), issue filters (#20) and
     ['an excluded field', { exclude: { Status: 'Done' } }, '-status:"Done ✅"'],
     ['an excluded issue filter, repository resolved', { exclude: { repository: 'roadmap', label: 'wontfix,needs info' } },
       '-repo:giantswarm/roadmap -label:wontfix,"needs info"'],
-    ['nonEmptyFields', { nonEmptyFields: ['Quarter'] }, 'has:quarter']
+    ['nonEmptyFields', { nonEmptyFields: ['Quarter'] }, 'has:quarter'],
+    ['iteration keywords next to titles', { filters: { Quarter: 'Q3/2026,@current' } }, 'quarter:"Q3/2026",@current'],
+    ['no term for a list without values', { assignee: ' , ', label: 'bug' }, 'label:bug'],
+    ['an issue filter name in any case', { exclude: { Label: 'wontfix' } }, '-label:wontfix']
   ];
   for (const [what, options, expected] of cases) {
     it(`sends ${what}`, async (t) => {
@@ -492,6 +553,8 @@ describe('listItems - field filters of every type (#17), issue filters (#20) and
     ['an unknown option', { filters: { Status: 'Doing' } }, /filters: value 'Doing' not found for field 'Status'/],
     ['the title field', { filters: { Title: 'x' } }, /field 'Title' cannot be filtered on; use keyword/],
     ['an issue filter name under filters', { filters: { label: 'bug' } }, /filters: field 'label' not found/],
+    ['an inherited object key', { exclude: { constructor: 'x' } }, /exclude: field 'constructor' not found/],
+    ['a misspelled iteration after a keyword', { filters: { Quarter: '@current,Q9' } }, /iteration 'Q9' not found/],
     ['an unknown exclude key', { exclude: { Nope: 'x' } }, /exclude: field 'Nope' not found.*or one of repository, assignee/],
     ['an unknown nonEmptyFields name', { nonEmptyFields: ['Nope'] }, /nonEmptyFields: field 'Nope' not found/],
     ['a parent issue that is no issue reference', { parentIssue: 'roadmap' }, /Issue reference/i]
