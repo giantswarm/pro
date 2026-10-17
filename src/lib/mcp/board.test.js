@@ -2,7 +2,18 @@ import { describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 
 const fieldsModule = { listFields: mock.fn() };
-const apiModule = { graphQLWithAuth: mock.fn() };
+const apiModule = {
+  graphQLWithAuth: mock.fn(),
+  // The real helper: it only interprets the error graphQLWithAuth throws.
+  async withPartialData(request, tolerate) {
+    try {
+      return { data: await request, errors: [] };
+    } catch (error) {
+      if (!error.data || !error.errors?.length || !error.errors.every(tolerate)) throw error;
+      return { data: error.data, errors: error.errors };
+    }
+  }
+};
 mock.module('../fields.js', { namedExports: fieldsModule });
 mock.module('../api.js', { namedExports: apiModule });
 mock.module('../logger.js', { namedExports: { logger: { info() {}, warn() {}, error() {} } } });
@@ -114,6 +125,8 @@ describe('get_item_by_issue', () => {
   it('resolves an issue of a repository outside the giantswarm org by its node id', async () => {
     apiModule.graphQLWithAuth.mock.mockImplementation(async (query, variables) => {
       assert.equal(variables.resourceUrl, 'https://github.com/someone/tool/issues/7');
+      // The issue's own project items list only its owner's projects.
+      if (!('after' in variables)) return answer({ resource: foreignIssue });
       assert.equal(variables.itemQuery, 'repo:someone/tool 7');
       return answer({
         resource: foreignIssue,

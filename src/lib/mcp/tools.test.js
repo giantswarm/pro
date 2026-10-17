@@ -72,9 +72,10 @@ describe('tools exports', () => {
     'get_issue_timeline',
     'get_board_schema',
     'get_item_by_issue',
-    'get_server_version'
+    'get_server_version',
+    'list_issue_relations'
   ];
-  const additiveWrites = ['create_issue_in_project', 'add_existing_issue', 'add_sub_issue'];
+  const additiveWrites = ['create_issue_in_project', 'add_existing_issue', 'add_sub_issue', 'add_issue_relation'];
 
   it('every tool declares readOnlyHint, destructiveHint and idempotentHint', () => {
     for (const tool of tools) {

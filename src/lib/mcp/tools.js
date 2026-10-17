@@ -31,13 +31,15 @@ import {
   USER_ID_QUERY,
   CLOSE_ISSUE_MUTATION,
   REOPEN_ISSUE_MUTATION,
-  ADD_COMMENT_MUTATION
+  ADD_COMMENT_MUTATION,
+  DETAIL_RELATIONS_PAGE
 } from '../project.js';
 import { logger } from '../logger.js';
 import { name as serverName, version, isDevBuild } from '../version.js';
 import { subIssueTools, subIssueToolHandlers } from './sub-issues.js';
 import { timelineTools, timelineToolHandlers } from './timeline.js';
 import { boardTools, boardToolHandlers, findBoardItemByIssue } from './board.js';
+import { relationTools, relationToolHandlers } from './relations.js';
 import {
   listIssueCommentsForItems,
   MAX_ITEMS_PER_CALL,
@@ -254,7 +256,7 @@ export async function handleListIssues(args, extra) {
 export const getIssueDetailsTool = {
   name: 'get_issue_details',
   annotations: READ_ONLY,
-  description: 'Get detailed information about a specific issue including repository metadata, title, description, comments, assignees, labels, and field values.',
+  description: `Get detailed information about a specific issue including repository metadata, title, description, comments, assignees, labels, field values, and its relations: the issues that block it (blockedBy), that it blocks (blocking) and that it relates to (relatesTo), the first ${DETAIL_RELATIONS_PAGE} of each with their state. Relations that cannot be read leave the rest in place and are named in relationsError; a pull request or draft has none.`,
   inputSchema: {
     type: 'object',
     properties: {
@@ -1160,7 +1162,8 @@ export const tools = [
   getServerVersionTool,
   ...subIssueTools,
   ...timelineTools,
-  ...boardTools
+  ...boardTools,
+  ...relationTools
 ];
 
 export const toolHandlers = {
@@ -1177,5 +1180,6 @@ export const toolHandlers = {
   get_server_version: handleGetServerVersion,
   ...subIssueToolHandlers,
   ...timelineToolHandlers,
-  ...boardToolHandlers
+  ...boardToolHandlers,
+  ...relationToolHandlers
 };

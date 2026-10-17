@@ -6,7 +6,7 @@
  */
 
 import { listFields } from '../fields.js';
-import { graphQLWithAuth } from '../api.js';
+import { graphQLWithAuth, withPartialData } from '../api.js';
 import { resolveBoardId, BOARDS, DEFAULT_BOARD } from '../project.js';
 import { parseIssueRef } from '../rest-api.js';
 import { logger } from '../logger.js';
@@ -203,13 +203,13 @@ export async function findBoardItemByIssue(args, board, token) {
 
   let issue;
   let node;
-  try {
-    issue = (await graphQLWithAuth(ISSUE_PROJECT_ITEMS_QUERY, { resourceUrl: url }, token))?.resource;
-  } catch (error) {
-    // A project of the owner the grant cannot read answers FORBIDDEN for its
-    // item; the board side below still decides.
-    issue = error.data?.resource;
-  }
+  // A project of the owner the grant cannot read answers FORBIDDEN for its
+  // item; the board side below still decides.
+  const { data } = await withPartialData(
+    graphQLWithAuth(ISSUE_PROJECT_ITEMS_QUERY, { resourceUrl: url }, token),
+    error => error.type === 'FORBIDDEN' || error.type === 'NOT_FOUND'
+  );
+  issue = data?.resource;
   node = issue?.projectItems?.nodes?.find(item => item?.project?.id === boardId);
 
   let after = null;

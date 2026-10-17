@@ -54,6 +54,23 @@ export async function graphQLWithAuth(query, variables = {}, token) {
 }
 
 /**
+ * Await a GraphQL request whose response may carry errors next to its data.
+ * @octokit/graphql throws on any `errors` entry, partial data attached; when
+ * every error passes `tolerate`, this answers that partial data instead.
+ * @param {Promise<Object>} request - The graphQLWithAuth call
+ * @param {(error: Object) => boolean} tolerate - Whether one GraphQL error is acceptable
+ * @returns {Promise<{ data: Object, errors: Array }>}
+ */
+export async function withPartialData(request, tolerate) {
+  try {
+    return { data: await request, errors: [] };
+  } catch (error) {
+    if (!error.data || !error.errors?.length || !error.errors.every(tolerate)) throw error;
+    return { data: error.data, errors: error.errors };
+  }
+}
+
+/**
  * Fetch paginated results.
  * @param {string} query - GraphQL query
  * @param {Object} variables - Query variables
