@@ -35,6 +35,7 @@ import {
   DETAIL_RELATIONS_PAGE
 } from '../project.js';
 import { logger } from '../logger.js';
+import { name as serverName, version, isDevBuild } from '../version.js';
 import { subIssueTools, subIssueToolHandlers } from './sub-issues.js';
 import { timelineTools, timelineToolHandlers } from './timeline.js';
 import { boardTools, boardToolHandlers, findBoardItemByIssue } from './board.js';
@@ -84,7 +85,7 @@ export const DEFAULT_LIST_LIMIT = 50;
 export const listIssuesTool = {
   name: 'list_issues',
   annotations: READ_ONLY,
-  description: `List and filter issues from a project board (roadmap or customer). Uses generic field filters -- read the board's schema resource first (e.g. roadmap://schema or customer://schema) to discover available fields and valid option values. Field filters go under \`filters\` only (e.g. \`filters: {"Team": "Honey Badger", "Status": "Backlog"}\`); any other top-level argument that is not listed here is refused with an error naming it. Earlier releases took an unknown top-level string argument as a field filter: a call with \`Team: "X"\` becomes \`filters: {"Team": "X"}\`. Returns at most \`limit\` items (default ${DEFAULT_LIST_LIMIT}; 0 for every matching item, slow on a large board) as compact entries with \`repo\` (nameWithOwner), \`private\` flag, \`state\` (OPEN/CLOSED), \`createdAt\`/\`updatedAt\` timestamps, \`closedAt\` (only present when the item is closed), and a \`fields\` map (only non-empty values). The repo URL is always https://github.com/{repo}. Next to \`count\` (items returned), \`hidden\` is the number of matching items left out because their content could not be read (typically issues in private repos the server's GitHub identity cannot access), and \`totalCount\` is GitHub's count of items matching the server-side query (unreadable items, draft issues and pull requests included). \`hidden > 0\` means the result is incomplete. \`truncated: true\` means the limit cut the list with items left: pass \`nextCursor\` as \`cursor\` with the same filters to continue.`,
+  description: `List and filter issues from a project board (roadmap or customer). Uses generic field filters -- read the board's schema resource first (e.g. roadmap://schema or customer://schema) to discover available fields and valid option values. Field filters go under \`filters\` only (e.g. \`filters: {"Team": "Honey Badger", "Status": "Backlog", "Quarter": "@current"}\`), and \`exclude\` leaves matching items out (e.g. \`exclude: {"Status": "Done"}\`); any other top-level argument that is not listed here is refused with an error naming it. Earlier releases took an unknown top-level string argument as a field filter: a call with \`Team: "X"\` becomes \`filters: {"Team": "X"}\`. Returns at most \`limit\` items (default ${DEFAULT_LIST_LIMIT}; 0 for every matching item, which on a large board takes seconds per hundred items: narrow it with \`closed\` or \`updated\`) as compact entries with \`repo\` (nameWithOwner), \`private\` flag, \`state\` (OPEN/CLOSED), \`createdAt\`/\`updatedAt\` timestamps, \`closedAt\` (only present when the item is closed), and a \`fields\` map (only non-empty values). The repo URL is always https://github.com/{repo}. Next to \`count\` (items returned), \`hidden\` is the number of matching items left out because their content could not be read (typically issues in private repos the server's GitHub identity cannot access), and \`totalCount\` is GitHub's count of items matching the server-side query (unreadable items, draft issues and pull requests included). \`hidden > 0\` means the result is incomplete. \`truncated: true\` means the limit cut the list with items left: pass \`nextCursor\` as \`cursor\` with the same filters to continue.`,
   inputSchema: {
     type: 'object',
     properties: {
@@ -108,13 +109,35 @@ export const listIssuesTool = {
       },
       filters: {
         type: 'object',
-        description: 'Field filter map: keys are field names (e.g. "Status", "Team", "Kind"), values are the desired option value. Read the board schema resource first to discover available fields and valid options. The only place for a field filter: a field name given as a top-level argument is refused.',
+        description: 'Field filter map: keys are field names (e.g. "Status", "Team", "Quarter", "Target Date"), values what to match. Read the board schema resource first to discover available fields and valid options. Single-select: an option name, comma-separated for OR ("Backlog,Up Next"). Iteration: an iteration title ("Q4/2026") or "@current", "@next", "@previous". Date and number: GitHub comparison syntax (">2026-01-01", "2026-01-01..2026-03-31", "@today", ">1"). Text: the exact text. Fields standing for issue attributes (Assignees, Labels, Repository, Milestone, Parent issue) match like the issue filters. The only place for a field filter: a field name given as a top-level argument is refused.',
+        additionalProperties: { type: 'string' }
+      },
+      exclude: {
+        type: 'object',
+        description: 'Leave out the items matching any entry: the same keys and values as `filters`, plus the issue filter names repository, assignee, label, milestone, type, parentIssue, updated, created, closed and reason (e.g. {"Status": "Done", "label": "wontfix,duplicate"}).',
         additionalProperties: { type: 'string' }
       },
       emptyFields: {
         type: 'array',
         items: { type: 'string' },
-        description: 'Return only items where these fields have no value set. Works for single-select, text, date, and iteration fields (e.g. ["Team", "Kind"]).'
+        description: 'Return only items where these fields have no value set. Works for single-select, text, date, number and iteration fields and for Assignees, Labels and Milestone (e.g. ["Team", "Kind"]).'
+      },
+      nonEmptyFields: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Return only items where these fields have a value set: the opposite of emptyFields (e.g. ["Quarter", "Assignees"]).'
+      },
+      milestone: {
+        type: 'string',
+        description: 'Filter by milestone title. Comma-separated for OR matching.'
+      },
+      type: {
+        type: 'string',
+        description: 'Filter by issue type (e.g. "Bug", "Task"). Comma-separated for OR matching.'
+      },
+      parentIssue: {
+        type: 'string',
+        description: 'Return only the sub-issues of this parent issue: its URL or "owner/repo#number".'
       },
       assignee: {
         type: 'string',
@@ -172,8 +195,10 @@ export async function handleListIssues(args, extra) {
 
     logger.info('MCP: Listing issues', {
       board, repository: args.repository, filters,
-      emptyFields: args.emptyFields, assignee: args.assignee,
+      exclude: args.exclude, emptyFields: args.emptyFields,
+      nonEmptyFields: args.nonEmptyFields, assignee: args.assignee,
       label: args.label, state: args.state, keyword: args.keyword,
+      milestone: args.milestone, type: args.type, parentIssue: args.parentIssue,
       updated: args.updated, created: args.created, closed: args.closed,
       reason: args.reason, limit, cursor: args.cursor
     });
@@ -182,11 +207,16 @@ export async function handleListIssues(args, extra) {
       boardId,
       repository: args.repository || null,
       filters,
+      exclude: args.exclude || {},
       emptyFields: args.emptyFields || [],
+      nonEmptyFields: args.nonEmptyFields || [],
       assignee: args.assignee || null,
       label: args.label || null,
       state: args.state || null,
       keyword: args.keyword || null,
+      milestone: args.milestone || null,
+      type: args.type || null,
+      parentIssue: args.parentIssue || null,
       updated: args.updated || null,
       created: args.created || null,
       closed: args.closed || null,
@@ -1103,6 +1133,21 @@ export async function handleListIssueComments(args, extra) {
 // Exports
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Tool: get_server_version
+// ---------------------------------------------------------------------------
+
+export const getServerVersionTool = {
+  name: 'get_server_version',
+  annotations: READ_ONLY,
+  description: 'The running pro server\'s name and version: the release tag it was built from (as in the MCP serverInfo), and isDevBuild: true for a checkout that runs no release.',
+  inputSchema: { type: 'object', properties: {} }
+};
+
+export async function handleGetServerVersion() {
+  return { content: [{ type: 'text', text: JSON.stringify({ name: serverName, version, isDevBuild }) }] };
+}
+
 export const tools = [
   listIssuesTool,
   getIssueDetailsTool,
@@ -1114,6 +1159,7 @@ export const tools = [
   reopenIssueTool,
   updateIssueLabelsTool,
   listIssueCommentsTool,
+  getServerVersionTool,
   ...subIssueTools,
   ...timelineTools,
   ...boardTools,
@@ -1131,6 +1177,7 @@ export const toolHandlers = {
   reopen_issue: handleReopenIssue,
   update_issue_labels: handleUpdateIssueLabels,
   list_issue_comments: handleListIssueComments,
+  get_server_version: handleGetServerVersion,
   ...subIssueToolHandlers,
   ...timelineToolHandlers,
   ...boardToolHandlers,

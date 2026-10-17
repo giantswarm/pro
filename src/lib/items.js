@@ -7,10 +7,12 @@
  * without console output.
  */
 
-import { fetchBounded, graphQLWithAuth } from './api.js';
+import { fetchBounded, graphQLWithAuth, withPartialData } from './api.js';
 import { getItemRelations } from './relations.js';
 import {
   LIST_ITEMS_QUERY,
+  LIST_ITEM_IDS_QUERY,
+  LIST_ITEMS_BY_ID_QUERY,
   ISSUE_DETAIL_QUERY,
   ITEM_ISSUE_REFS_QUERY,
   BOARD_ITEM_QUERY,
@@ -19,7 +21,8 @@ import {
   UPDATE_ITEM_FIELD_MUTATION,
   CLEAR_ITEM_FIELD_MUTATION
 } from './project.js';
-import { listFields, findMatchingOption } from './fields.js';
+import { listFields, findMatchingOption, findMatchingIteration } from './fields.js';
+import { parseIssueRef } from './rest-api.js';
 import { logger } from './logger.js';
 
 function escapeProjectQueryValue(value) {
@@ -242,16 +245,257 @@ function resolveRepositoryName(repository) {
 }
 
 /**
+ * The query qualifier of a board field that stands for an issue attribute
+ * rather than a project field value, by its data type.
+ */
+const QUALIFIER_BY_DATA_TYPE = {
+  ASSIGNEES: 'assignee',
+  LABELS: 'label',
+  REPOSITORY: 'repo',
+  MILESTONE: 'milestone',
+  PARENT_ISSUE: 'parent-issue',
+  REVIEWERS: 'reviewers',
+  ISSUE_TYPE: 'type',
+  CREATED: 'created',
+  UPDATED: 'updated',
+  CLOSED: 'closed'
+};
+
+/** Board field data types the Projects query cannot filter on. */
+const UNFILTERABLE_DATA_TYPES = new Set(['TITLE', 'LINKED_PULL_REQUESTS', 'SUB_ISSUES_PROGRESS']);
+
+/**
+ * list_issues' own issue filters, which `exclude` takes as keys next to the
+ * board's field names, and their query qualifiers.
+ */
+const ISSUE_FILTER_QUALIFIERS = {
+  repository: 'repo',
+  assignee: 'assignee',
+  label: 'label',
+  milestone: 'milestone',
+  type: 'type',
+  parentIssue: 'parent-issue',
+  updated: 'updated',
+  created: 'created',
+  closed: 'closed',
+  reason: 'reason'
+};
+
+/** A query value, quoted when it holds whitespace or a quote. */
+function queryValue(value) {
+  return /[\s"]/.test(value) ? `"${escapeProjectQueryValue(value)}"` : value;
+}
+
+/** A comma-separated (OR) list of query values, each quoted on its own. */
+function queryValueList(value, mapPart = part => part) {
+  return value
+    .split(',')
+    .map(part => part.trim())
+    .filter(Boolean)
+    .map(part => queryValue(mapPart(part)))
+    .join(',');
+}
+
+/**
+ * The query term for an issue-level qualifier.
+ * Dates (created, updated, closed) keep GitHub's comparison and range syntax.
+ * @returns {string|null} - The term, or null for a list without values
+ * @throws {Error} When a parent issue is not a URL or owner/repo#number
+ */
+function qualifierTerm(qualifier, value) {
+  switch (qualifier) {
+    case 'created':
+    case 'updated':
+    case 'closed':
+      return `${qualifier}:${value}`;
+    case 'reason':
+      return `reason:${queryValue(value)}`;
+    case 'repo': {
+      const list = queryValueList(value, resolveRepositoryName);
+      return list ? `repo:${list}` : null;
+    }
+    case 'parent-issue': {
+      const list = queryValueList(value, part => {
+        const { owner, repo, issue_number } = parseIssueRef(part);
+        return `${owner}/${repo}#${issue_number}`;
+      });
+      return list ? `parent-issue:${list}` : null;
+    }
+    default: {
+      const list = queryValueList(value);
+      return list ? `${qualifier}:${list}` : null;
+    }
+  }
+}
+
+/**
+ * The query term that matches a board field (or, with issueFilters, one of
+ * list_issues' issue filters) against a value.
+ *
+ * - single-select: option names, validated and resolved to the board's
+ *   spelling; comma-separated for OR
+ * - iteration: iteration titles (current, upcoming or completed), or
+ *   GitHub's keywords such as "@current", "@next", "@previous" and ranges
+ * - date and number: GitHub's comparison syntax (">2026-01-01",
+ *   "2026-01-01..2026-03-31", ">1", "@today")
+ * - text: the exact text
+ * - fields standing for issue attributes (Assignees, Labels, Repository,
+ *   Milestone, Parent issue, ...): their issue qualifier
+ *
+ * @param {string} param - The parameter the entry came from, for errors
+ * @param {string} name - Field name (or issue filter name)
+ * @param {string} value - Requested value, trimmed
+ * @param {Object[]} allFields - The board's fields
+ * @param {boolean} issueFilters - Whether issue filter names are accepted
+ * @returns {string|null} - The query term, or null for a list without values
+ * @throws {Error} Naming the unknown field or value and what is available
+ */
+function fieldTerm(param, name, value, allFields, issueFilters) {
+  const field = allFields.find(f => f?.name?.toLowerCase() === name.toLowerCase());
+  if (!field) {
+    const filterName = issueFilters &&
+      Object.keys(ISSUE_FILTER_QUALIFIERS).find(key => key.toLowerCase() === name.toLowerCase());
+    if (filterName) {
+      return qualifierTerm(ISSUE_FILTER_QUALIFIERS[filterName], value);
+    }
+    const available = allFields.map(f => f?.name).filter(Boolean);
+    const extra = issueFilters ? `; or one of ${Object.keys(ISSUE_FILTER_QUALIFIERS).join(', ')}` : '';
+    throw new Error(`${param}: field '${name}' not found. Available fields: ${available.join(', ')}${extra}`);
+  }
+
+  const queryKey = fieldNameToQueryKey(field.name);
+
+  if (field.__typename === 'ProjectV2SingleSelectField') {
+    const options = field.options || [];
+    // An option name may hold a comma: take the whole value first.
+    const parts = findMatchingOption(options, value) || !value.includes(',')
+      ? [value]
+      : value.split(',').map(part => part.trim()).filter(Boolean);
+    if (parts.length === 0) return null;
+    const names = parts.map(part => {
+      const option = findMatchingOption(options, part);
+      if (!option) {
+        throw new Error(`${param}: value '${part}' not found for field '${field.name}'. Available options: ${options.map(o => o.name).join(', ')}`);
+      }
+      return `"${escapeProjectQueryValue(option.name)}"`;
+    });
+    return `${queryKey}:${names.join(',')}`;
+  }
+
+  if (field.__typename === 'ProjectV2IterationField') {
+    const configuration = field.configuration || {};
+    const iterations = [...(configuration.iterations || []), ...(configuration.completedIterations || [])];
+    const titles = value.split(',').map(part => part.trim()).filter(Boolean).map(part => {
+      if (part.startsWith('@')) return part;
+      const iteration = findMatchingIteration({ configuration: { iterations } }, part);
+      if (!iteration) {
+        throw new Error(`${param}: iteration '${part}' not found for field '${field.name}'. Available iterations: ${iterations.map(i => i.title).join(', ')}; or "@current", "@next", "@previous"`);
+      }
+      return `"${escapeProjectQueryValue(iteration.title)}"`;
+    });
+    return titles.length ? `${queryKey}:${titles.join(',')}` : null;
+  }
+
+  if (UNFILTERABLE_DATA_TYPES.has(field.dataType)) {
+    throw new Error(`${param}: field '${field.name}' cannot be filtered on${field.dataType === 'TITLE' ? '; use keyword' : ''}.`);
+  }
+
+  const qualifier = QUALIFIER_BY_DATA_TYPE[field.dataType];
+  if (qualifier) {
+    return qualifierTerm(qualifier, value);
+  }
+
+  if (field.dataType === 'TEXT') {
+    return `${queryKey}:"${escapeProjectQueryValue(value)}"`;
+  }
+
+  // DATE and NUMBER fields: GitHub's comparison and range syntax as given
+  return `${queryKey}:${value}`;
+}
+
+/** Reads by id a full read keeps running at once. */
+const MAX_PARALLEL_READS = 6;
+
+/**
+ * Read every item of a board listing from a cursor on, in board order.
+ *
+ * A page of items with their content takes GitHub about 3 s, and the cursors
+ * are opaque, so a long listing read page after page grows past the gateway
+ * timeout (pro#194). The ids of a page take a third of that: the ids are
+ * walked page after page, and each page of ids is read by id as soon as it
+ * arrives, while the walk goes on.
+ *
+ * @param {string} boardId - The GitHub project node ID
+ * @param {string|null} filterQuery - The composed project query
+ * @param {string} after - Cursor to continue from
+ * @param {string} [token] - Optional per-request GitHub token
+ * @returns {Promise<Object[]>} - The items, as LIST_ITEMS_QUERY returns them
+ */
+async function readItemsInParallel(boardId, filterQuery, after, token) {
+  const reads = [];
+  const settled = new Set();
+  let inFlight = [];
+  let failed = null;
+  const readPage = async ids => {
+    try {
+      // An item deleted after the walk listed it is NOT_FOUND; GitHub still
+      // answers the others.
+      const { data } = await withPartialData(
+        graphQLWithAuth(LIST_ITEMS_BY_ID_QUERY, { ids }, token),
+        error => error.type === 'NOT_FOUND'
+      );
+      return data;
+    } catch (error) {
+      failed ??= error;
+      throw error;
+    }
+  };
+
+  let cursor = after;
+  while (cursor && !failed) {
+    const result = await graphQLWithAuth(
+      LIST_ITEM_IDS_QUERY,
+      { projectId: boardId, filterQuery, after: cursor },
+      token
+    );
+    const page = result?.node?.items;
+    const ids = (page?.nodes || []).map(node => node?.id).filter(Boolean);
+    if (ids.length > 0) {
+      const read = readPage(ids);
+      // Observed at once, so a read failing during the walk is no unhandled
+      // rejection; Promise.all below still reports it. At most
+      // MAX_PARALLEL_READS run at once, against GitHub's secondary limits.
+      read.then(() => settled.add(read), () => settled.add(read));
+      reads.push(read);
+      inFlight.push(read);
+      if (inFlight.length >= MAX_PARALLEL_READS) {
+        await Promise.race(inFlight).catch(() => {});
+        inFlight = inFlight.filter(r => !settled.has(r));
+      }
+    }
+    cursor = page?.pageInfo?.hasNextPage ? page.pageInfo.endCursor : null;
+  }
+  if (failed) throw failed;
+  const pages = await Promise.all(reads);
+  return pages.flatMap(page => (page?.nodes || []).filter(Boolean));
+}
+
+/**
  * List and filter items in a project board
  * @param {Object} options - Filtering options
  * @param {string} options.boardId - The GitHub project node ID (required)
  * @param {string} [options.repository] - Filter by repository (short name or "owner/name")
- * @param {Object} [options.filters] - Field name to value map for filtering (single-select fields)
+ * @param {Object} [options.filters] - Field name to value map for filtering (any filterable field, see fieldTerm)
+ * @param {Object} [options.exclude] - Like filters, negated; also takes the issue filter names
  * @param {string[]} [options.emptyFields] - Return only items where these fields have no value set
+ * @param {string[]} [options.nonEmptyFields] - Return only items where these fields have a value set
  * @param {string} [options.assignee] - Filter by assignee GitHub username (comma-separated for OR)
  * @param {string} [options.label] - Filter by label name (comma-separated for OR)
  * @param {string} [options.state] - Filter by issue state: "open" or "closed"
  * @param {string} [options.keyword] - Free text search matching titles and text fields
+ * @param {string} [options.milestone] - Filter by milestone title (comma-separated for OR)
+ * @param {string} [options.type] - Filter by issue type (comma-separated for OR)
+ * @param {string} [options.parentIssue] - Filter by parent issue (URL or owner/repo#number)
  * @param {string} [options.updated] - Filter by last-updated date (e.g. ">@today-7d")
  * @param {string} [options.created] - Filter by creation date (e.g. ">@today-90d")
  * @param {string} [options.closed] - Filter by closed date (e.g. ">@today-30d")
@@ -267,8 +511,10 @@ export async function listItems(options) {
   const first = 100;
   try {
     const {
-      boardId, repository = null, filters = {}, emptyFields = [],
+      boardId, repository = null, filters = {}, exclude = {},
+      emptyFields = [], nonEmptyFields = [],
       assignee = null, label = null, state = null, keyword = null,
+      milestone = null, type = null, parentIssue = null,
       updated = null, created = null, closed = null, reason = null,
       limit = 0, after = null, token
     } = options;
@@ -280,84 +526,36 @@ export async function listItems(options) {
     // Build server-side filter query
     const queryTerms = [];
 
-    // Repository filter uses GitHub Projects built-in repo: prefix
-    if (repository) {
-      const fullRepo = resolveRepositoryName(repository);
-      queryTerms.push(`repo:${fullRepo}`);
-    }
-
-    // Assignee filter — supports comma-separated usernames for OR matching
-    if (assignee) {
-      const trimmed = assignee.trim();
-      if (trimmed) {
-        queryTerms.push(`assignee:${trimmed}`);
-      }
-    }
-
-    // Label filter — supports comma-separated labels for OR matching.
-    // Each individual label that contains spaces is quoted separately so that
-    // e.g. "bug fix,enhancement" becomes label:"bug fix",enhancement.
-    if (label) {
-      const trimmed = label.trim();
-      if (trimmed) {
-        if (trimmed.includes(',')) {
-          const parts = trimmed.split(',').map(p => {
-            const s = p.trim();
-            return s.includes(' ') ? `"${escapeProjectQueryValue(s)}"` : s;
-          });
-          queryTerms.push(`label:${parts.join(',')}`);
-        } else if (trimmed.includes(' ')) {
-          queryTerms.push(`label:"${escapeProjectQueryValue(trimmed)}"`);
-        } else {
-          queryTerms.push(`label:${trimmed}`);
+    // Issue filters, each in GitHub Projects query syntax. List values are
+    // comma-separated for OR matching; a value with spaces is quoted on its
+    // own, so "bug fix,enhancement" becomes label:"bug fix",enhancement.
+    // Dates (updated, created, closed) are passed through, e.g. ">@today-7d",
+    // "<@today-30d", "@today", ">2025-01-01".
+    const issueFilters = [
+      ['repo', repository],
+      ['assignee', assignee],
+      ['label', label],
+      ['is', state],
+      ['milestone', milestone],
+      ['type', type],
+      ['parent-issue', parentIssue],
+      ['updated', updated],
+      ['created', created],
+      ['closed', closed],
+      ['reason', reason]
+    ];
+    for (const [qualifier, value] of issueFilters) {
+      const trimmed = typeof value === 'string' ? value.trim() : '';
+      if (!trimmed) continue;
+      if (qualifier === 'is') {
+        // Issue state filter (is:open, is:closed)
+        const lower = trimmed.toLowerCase();
+        if (lower === 'open' || lower === 'closed') {
+          queryTerms.push(`is:${lower}`);
         }
-      }
-    }
-
-    // Issue state filter (is:open, is:closed)
-    if (state) {
-      const trimmed = state.trim().toLowerCase();
-      if (trimmed === 'open' || trimmed === 'closed') {
-        queryTerms.push(`is:${trimmed}`);
-      }
-    }
-
-    // Last-updated date filter — passed through using GitHub's query syntax.
-    // Examples: ">@today-7d", "<@today-30d", "@today", ">2025-01-01"
-    if (updated) {
-      const trimmed = updated.trim();
-      if (trimmed) {
-        queryTerms.push(`updated:${trimmed}`);
-      }
-    }
-
-    // Created date filter — same GitHub Projects query syntax as `updated`.
-    // Examples: ">@today-90d", "<@today-30d", "@today", ">2025-01-01"
-    if (created) {
-      const trimmed = created.trim();
-      if (trimmed) {
-        queryTerms.push(`created:${trimmed}`);
-      }
-    }
-
-    // Closed date filter — same GitHub Projects query syntax as `updated`.
-    // Examples: ">@today-30d", "<@today-7d", "@today", ">2025-01-01"
-    if (closed) {
-      const trimmed = closed.trim();
-      if (trimmed) {
-        queryTerms.push(`closed:${trimmed}`);
-      }
-    }
-
-    // Close reason filter
-    if (reason) {
-      const trimmed = reason.trim();
-      if (trimmed) {
-        if (trimmed.includes(' ')) {
-          queryTerms.push(`reason:"${escapeProjectQueryValue(trimmed)}"`);
-        } else {
-          queryTerms.push(`reason:${trimmed}`);
-        }
+      } else {
+        const term = qualifierTerm(qualifier, trimmed);
+        if (term) queryTerms.push(term);
       }
     }
 
@@ -375,64 +573,43 @@ export async function listItems(options) {
       }
     }
 
-    // Generic field filters
-    const filterEntries = Object.entries(filters).filter(
-      ([, value]) => typeof value === 'string' && value.trim() !== ''
-    );
+    // Generic field filters, and their negation
+    const nonBlank = map => Object.entries(map || {})
+      .filter(([, value]) => typeof value === 'string' && value.trim() !== '')
+      .map(([name, value]) => [name, value.trim()]);
+    const filterEntries = nonBlank(filters).filter(([, value]) => value.toLowerCase() !== 'all');
+    const excludeEntries = nonBlank(exclude);
 
     // Fetch board fields once if needed for filter validation or emptyFields validation
-    const needFields = filterEntries.length > 0 || emptyFields.length > 0;
+    const needFields = filterEntries.length > 0 || excludeEntries.length > 0 ||
+      emptyFields.length > 0 || nonEmptyFields.length > 0;
     const allFields = needFields ? await listFields(boardId, token) : [];
 
-    // Validate emptyFields names against actual board fields
-    if (emptyFields.length > 0) {
-      const allFieldNames = allFields.map(f => f?.name?.toLowerCase());
-      for (const fn of emptyFields) {
+    // Validate emptyFields and nonEmptyFields names against actual board fields
+    const allFieldNames = allFields.map(f => f?.name?.toLowerCase());
+    for (const [param, names] of [['emptyFields', emptyFields], ['nonEmptyFields', nonEmptyFields]]) {
+      for (const fn of names) {
         if (!allFieldNames.some(n => n === fn.toLowerCase())) {
           const available = allFields.map(f => f.name);
           return {
             status: 'error',
-            error: `emptyFields: field '${fn}' not found. Available fields: ${available.join(', ')}`
+            error: `${param}: field '${fn}' not found. Available fields: ${available.join(', ')}`
           };
         }
       }
     }
 
-    if (filterEntries.length > 0) {
-      for (const [fieldName, requestedValue] of filterEntries) {
-        const trimmedValue = requestedValue.trim();
-        if (trimmedValue.toLowerCase() === 'all') {
-          continue;
-        }
-
-        const field = allFields.find(fieldNode =>
-          fieldNode.__typename === 'ProjectV2SingleSelectField' &&
-          fieldNode.name?.toLowerCase() === fieldName.toLowerCase()
-        );
-
-        if (!field) {
-          const availableFields = allFields
-            .filter(f => f.__typename === 'ProjectV2SingleSelectField')
-            .map(f => f.name);
-          return {
-            status: 'error',
-            error: `Field '${fieldName}' not found. Available single-select fields: ${availableFields.join(', ')}`
-          };
-        }
-
-        const matchingOption = findMatchingOption(field.options || [], trimmedValue);
-        if (!matchingOption) {
-          const availableOptions = (field.options || []).map(o => o.name);
-          return {
-            status: 'error',
-            error: `Value '${trimmedValue}' not found for field '${field.name}'. Available options: ${availableOptions.join(', ')}`
-          };
-        }
-
-        const escapedValue = escapeProjectQueryValue(matchingOption.name);
-        const queryKey = fieldNameToQueryKey(field.name);
-        queryTerms.push(`${queryKey}:"${escapedValue}"`);
+    try {
+      for (const [fieldName, value] of filterEntries) {
+        const term = fieldTerm('filters', fieldName, value, allFields, false);
+        if (term) queryTerms.push(term);
       }
+      for (const [fieldName, value] of excludeEntries) {
+        const term = fieldTerm('exclude', fieldName, value, allFields, true);
+        if (term) queryTerms.push(`-${term}`);
+      }
+    } catch (error) {
+      return { status: 'error', error: error.message };
     }
 
     // Add server-side no:<field> filters for emptyFields.
@@ -441,8 +618,12 @@ export async function listItems(options) {
     // The client-side filter below is kept as a safety net in case the
     // heuristic in fieldNameToQueryKey doesn't match a particular field.
     for (const fieldName of emptyFields) {
-      const queryKey = fieldNameToQueryKey(fieldName);
-      queryTerms.push(`no:${queryKey}`);
+      queryTerms.push(`no:${fieldNameToQueryKey(fieldName)}`);
+    }
+
+    // has:<field-key> matches items where the field has a value.
+    for (const fieldName of nonEmptyFields) {
+      queryTerms.push(`has:${fieldNameToQueryKey(fieldName)}`);
     }
 
     const projectQuery = queryTerms.join(' ');
@@ -490,24 +671,42 @@ export async function listItems(options) {
     // The pages are read until `limit` listed items are collected, so
     // `hidden` counts the unreadable items among the pages read.
     let totalCount = null;
-    const { nodes: items, hasNextPage, endCursor } = await fetchBounded(
-      LIST_ITEMS_QUERY,
-      { projectId: boardId, first, filterQuery: projectQuery || null },
-      result => {
-        if (!result?.node?.items) {
-          return { nodes: [], pageInfo: { hasNextPage: false } };
-        }
-        if (typeof result.node.items.totalCount === 'number') {
-          totalCount = result.node.items.totalCount;
-        }
-        return {
-          nodes: result.node.items.nodes || [],
-          pageInfo: result.node.items.pageInfo || { hasNextPage: false }
-        };
-      },
-      token,
-      { after, limit, keep: isListed }
-    );
+    const readPage = result => {
+      if (!result?.node?.items) {
+        return { nodes: [], pageInfo: { hasNextPage: false } };
+      }
+      if (typeof result.node.items.totalCount === 'number') {
+        totalCount = result.node.items.totalCount;
+      }
+      return {
+        nodes: result.node.items.nodes || [],
+        pageInfo: result.node.items.pageInfo || { hasNextPage: false }
+      };
+    };
+
+    let items, hasNextPage, endCursor;
+    if (limit === 0) {
+      // A full read: the first page as usual, then the rest in parallel.
+      const firstPage = readPage(await graphQLWithAuth(
+        LIST_ITEMS_QUERY,
+        { projectId: boardId, first, after, filterQuery: projectQuery || null },
+        token
+      ));
+      items = firstPage.nodes.filter(isListed);
+      if (firstPage.pageInfo.hasNextPage && firstPage.pageInfo.endCursor) {
+        const rest = await readItemsInParallel(boardId, projectQuery || null, firstPage.pageInfo.endCursor, token);
+        items.push(...rest.filter(isListed));
+      }
+      hasNextPage = false;
+    } else {
+      ({ nodes: items, hasNextPage, endCursor } = await fetchBounded(
+        LIST_ITEMS_QUERY,
+        { projectId: boardId, first, filterQuery: projectQuery || null },
+        readPage,
+        token,
+        { after, limit, keep: isListed }
+      ));
+    }
 
     return {
       status: 'success',
@@ -520,8 +719,9 @@ export async function listItems(options) {
         const fields = {};
         if (item.fieldValues?.nodes) {
           for (const node of item.fieldValues.nodes) {
-            if (node.field?.name && node.name) {
-              fields[node.field.name] = node.name;
+            const value = node.name ?? node.title ?? node.date;
+            if (node.field?.name && value) {
+              fields[node.field.name] = value;
             }
           }
         }

@@ -2,7 +2,18 @@ import { describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 
 const fieldsModule = { listFields: mock.fn() };
-const apiModule = { graphQLWithAuth: mock.fn() };
+const apiModule = {
+  graphQLWithAuth: mock.fn(),
+  // The real helper: it only interprets the error graphQLWithAuth throws.
+  async withPartialData(request, tolerate) {
+    try {
+      return { data: await request, errors: [] };
+    } catch (error) {
+      if (!error.data || !error.errors?.length || !error.errors.every(tolerate)) throw error;
+      return { data: error.data, errors: error.errors };
+    }
+  }
+};
 mock.module('../fields.js', { namedExports: fieldsModule });
 mock.module('../api.js', { namedExports: apiModule });
 mock.module('../logger.js', { namedExports: { logger: { info() {}, warn() {}, error() {} } } });
@@ -82,6 +93,10 @@ describe('get_item_by_issue', () => {
 
   it('resolves a giantswarm issue to the board item with its field values', async () => {
     apiModule.graphQLWithAuth.mock.mockImplementation(async (query, variables, token) => {
+      if (!('after' in variables)) {
+        assert.deepEqual(variables, { resourceUrl: 'https://github.com/giantswarm/giantswarm/issues/37625' });
+        return answer({ resource: orgIssue });
+      }
       assert.deepEqual(variables, {
         resourceUrl: 'https://github.com/giantswarm/giantswarm/issues/37625',
         boardId: ROADMAP_BOARD_ID,
@@ -110,6 +125,8 @@ describe('get_item_by_issue', () => {
   it('resolves an issue of a repository outside the giantswarm org by its node id', async () => {
     apiModule.graphQLWithAuth.mock.mockImplementation(async (query, variables) => {
       assert.equal(variables.resourceUrl, 'https://github.com/someone/tool/issues/7');
+      // The issue's own project items list only its owner's projects.
+      if (!('after' in variables)) return answer({ resource: foreignIssue });
       assert.equal(variables.itemQuery, 'repo:someone/tool 7');
       return answer({
         resource: foreignIssue,
@@ -146,6 +163,7 @@ describe('get_item_by_issue', () => {
   it('follows the narrowed board pages until the item matches', async () => {
     const calls = [];
     apiModule.graphQLWithAuth.mock.mockImplementation(async (query, variables) => {
+      if (!('after' in variables)) return answer({ resource: foreignIssue });
       calls.push(variables.after);
       return variables.after
         ? answer({ resource: foreignIssue, items: [{ id: 'PVTI_7', content: { id: 'I_foreign' }, fieldValues }] })
@@ -186,5 +204,49 @@ describe('get_item_by_issue', () => {
 
   it('is registered as a tool', () => {
     assert.deepEqual(boardTools.map(t => t.name), ['get_board_schema', 'get_item_by_issue']);
+  });
+
+  it('finds a just-created item through the issue\'s own project items, before the board search lists it (#199)', async () => {
+    apiModule.graphQLWithAuth.mock.mockImplementation(async () => answer({
+      resource: {
+        ...orgIssue,
+        projectItems: { nodes: [
+          { id: 'PVTI_elsewhere', project: { id: 'PVT_other' }, fieldValues: { nodes: [] } },
+          { id: 'PVTI_fresh', project: { id: ROADMAP_BOARD_ID }, fieldValues }
+        ] }
+      },
+      // The board's items query goes through the search index, which does
+      // not list the new item yet.
+      items: []
+    }));
+
+    const result = text(await handleGetItemByIssue({ issueUrl: 'giantswarm/giantswarm#37625' }, extra));
+
+    assert.equal(result.item.id, 'PVTI_fresh');
+    assert.deepEqual(result.item.fields, { Status: 'In Progress ⛏️', Quarter: 'Q3 2026', 'Target Date': '2026-10-01' });
+  });
+
+  it('falls back to the board search when reading the issue\'s project items is forbidden', async () => {
+    apiModule.graphQLWithAuth.mock.mockImplementation(async (query, variables) => {
+      if (!('after' in variables)) {
+        throw Object.assign(new Error('FORBIDDEN'), { data: { resource: orgIssue }, errors: [{ type: 'FORBIDDEN' }] });
+      }
+      return answer({ resource: orgIssue, items: [{ id: 'PVTI_1', content: { id: 'I_org' }, fieldValues }] });
+    });
+
+    const result = text(await handleGetItemByIssue({ issueUrl: 'giantswarm/giantswarm#37625' }, extra));
+
+    assert.equal(result.item.id, 'PVTI_1');
+  });
+
+  it('falls back to the board search when the issue\'s project items are on other projects', async () => {
+    apiModule.graphQLWithAuth.mock.mockImplementation(async () => answer({
+      resource: { ...orgIssue, projectItems: { nodes: [{ id: 'PVTI_elsewhere', project: { id: 'PVT_other' }, fieldValues: { nodes: [] } }] } },
+      items: [{ id: 'PVTI_1', content: { id: 'I_org' }, fieldValues }]
+    }));
+
+    const result = text(await handleGetItemByIssue({ issueUrl: 'giantswarm/giantswarm#37625' }, extra));
+
+    assert.equal(result.item.id, 'PVTI_1');
   });
 });

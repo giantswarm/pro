@@ -6,7 +6,7 @@
  */
 
 import { listFields } from '../fields.js';
-import { graphQLWithAuth } from '../api.js';
+import { graphQLWithAuth, withPartialData } from '../api.js';
 import { resolveBoardId, BOARDS, DEFAULT_BOARD } from '../project.js';
 import { parseIssueRef } from '../rest-api.js';
 import { logger } from '../logger.js';
@@ -76,12 +76,53 @@ export async function handleGetBoardSchema(args, extra) {
   }
 }
 
+const ITEM_FIELD_VALUES = `
+  fieldValues(first: 30) {
+    nodes {
+      ... on ProjectV2ItemFieldSingleSelectValue {
+        name
+        field { ... on ProjectV2FieldCommon { name } }
+      }
+      ... on ProjectV2ItemFieldIterationValue {
+        title
+        field { ... on ProjectV2FieldCommon { name } }
+      }
+      ... on ProjectV2ItemFieldDateValue {
+        date
+        field { ... on ProjectV2FieldCommon { name } }
+      }
+    }
+  }
+`;
+
 /**
- * The issue (or pull request) behind a URL, and the board items of its
- * repository whose text matches its number. The issue's own projectItems list
- * only projects of the issue's owner, so an issue of another repository on the
- * board is found from the board side: the item whose content is the resolved
- * node. The number narrows the board query; the node id decides.
+ * The issue (or pull request) behind a URL, and its own project items.
+ *
+ * The issue's projectItems show a new item at once, but list only projects
+ * of the issue's owner. They are read first; ISSUE_BOARD_ITEM_QUERY finds an
+ * issue of another owner from the board side, through GitHub's search
+ * index, which lags a new item by minutes (pro#199).
+ */
+const ISSUE_PROJECT_ITEMS_QUERY = `
+  query IssueProjectItems($resourceUrl: URI!) {
+    resource(url: $resourceUrl) {
+      __typename
+      ... on Issue {
+        id number title url state repository { nameWithOwner }
+        projectItems(first: 50, includeArchived: false) { nodes { id project { id } ${ITEM_FIELD_VALUES} } }
+      }
+      ... on PullRequest {
+        id number title url state repository { nameWithOwner }
+        projectItems(first: 50, includeArchived: false) { nodes { id project { id } ${ITEM_FIELD_VALUES} } }
+      }
+    }
+  }
+`;
+
+/**
+ * The issue behind a URL, and the board items of its repository whose text
+ * matches its number: the item whose content is the resolved node. The
+ * number narrows the board query; the node id decides.
  */
 const ISSUE_BOARD_ITEM_QUERY = `
   query IssueBoardItem($resourceUrl: URI!, $boardId: ID!, $itemQuery: String!, $after: String) {
@@ -100,22 +141,7 @@ const ISSUE_BOARD_ITEM_QUERY = `
               ... on Issue { id }
               ... on PullRequest { id }
             }
-            fieldValues(first: 30) {
-              nodes {
-                ... on ProjectV2ItemFieldSingleSelectValue {
-                  name
-                  field { ... on ProjectV2FieldCommon { name } }
-                }
-                ... on ProjectV2ItemFieldIterationValue {
-                  title
-                  field { ... on ProjectV2FieldCommon { name } }
-                }
-                ... on ProjectV2ItemFieldDateValue {
-                  date
-                  field { ... on ProjectV2FieldCommon { name } }
-                }
-              }
-            }
+            ${ITEM_FIELD_VALUES}
           }
         }
       }
@@ -177,8 +203,17 @@ export async function findBoardItemByIssue(args, board, token) {
 
   let issue;
   let node;
+  // A project of the owner the grant cannot read answers FORBIDDEN for its
+  // item; the board side below still decides.
+  const { data } = await withPartialData(
+    graphQLWithAuth(ISSUE_PROJECT_ITEMS_QUERY, { resourceUrl: url }, token),
+    error => error.type === 'FORBIDDEN' || error.type === 'NOT_FOUND'
+  );
+  issue = data?.resource;
+  node = issue?.projectItems?.nodes?.find(item => item?.project?.id === boardId);
+
   let after = null;
-  do {
+  while (!node) {
     const result = await graphQLWithAuth(
       ISSUE_BOARD_ITEM_QUERY,
       { resourceUrl: url, boardId, itemQuery: `repo:${owner}/${repo} ${issue_number}`, after },
@@ -194,7 +229,8 @@ export async function findBoardItemByIssue(args, board, token) {
     const items = result?.board?.items;
     node = items?.nodes?.find(item => item?.content?.id === issue.id);
     after = items?.pageInfo?.hasNextPage ? items.pageInfo.endCursor : null;
-  } while (!node && after);
+    if (!after) break;
+  }
 
   if (!node) {
     return { item: null, reason: `${ref} is not on the ${boardName} (or its item is archived).` };
