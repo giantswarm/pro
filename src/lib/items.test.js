@@ -202,6 +202,20 @@ describe('listItems - dependency counts', () => {
     assert.match(result.dependencyCountsError, /rate limited/);
   });
 
+  it('keeps the counts of the pages read when another page fails', async (t) => {
+    const items = Array.from({ length: 150 }, (_, i) => issue(`item-${i}`, i));
+    mockListAndCounts(t, items, ({ ids }) => ids.length === 100
+      ? { data: { nodes: ids.map(id => ({ id, issueDependenciesSummary: { blockedBy: 1, blocking: 0 } })) } }
+      : { data: null, errors: [{ type: 'RATE_LIMITED', message: 'rate limited' }] });
+
+    process.env.GITHUB_API_TOKEN = 'test-token';
+    const result = await listItems({ boardId: 'board-1', limit: 0 });
+
+    assert.equal(result.data.length, 150);
+    assert.equal(result.data.filter(entry => entry.openBlockedBy === 1).length, 100);
+    assert.match(result.dependencyCountsError, /rate limited/);
+  });
+
   it('asks for counts in pages of 100 issues and not at all for an empty list', async (t) => {
     const items = Array.from({ length: 150 }, (_, i) => issue(`item-${i}`, i));
     const calls = mockListAndCounts(t, items, ({ ids }) => ({
@@ -283,6 +297,19 @@ describe('getItemByID - relations', () => {
       errors: [
         { type: 'FORBIDDEN', path: ['node', 'content', 'blockedBy', 'nodes', 0], message: 'no access' },
         { type: 'FORBIDDEN', path: ['node', 'content', 'relatesTo'], message: 'timeout' }
+      ]
+    });
+    process.env.GITHUB_API_TOKEN = 'test-token';
+    const item = await getItemByID('PVTI_1');
+    assert.equal(item.relationsError, 'timeout');
+  });
+
+  it('takes an error on a list\'s pageInfo or totalCount for one on the whole list', async (t) => {
+    mockDetailsAndRelations(t, details, {
+      data: { node: { content: null } },
+      errors: [
+        { type: 'FORBIDDEN', path: ['node', 'content', 'blockedBy', 'nodes', 0], message: 'no access' },
+        { type: 'INTERNAL', path: ['node', 'content', 'blocking', 'pageInfo'], message: 'timeout' }
       ]
     });
     process.env.GITHUB_API_TOKEN = 'test-token';

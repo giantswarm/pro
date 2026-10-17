@@ -42,8 +42,14 @@ export { RELATION_FIELDS };
 
 export const inRelationList = error => Boolean(error.path?.some(p => RELATION_FIELDS.includes(p)));
 
-/** Whether a GraphQL error is on a whole relation list, not on one issue in it. */
-const onRelationList = error => RELATION_FIELDS.includes(error.path?.at(-1));
+/**
+ * Whether a GraphQL error is on a whole relation list (the list itself, its
+ * totalCount or pageInfo), not on one issue in it.
+ */
+const onRelationList = error => {
+  const at = error.path?.findIndex(p => RELATION_FIELDS.includes(p)) ?? -1;
+  return at >= 0 && error.path[at + 1] !== 'nodes';
+};
 
 /**
  * Compact one related issue from a relation connection node.
@@ -159,20 +165,33 @@ export async function getItemRelations(itemId, token) {
 }
 
 /**
- * The open dependency counts of issues, by issue node ID, for list_issues.
- * An issue whose counts cannot be read is left out of the map.
+ * The open dependency counts of issues, by issue node ID, for list_issues,
+ * read in pages of DEPENDENCY_COUNTS_PAGE at once. An issue whose counts
+ * cannot be read is left out of the map; a page that fails costs its issues
+ * only, and `error` names the first such failure.
  * @param {string[]} issueIds - Issue node IDs
  * @param {string} [token] - Optional per-request GitHub token
- * @returns {Promise<Map<string, { blockedBy: number, blocking: number }>>}
+ * @returns {Promise<{ counts: Map<string, { blockedBy: number, blocking: number }>, error?: string }>}
  */
 export async function getDependencyCounts(issueIds, token) {
-  const counts = new Map();
+  const pages = [];
   for (let i = 0; i < issueIds.length; i += DEPENDENCY_COUNTS_PAGE) {
+    pages.push(issueIds.slice(i, i + DEPENDENCY_COUNTS_PAGE));
+  }
+  const answers = await Promise.allSettled(pages.map(ids => withPartialData(
+    graphQLWithAuth(DEPENDENCY_COUNTS_QUERY, { ids }, token),
     // Every node is nullable: an error costs that issue's counts only.
-    const { data, errors } = await withPartialData(
-      graphQLWithAuth(DEPENDENCY_COUNTS_QUERY, { ids: issueIds.slice(i, i + DEPENDENCY_COUNTS_PAGE) }, token),
-      error => error.path?.[0] === 'nodes' && error.path.length > 1
-    );
+    error => error.path?.[0] === 'nodes' && error.path.length > 1
+  )));
+  const counts = new Map();
+  let error;
+  for (const answer of answers) {
+    if (answer.status === 'rejected') {
+      logger.warn('Dependency counts unreadable', { error: answer.reason?.message });
+      error ??= answer.reason?.message ?? String(answer.reason);
+      continue;
+    }
+    const { data, errors } = answer.value;
     if (errors.length > 0) {
       logger.warn('Dependency counts partly unreadable', { errors: errors.map(e => e.message) });
     }
@@ -180,7 +199,7 @@ export async function getDependencyCounts(issueIds, token) {
       if (node?.id && node.issueDependenciesSummary) counts.set(node.id, node.issueDependenciesSummary);
     }
   }
-  return counts;
+  return { counts, ...(error ? { error } : {}) };
 }
 
 async function setIssueRelation(issue, relation, related, remove, token) {

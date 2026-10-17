@@ -511,19 +511,12 @@ export async function listItems(options) {
       { after, limit, keep: isListed }
     );
 
-    // Open dependency counts come in a request of their own, which may fail
-    // without costing the list: its error is reported as dependencyCountsError.
-    let dependencyCounts = new Map();
-    let dependencyCountsError;
+    // Open dependency counts come in requests of their own, which may fail
+    // without costing the list: an error is reported as dependencyCountsError.
     const issueIds = items.map(item => item.content?.id).filter(Boolean);
-    if (issueIds.length > 0) {
-      try {
-        dependencyCounts = await getDependencyCounts(issueIds, token);
-      } catch (error) {
-        logger.warn('Dependency counts unreadable', { error: error.message });
-        dependencyCountsError = error.message;
-      }
-    }
+    const { counts: dependencyCounts, error: dependencyCountsError } = issueIds.length > 0
+      ? await getDependencyCounts(issueIds, token)
+      : { counts: new Map() };
 
     return {
       status: 'success',
