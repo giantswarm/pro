@@ -499,7 +499,7 @@ describe('listItems - a full read, failures (#194 review)', () => {
 
 describe('listItems - field filters of every type (#17), issue filters (#20) and exclude (#21)', () => {
   const fields = [
-    { __typename: 'ProjectV2SingleSelectField', name: 'Status', dataType: 'SINGLE_SELECT', options: [{ id: 's1', name: 'Done ✅' }, { id: 's2', name: 'Inbox 📥' }] },
+    { __typename: 'ProjectV2SingleSelectField', name: 'Status', dataType: 'SINGLE_SELECT', options: [{ id: 's1', name: 'Done ✅' }, { id: 's2', name: 'Inbox 📥' }, { id: 's3', name: '🔥' }] },
     { __typename: 'ProjectV2IterationField', name: 'Quarter', dataType: 'ITERATION', configuration: {
       iterations: [{ id: 'q4', title: 'Q4/2026' }],
       completedIterations: [{ id: 'q3', title: 'Q3/2026' }]
@@ -529,6 +529,7 @@ describe('listItems - field filters of every type (#17), issue filters (#20) and
     ['a number range', { filters: { Priority: '1..3' } }, 'priority:1..3'],
     ['a text value, quoted', { filters: { Note: 'needs review' } }, 'note:"needs review"'],
     ['single-select options for OR', { filters: { Status: 'done, inbox' } }, 'status:"Done ✅","Inbox 📥"'],
+    ['an emoji-only option by its exact name', { filters: { Status: '🔥' } }, 'status:"🔥"'],
     ['a field standing for an issue attribute', { filters: { Milestone: 'CAPI RC' } }, 'milestone:"CAPI RC"'],
     ['milestone, type and parentIssue', { milestone: 'v1', type: 'Bug,Task', parentIssue: 'https://github.com/giantswarm/roadmap/issues/12' },
       'milestone:v1 type:Bug,Task parent-issue:giantswarm/roadmap#12'],
@@ -554,6 +555,7 @@ describe('listItems - field filters of every type (#17), issue filters (#20) and
     ['an unknown option', { filters: { Status: 'Doing' } }, /filters: value 'Doing' not found for field 'Status'/],
     ['the title field', { filters: { Title: 'x' } }, /field 'Title' cannot be filtered on; use keyword/],
     ['an issue filter name under filters', { filters: { label: 'bug' } }, /filters: field 'label' not found/],
+    ['punctuation that would match an emoji-only option', { filters: { Status: '!' } }, /value '!' not found for field 'Status'/],
     ['an inherited object key', { exclude: { constructor: 'x' } }, /exclude: field 'constructor' not found/],
     ['a misspelled iteration after a keyword', { filters: { Quarter: '@current,Q9' } }, /iteration 'Q9' not found/],
     ['an unknown exclude key', { exclude: { Nope: 'x' } }, /exclude: field 'Nope' not found.*or one of repository, assignee/],
