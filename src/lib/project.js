@@ -192,6 +192,10 @@ const LIST_ITEMS_QUERY = `
                     name
                   }
                 }
+                issueDependenciesSummary {
+                  blockedBy
+                  blocking
+                }
               }
             }
           }
@@ -253,6 +257,15 @@ mutation ClearProjectV2ItemField($projectId: ID!, $itemId: ID!, $fieldId: ID!) {
   }
 }
 `;
+
+// An issue's relation lists: "blocked by", "blocking" and "relates to".
+// get_issue_details reads a short page of each, list_issue_relations a full one.
+const RELATION_FIELDS = ['blockedBy', 'blocking', 'relatesTo'];
+const DETAIL_RELATIONS_PAGE = 50;
+const RELATIONS_PAGE = 100;
+const relationLists = first => RELATION_FIELDS
+  .map(field => `${field}(first: ${first}) { totalCount nodes { number title url state repository { nameWithOwner } } }`)
+  .join('\n');
 
 const ISSUE_DETAIL_QUERY = `
   query($id: ID!) {
@@ -404,6 +417,86 @@ const ISSUE_NODE_ID_QUERY = `
   }
 `;
 
+// Issue relations: "blocked by" / "blocking" dependencies and "relates to"
+// links, a full page of each (relationLists).
+const ISSUE_RELATIONS_QUERY = `
+  query GetIssueRelations($owner: String!, $repo: String!, $number: Int!) {
+    repository(owner: $owner, name: $repo) {
+      issue(number: $number) {
+        id
+        number
+        title
+        url
+        state
+        repository { nameWithOwner }
+        ${relationLists(RELATIONS_PAGE)}
+      }
+    }
+  }
+`;
+
+// The relations of a board item's issue, for get_issue_details. A request of
+// its own: the lists are non-null in GitHub's schema, so an error on a whole
+// list nulls the issue, and that must not cost the rest of the details.
+const ITEM_RELATIONS_QUERY = `
+  query GetItemRelations($id: ID!) {
+    node(id: $id) {
+      ... on ProjectV2Item {
+        content {
+          __typename
+          ... on Issue {
+            ${relationLists(DETAIL_RELATIONS_PAGE)}
+          }
+        }
+      }
+    }
+  }
+`;
+
+// Both issues of a relation write, in one request.
+const RELATION_ISSUE_IDS_QUERY = `
+  query GetRelationIssueIds($owner: String!, $repo: String!, $number: Int!, $relatedOwner: String!, $relatedRepo: String!, $relatedNumber: Int!) {
+    issue: repository(owner: $owner, name: $repo) {
+      issue(number: $number) { id }
+    }
+    related: repository(owner: $relatedOwner, name: $relatedRepo) {
+      issue(number: $relatedNumber) { id }
+    }
+  }
+`;
+
+const ADD_BLOCKED_BY_MUTATION = `
+  mutation AddBlockedBy($issueId: ID!, $blockingIssueId: ID!) {
+    addBlockedBy(input: { issueId: $issueId, blockingIssueId: $blockingIssueId }) {
+      issue { id }
+    }
+  }
+`;
+
+const REMOVE_BLOCKED_BY_MUTATION = `
+  mutation RemoveBlockedBy($issueId: ID!, $blockingIssueId: ID!) {
+    removeBlockedBy(input: { issueId: $issueId, blockingIssueId: $blockingIssueId }) {
+      issue { id }
+    }
+  }
+`;
+
+const ADD_RELATES_TO_MUTATION = `
+  mutation AddRelatesTo($issueId: ID!, $relatedIssueId: ID!) {
+    addRelatesTo(input: { issueId: $issueId, relatedIssueId: $relatedIssueId }) {
+      issue { id }
+    }
+  }
+`;
+
+const REMOVE_RELATES_TO_MUTATION = `
+  mutation RemoveRelatesTo($issueId: ID!, $relatedIssueId: ID!) {
+    removeRelatesTo(input: { issueId: $issueId, relatedIssueId: $relatedIssueId }) {
+      issue { id }
+    }
+  }
+`;
+
 const USER_ID_QUERY = `
   query GetUserNodeId($login: String!) {
     user(login: $login) {
@@ -519,6 +612,16 @@ export {
   ADD_ITEM_TO_PROJECT_MUTATION,
   ARCHIVE_ITEM_MUTATION,
   ISSUE_NODE_ID_QUERY,
+  ISSUE_RELATIONS_QUERY,
+  ITEM_RELATIONS_QUERY,
+  RELATION_ISSUE_IDS_QUERY,
+  RELATION_FIELDS,
+  DETAIL_RELATIONS_PAGE,
+  RELATIONS_PAGE,
+  ADD_BLOCKED_BY_MUTATION,
+  REMOVE_BLOCKED_BY_MUTATION,
+  ADD_RELATES_TO_MUTATION,
+  REMOVE_RELATES_TO_MUTATION,
   USER_ID_QUERY,
   ITEM_ISSUE_REFS_QUERY,
   BOARD_ITEM_QUERY,

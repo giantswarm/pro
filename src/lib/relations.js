@@ -1,0 +1,200 @@
+/**
+ * Issue Relations Core Module
+ *
+ * Plain functions for GitHub's issue relations besides parent/child
+ * (sub-issues.js): "blocked by" / "blocking" dependencies and "relates to"
+ * links. GitHub exposes them through GraphQL only, by issue node ID, and
+ * across repositories.
+ *
+ * All functions take explicit { owner, repo, issue_number } targets plus an
+ * optional per-request token (falls back to GITHUB_API_TOKEN).
+ */
+
+import { graphQLWithAuth, withPartialData } from './api.js';
+import { logger } from './logger.js';
+import {
+  ISSUE_RELATIONS_QUERY,
+  ITEM_RELATIONS_QUERY,
+  RELATION_ISSUE_IDS_QUERY,
+  RELATION_FIELDS,
+  ADD_BLOCKED_BY_MUTATION,
+  REMOVE_BLOCKED_BY_MUTATION,
+  ADD_RELATES_TO_MUTATION,
+  REMOVE_RELATES_TO_MUTATION
+} from './project.js';
+
+/**
+ * The relations a caller can set, read from the issue it names:
+ *   - blocked_by: the related issue blocks the issue
+ *   - blocking:   the issue blocks the related issue (blocked_by, reversed)
+ *   - relates_to: the two issues are related
+ */
+export const RELATION_TYPES = ['blocked_by', 'blocking', 'relates_to'];
+
+/**
+ * Whether a GraphQL error lies inside a relation list: a related issue the
+ * token cannot read, or one that was deleted. It costs that issue, not the
+ * answer.
+ */
+export { RELATION_FIELDS };
+
+export const inRelationList = error => Boolean(error.path?.some(p => RELATION_FIELDS.includes(p)));
+
+/**
+ * Compact one related issue from a relation connection node.
+ * @param {Object} node - Issue node ({ number, title, url, state, repository })
+ * @returns {{ number: number, title: string, url: string, state: string, repository: string|null }}
+ *   - the shape of a sub-issue in sub-issues.js: lowercase state, `repository` as owner/name
+ */
+export function compactRelatedIssue(node) {
+  return {
+    number: node.number,
+    title: node.title,
+    url: node.url,
+    state: node.state?.toLowerCase(),
+    repository: node.repository?.nameWithOwner ?? null
+  };
+}
+
+/**
+ * Compact a relation connection to its issues. `hidden` counts the issues
+ * read but unreadable (null: no access, deleted); `truncated` and
+ * `totalCount` flag a connection holding more issues than were read.
+ * @param {{ totalCount?: number, nodes?: Array }} [connection]
+ * @returns {{ issues: Array, hidden?: number, truncated?: true, totalCount?: number }}
+ */
+export function compactRelation(connection) {
+  const nodes = connection?.nodes ?? [];
+  const relation = { issues: nodes.filter(Boolean).map(compactRelatedIssue) };
+  const hidden = nodes.length - relation.issues.length;
+  if (hidden > 0) relation.hidden = hidden;
+  const totalCount = connection?.totalCount ?? nodes.length;
+  if (totalCount > nodes.length) Object.assign(relation, { truncated: true, totalCount });
+  return relation;
+}
+
+/** GitHub's answer for a missing repository or issue of the ones named. */
+const isNotFound = error => error.type === 'NOT_FOUND';
+/** The same, for the repository/issue a query is rooted at (`repository`, `issue`, `related`). */
+const isRootNotFound = error => isNotFound(error) && (error.path?.length ?? 0) <= 2;
+
+const notFound = ({ owner, repo, issue_number }) =>
+  new Error(`Issue ${owner}/${repo}#${issue_number} not found or not accessible`);
+
+/**
+ * List an issue's relations (a full page of each kind: RELATIONS_PAGE).
+ * @param {{ owner: string, repo: string, issue_number: number }} target
+ * @param {string} [token] - Optional per-request GitHub token
+ * @returns {Promise<{ issue: Object, blockedBy: Object, blocking: Object, relatesTo: Object }>}
+ */
+export async function listIssueRelations({ owner, repo, issue_number }, token) {
+  // A missing issue is named below; an unreadable related issue is left out
+  // of its list and counted as hidden.
+  const { data, errors } = await withPartialData(
+    graphQLWithAuth(ISSUE_RELATIONS_QUERY, { owner, repo, number: issue_number }, token),
+    error => isRootNotFound(error) || inRelationList(error)
+  );
+  const issue = data?.repository?.issue;
+  if (!issue) {
+    // An error on a whole relation list nulls the issue too (the lists are
+    // non-null); that is no missing issue, so its message is passed on.
+    const other = errors.find(e => !isRootNotFound(e));
+    throw other ? Object.assign(new Error(other.message), { errors }) : notFound({ owner, repo, issue_number });
+  }
+  if (errors.length > 0) {
+    logger.warn('Issue relations partly unreadable', { owner, repo, issue_number, errors: errors.map(e => e.message) });
+  }
+  return {
+    issue: compactRelatedIssue(issue),
+    blockedBy: compactRelation(issue.blockedBy),
+    blocking: compactRelation(issue.blocking),
+    relatesTo: compactRelation(issue.relatesTo)
+  };
+}
+
+/**
+ * The relations of a board item's issue (a short page of each), or null when
+ * the item holds no issue (a pull request, a draft). An error on a whole
+ * relation list is thrown; an unreadable related issue is counted as hidden.
+ * @param {string} itemId - The project item ID
+ * @param {string} [token] - Optional per-request GitHub token
+ * @returns {Promise<{ blockedBy: Object, blocking: Object, relatesTo: Object }|null>}
+ */
+export async function getItemRelations(itemId, token) {
+  const { data, errors } = await withPartialData(
+    graphQLWithAuth(ITEM_RELATIONS_QUERY, { id: itemId }, token),
+    inRelationList
+  );
+  const content = data?.node?.content;
+  if (!content) {
+    if (errors.length > 0) throw Object.assign(new Error(errors[0].message), { errors });
+    return null;
+  }
+  if (content.__typename !== 'Issue') return null;
+  if (errors.length > 0) {
+    logger.warn('Issue relations partly unreadable', { itemId, errors: errors.map(e => e.message) });
+  }
+  return {
+    blockedBy: compactRelation(content.blockedBy),
+    blocking: compactRelation(content.blocking),
+    relatesTo: compactRelation(content.relatesTo)
+  };
+}
+
+async function setIssueRelation(issue, relation, related, remove, token) {
+  if (!RELATION_TYPES.includes(relation)) {
+    throw new Error(`Unknown relation '${relation}'. Expected one of: ${RELATION_TYPES.join(', ')}`);
+  }
+  if (issue.owner.toLowerCase() === related.owner.toLowerCase()
+    && issue.repo.toLowerCase() === related.repo.toLowerCase()
+    && issue.issue_number === related.issue_number) {
+    throw new Error('An issue cannot be related to itself');
+  }
+  const { data: ids } = await withPartialData(graphQLWithAuth(RELATION_ISSUE_IDS_QUERY, {
+    owner: issue.owner,
+    repo: issue.repo,
+    number: issue.issue_number,
+    relatedOwner: related.owner,
+    relatedRepo: related.repo,
+    relatedNumber: related.issue_number
+  }, token), isRootNotFound);
+  const issueId = ids?.issue?.issue?.id;
+  const relatedId = ids?.related?.issue?.id;
+  if (!issueId) throw notFound(issue);
+  if (!relatedId) throw notFound(related);
+  // A renamed or transferred repository can name one issue two ways.
+  if (issueId === relatedId) throw new Error('An issue cannot be related to itself');
+  if (relation === 'relates_to') {
+    const mutation = remove ? REMOVE_RELATES_TO_MUTATION : ADD_RELATES_TO_MUTATION;
+    await graphQLWithAuth(mutation, { issueId, relatedIssueId: relatedId }, token);
+    return;
+  }
+  // "blocking" is "blocked by" with the two issues swapped.
+  const [blockedId, blockingId] = relation === 'blocked_by' ? [issueId, relatedId] : [relatedId, issueId];
+  const mutation = remove ? REMOVE_BLOCKED_BY_MUTATION : ADD_BLOCKED_BY_MUTATION;
+  await graphQLWithAuth(mutation, { issueId: blockedId, blockingIssueId: blockingId }, token);
+}
+
+/**
+ * Set a relation between two issues.
+ * @param {{ owner: string, repo: string, issue_number: number }} issue - The issue the relation is read from
+ * @param {'blocked_by'|'blocking'|'relates_to'} relation
+ * @param {{ owner: string, repo: string, issue_number: number }} related - The other issue
+ * @param {string} [token] - Optional per-request GitHub token
+ * @returns {Promise<void>}
+ */
+export async function addIssueRelation(issue, relation, related, token) {
+  await setIssueRelation(issue, relation, related, false, token);
+}
+
+/**
+ * Remove a relation between two issues.
+ * @param {{ owner: string, repo: string, issue_number: number }} issue - The issue the relation is read from
+ * @param {'blocked_by'|'blocking'|'relates_to'} relation
+ * @param {{ owner: string, repo: string, issue_number: number }} related - The other issue
+ * @param {string} [token] - Optional per-request GitHub token
+ * @returns {Promise<void>}
+ */
+export async function removeIssueRelation(issue, relation, related, token) {
+  await setIssueRelation(issue, relation, related, true, token);
+}

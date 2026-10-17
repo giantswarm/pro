@@ -8,6 +8,7 @@
  */
 
 import { fetchBounded, graphQLWithAuth } from './api.js';
+import { getItemRelations } from './relations.js';
 import {
   LIST_ITEMS_QUERY,
   ISSUE_DETAIL_QUERY,
@@ -50,7 +51,12 @@ export async function getItemByID(itemId, token) {
   };
 
   try {
-    const issueDetails = await graphQLWithAuth(ISSUE_DETAIL_QUERY, { id: itemId }, token);
+    // The relations come in a request of their own, which may fail without
+    // costing the details: its error is reported as relationsError.
+    const [issueDetails, relations] = await Promise.all([
+      graphQLWithAuth(ISSUE_DETAIL_QUERY, { id: itemId }, token),
+      getItemRelations(itemId, token).catch(error => ({ error }))
+    ]);
     if (!issueDetails?.node) {
       throw new Error('Project item not found');
     }
@@ -103,6 +109,13 @@ export async function getItemByID(itemId, token) {
       }
       if (issueDetails.node.content.projectsV2?.nodes) {
         item.projects = issueDetails.node.content.projectsV2.nodes.map(p => p.title);
+      }
+      // Issues only: a pull request or a draft carries no relations.
+      if (relations?.error) {
+        logger.warn('Issue relations unreadable', { itemId, error: relations.error.message });
+        item.relationsError = relations.error.message;
+      } else if (relations) {
+        Object.assign(item, relations);
       }
     }
   } catch (err) {
@@ -536,10 +549,14 @@ export async function listItems(options) {
           fields
         };
 
-        // Only include closedAt, assignees, and labels when non-empty to keep output compact
+        // Only include closedAt, assignees, labels and dependency counts when non-empty to keep output compact
         if (item.content?.closedAt) entry.closedAt = item.content.closedAt;
         if (assignees.length > 0) entry.assignees = assignees;
         if (labels.length > 0) entry.labels = labels;
+        // Open dependencies only, as counts: get_issue_details and list_issue_relations name them
+        const deps = item.content?.issueDependenciesSummary;
+        if (deps?.blockedBy > 0) entry.openBlockedBy = deps.blockedBy;
+        if (deps?.blocking > 0) entry.openBlocking = deps.blocking;
 
         return entry;
       })
