@@ -2,36 +2,117 @@
 
 ## [Unreleased]
 
+## [2.0.0]
+
+### Fixed
+- Eliminated stdout pollution in MCP server that caused JSON parsing errors
+  - Added 'silent' parameter to listItems(), getItemByID(), and getAISuggestion() to suppress console output when called from MCP
+  - Updated all MCP tool handlers to use silent mode
+  - Removed noisy log messages for routine operations
+  - Simplified startup banner and reduced logging verbosity
+  - All console output now correctly goes to stderr, ensuring pure JSON-RPC communication over stdout
+
+### Changed
+- Updated all npm dependencies to latest versions
+  - Major version updates: @modelcontextprotocol/sdk (0.5.0 → 1.24.3), express (4.21.2 → 5.2.1), react (18.2.0 → 19.2.1), react-dom (18.2.0 → 19.2.1), openai (4.86.2 → 6.10.0), jest (29.7.0 → 30.2.0)
+  - Minor/patch updates: @octokit/graphql, chalk, commander, inquirer, ora, uuid, ws
+
+## [1.14.0-rc.1] - 2026-10-17
+
 ### Added
+
 - Issue relations besides parent/child: `list_issue_relations`, `add_issue_relation` and `remove_issue_relation` read and set GitHub's "blocked by" / "blocking" dependencies and "relates to" links between issues of any repository. `get_issue_details` returns an issue's `blockedBy`, `blocking` and `relatesTo` lists, and `list_issues` an item's open dependency counts as `openBlockedBy` / `openBlocking`, so a caller sees a dependency without a second call.
+
+## [1.13.6-rc.1] - 2026-10-09
+
+### Added
+
 - `update_issue_field` takes the issue as `issueUrl` (a URL or `owner/repo#N`) in place of `itemId` and resolves it to its item on the board, so setting Status no longer needs a `get_item_by_issue` round trip; an issue that is not on the board yet is named, with `add_existing_issue` as the way to add it. `field` and `field_name` are answered with "did you mean fieldName?" ([#195](https://github.com/giantswarm/pro/issues/195)).
+
+## [1.13.3] - 2026-10-08
+
+### Changed
+
+- `list_issues` takes field filters under `filters` only and refuses any other top-level argument it does not declare, like every other tool: `Team: "X"` becomes `filters: {"Team": "X"}` (the refusal says so for a capitalized field name), and the undeclared `project` alias of `board` is gone. Before, the schema's top-level `additionalProperties` let a misspelled argument pass as a field filter ([#184](https://github.com/giantswarm/pro/issues/184)).
+
+## [1.13.0] - 2026-10-08
+
+### Added
+
 - `list_issues` takes a `limit` (default 50; `0` for every matching item) and reads the board only as far as the limit needs, so a call for one item is one small request instead of a walk over the whole board. A cut result says so with `truncated: true` and a `nextCursor`, which the next call passes as `cursor` to continue; `count`, `hidden` and `totalCount` keep their meaning, `hidden` counting the unreadable items among the pages read. A `limit` that is not a whole number of items, or an empty `cursor`, is refused by name ([#175](https://github.com/giantswarm/pro/issues/175)).
+
+## [1.12.0] - 2026-10-07
+
+### Added
+
 - `GITHUB_APP_SLUG` pins the bearer-only mode to one GitHub App: only a user access token of that App (a `ghu_` token whose installations, as GitHub lists them for it, are all the App's) is accepted, anything else is answered 401. With pro's own App `giantswarm-pro`, installed on every repository and pinned in muster, every write is the person's own capped by that App's permissions, and `create_issue_in_project` reaches any repository the person can write to ([#176](https://github.com/giantswarm/pro/issues/176)).
+
+### Changed
+
+- `create_issue_in_project`'s refusal names what an App user token needs to write: the person's write access and the App's installation on the repository.
+
+## [1.11.3] - 2026-10-07
+
+### Added
+
 - The chart runs two replicas by default, on different nodes (preferred pod anti-affinity) and spread over zones, with a PodDisruptionBudget (`minAvailable: 1`) and `sessionAffinity: ClientIP` on the Service, so an evicted pod (a drain, a spot interruption) no longer leaves the server refusing connections ([#173](https://github.com/giantswarm/pro/issues/173)).
+
+## [1.11.2] - 2026-10-06
+
+### Fixed
+
+- `create_issue_in_project` answers a refused creation (GitHub's bare `Resource not accessible by integration`, e.g. a GitHub App token used on a repository outside the App's installation) with an error that names the repository and the missing `issues:write` permission and states that no issue was created ([#168](https://github.com/giantswarm/pro/issues/168)).
+
+## [1.11.1] - 2026-10-06
+
+### Fixed
+
+- A request carrying an unknown, closed or idle-evicted MCP session id is answered with HTTP 404 (JSON-RPC error `-32001`), as the MCP Streamable HTTP spec requires, instead of 400. Clients take the 404 as the signal to initialize a new session, so a client that went idle past the 30-minute session TTL recovers on its next call instead of failing every call with "Session not found or expired" ([#170](https://github.com/giantswarm/pro/issues/170)).
+
+## [1.11.0] - 2026-10-06
+
+### Added
+
 - `list_issues` returns `hidden` (items dropped because their content is unreadable, e.g. in private repos the server's identity cannot access) and `totalCount` (GitHub's count for the server-side query) next to `count`, so callers can tell a complete result from a filtered one ([#166](https://github.com/giantswarm/pro/issues/166)).
+
+## [1.10.13] - 2026-09-23
+
+### Fixed
+
+- The deployed server reports its release version in the startup log and MCP `serverInfo` instead of `0.0.0`: the chart passes the image tag it deploys as `PRO_VERSION`. A checkout reports `0.0.0-dev`, and `--self-update` refuses it as a development build.
+
+## [1.10.11] - 2026-09-23
+
+### Fixed
+
+- The `helm.sh/chart` label is valid for any chart version: the 63-character cut of a long version (a branch build, or the `<version>+<digest>` helm-controller installs) could end in `.`, `_` or `-`, and the API server refused every object carrying it. The whole trailing run is now trimmed.
+
+## [1.10.9] - 2026-09-17
+
+### Fixed
+
+- Drop the version badges from the chart README template so a release PR's `Chart.yaml` version bump no longer leaves `README.md` stale and fails the helm-docs pre-commit hook.
+
+## [1.8.0] - 2026-09-02
+
+### Added
+
 - OAuth authorization server metadata advertises `client_id_metadata_document_supported: true`, and any HTTPS Client ID Metadata Document URL (SEP-991) is accepted as `client_id` on `/authorize` and `/token`. Muster and Claude Code take this path only when it is advertised; it frees them from dynamically registered client_ids that vanish whenever the pod restarts.
 
 ### Changed
-- `list_issues` takes field filters under `filters` only and refuses any other top-level argument it does not declare, like every other tool: `Team: "X"` becomes `filters: {"Team": "X"}` (the refusal says so for a capitalized field name), and the undeclared `project` alias of `board` is gone. Before, the schema's top-level `additionalProperties` let a misspelled argument pass as a field filter ([#184](https://github.com/giantswarm/pro/issues/184)).
-- `create_issue_in_project`'s refusal names what an App user token needs to write: the person's write access and the App's installation on the repository.
+
 - CIMD documents are validated (`client_id` must equal the URL, non-empty `redirect_uris`, public client only) and the fetch is guarded against SSRF: HTTPS only, no IP literals, loopback, single-label or cluster-internal hostnames, no redirects, 5 s timeout, 64 KiB cap. Failed lookups are negative-cached for 5 minutes; a previously resolved document keeps being served while a refresh fails.
 - `OAUTH_TRUSTED_CLIENT_IDS` now only exempts URLs from that policy (and lets their document omit `client_id`); public CIMD URLs need no entry.
 
 ### Fixed
-- `create_issue_in_project` answers a refused creation (GitHub's bare `Resource not accessible by integration`, e.g. a GitHub App token used on a repository outside the App's installation) with an error that names the repository and the missing `issues:write` permission and states that no issue was created ([#168](https://github.com/giantswarm/pro/issues/168)).
-- A request carrying an unknown, closed or idle-evicted MCP session id is answered with HTTP 404 (JSON-RPC error `-32001`), as the MCP Streamable HTTP spec requires, instead of 400. Clients take the 404 as the signal to initialize a new session, so a client that went idle past the 30-minute session TTL recovers on its next call instead of failing every call with "Session not found or expired" ([#170](https://github.com/giantswarm/pro/issues/170)).
-- The deployed server reports its release version in the startup log and MCP `serverInfo` instead of `0.0.0`: the chart passes the image tag it deploys as `PRO_VERSION`. A checkout reports `0.0.0-dev`, and `--self-update` refuses it as a development build.
-- The `helm.sh/chart` label is valid for any chart version: the 63-character cut of a long version (a branch build, or the `<version>+<digest>` helm-controller installs) could end in `.`, `_` or `-`, and the API server refused every object carrying it. The whole trailing run is now trimmed.
+
 - A trusted CIMD client could be evicted from the client store once 1000 dynamic registrations accumulated, answering `invalid_client` until the CIMD cache expired. CIMD clients now live in their own store.
 - The HTTP server startup resolves once the port is bound and rejects on listen errors (previously an `EADDRINUSE` surfaced as an unhandled `error` event).
-- Trusted client auto-registration via `OAUTH_TRUSTED_CLIENT_IDS` env var: CIMD URLs in the allowlist are fetched and registered on first use, enabling muster to authenticate via OAuth without dynamic client registration
-- Drop the version badges from the chart README template so a release PR's `Chart.yaml` version bump no longer leaves `README.md` stale and fails the helm-docs pre-commit hook.
 
-### Fixed
-- Streamable HTTP transport now creates a new transport and MCP server per session, fixing "Server already initialized" errors when multiple clients connect
-- Helm values schema: allow plain `value:` env vars on `env[*]` items (previously only `name` + `valueFrom` were permitted, causing HelmRelease install failures)
+## [1.7.0] - 2026-07-09
 
 ### Added
+
 - REST API client (`@octokit/rest`) for GitHub sub-issues endpoints with `X-GitHub-Api-Version: 2026-03-10` header
 - Sub-issues MCP tools: `list_sub_issues`, `add_sub_issue`, `remove_sub_issue`, `get_parent_issue`, `reprioritize_sub_issue`, `migrate_task_list_to_sub_issues`
 - `migrate_task_list_to_sub_issues` tool parses markdown task-list items (bare URLs, short refs, same-repo #N, markdown links, embedded refs) and converts them to sub-issue relationships
@@ -48,6 +129,7 @@
 - Board registry in `project.js` with `resolveBoardId()` helper for easy multi-board management
 
 ### Changed
+
 - Schema resources now return a compact format: no internal IDs, no empty values, only actionable fields (single-select, date, text, iteration); non-empty option descriptions collected in a `hints` map; repository info condensed. Reduces context token usage by ~50%.
 - Overview resource uses a lightweight GraphQL query (Status + repository only) instead of the full item query, fixing 60-second MCP timeout on large boards like the roadmap.
 - **BREAKING**: `list_issues` no longer has hardcoded field-specific parameters (team, function, kind, etc.); use `filters` object instead
@@ -58,20 +140,11 @@
 - Moved repository policy and available field options from the overview resource into the schema resource to remove duplication; the overview now only contains runtime stats (counts and distributions)
 - Version bumped to 3.0.0 (breaking change)
 
-## [2.0.0]
-
 ### Fixed
-- Eliminated stdout pollution in MCP server that caused JSON parsing errors
-  - Added 'silent' parameter to listItems(), getItemByID(), and getAISuggestion() to suppress console output when called from MCP
-  - Updated all MCP tool handlers to use silent mode
-  - Removed noisy log messages for routine operations
-  - Simplified startup banner and reduced logging verbosity
-  - All console output now correctly goes to stderr, ensuring pure JSON-RPC communication over stdout
 
-### Changed
-- Updated all npm dependencies to latest versions
-  - Major version updates: @modelcontextprotocol/sdk (0.5.0 → 1.24.3), express (4.21.2 → 5.2.1), react (18.2.0 → 19.2.1), react-dom (18.2.0 → 19.2.1), openai (4.86.2 → 6.10.0), jest (29.7.0 → 30.2.0)
-  - Minor/patch updates: @octokit/graphql, chalk, commander, inquirer, ora, uuid, ws
+- Trusted client auto-registration via `OAUTH_TRUSTED_CLIENT_IDS` env var: CIMD URLs in the allowlist are fetched and registered on first use, enabling muster to authenticate via OAuth without dynamic client registration
+- Streamable HTTP transport now creates a new transport and MCP server per session, fixing "Server already initialized" errors when multiple clients connect
+- Helm values schema: allow plain `value:` env vars on `env[*]` items (previously only `name` + `valueFrom` were permitted, causing HelmRelease install failures)
 
 ## [1.1.2] - 2024-03-25
 
