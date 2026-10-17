@@ -18,6 +18,7 @@
 - `OAUTH_TRUSTED_CLIENT_IDS` now only exempts URLs from that policy (and lets their document omit `client_id`); public CIMD URLs need no entry.
 
 ### Fixed
+- The Publish package workflow publishes a release candidate (`v1.14.0-rc.1`) under the npm dist-tag `next`: npm refuses a prerelease version without one, so every release candidate since `v1.13.6-rc.6` failed to publish. `latest` stays on the last stable release.
 - `create_issue_in_project` answers a refused creation (GitHub's bare `Resource not accessible by integration`, e.g. a GitHub App token used on a repository outside the App's installation) with an error that names the repository and the missing `issues:write` permission and states that no issue was created ([#168](https://github.com/giantswarm/pro/issues/168)).
 - A request carrying an unknown, closed or idle-evicted MCP session id is answered with HTTP 404 (JSON-RPC error `-32001`), as the MCP Streamable HTTP spec requires, instead of 400. Clients take the 404 as the signal to initialize a new session, so a client that went idle past the 30-minute session TTL recovers on its next call instead of failing every call with "Session not found or expired" ([#170](https://github.com/giantswarm/pro/issues/170)).
 - The deployed server reports its release version in the startup log and MCP `serverInfo` instead of `0.0.0`: the chart passes the image tag it deploys as `PRO_VERSION`. A checkout reports `0.0.0-dev`, and `--self-update` refuses it as a development build.
