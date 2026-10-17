@@ -216,6 +216,34 @@ describe('listItems - dependency counts', () => {
     assert.match(result.dependencyCountsError, /rate limited/);
   });
 
+  it('asks for at most 4 count pages at once', async (t) => {
+    const items = Array.from({ length: 950 }, (_, i) => issue(`item-${i}`, i));
+    let inFlight = 0;
+    let peak = 0;
+    t.mock.method(globalThis, 'fetch', async (url, init) => {
+      const body = JSON.parse(init.body);
+      let answer = { data: { node: { items: { nodes: items, pageInfo: { hasNextPage: false } } } } };
+      if (body.query.includes('GetDependencyCounts')) {
+        peak = Math.max(peak, ++inFlight);
+        await new Promise(resolve => setTimeout(resolve, 1));
+        inFlight--;
+        answer = { data: { nodes: body.variables.ids.map(id => ({ id, issueDependenciesSummary: { blockedBy: 1, blocking: 0 } })) } };
+      }
+      return {
+        status: 200,
+        url: 'https://api.github.com/graphql',
+        headers: new Headers({ 'content-type': 'application/json' }),
+        text: async () => JSON.stringify(answer)
+      };
+    });
+
+    process.env.GITHUB_API_TOKEN = 'test-token';
+    const result = await listItems({ boardId: 'board-1', limit: 0 });
+
+    assert.equal(peak, 4);
+    assert.ok(result.data.every(entry => entry.openBlockedBy === 1));
+  });
+
   it('asks for counts in pages of 100 issues and not at all for an empty list', async (t) => {
     const items = Array.from({ length: 150 }, (_, i) => issue(`item-${i}`, i));
     const calls = mockListAndCounts(t, items, ({ ids }) => ({

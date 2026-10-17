@@ -164,9 +164,12 @@ export async function getItemRelations(itemId, token) {
   };
 }
 
+/** Dependency-count pages requested at once. */
+const DEPENDENCY_COUNTS_CONCURRENCY = 4;
+
 /**
  * The open dependency counts of issues, by issue node ID, for list_issues,
- * read in pages of DEPENDENCY_COUNTS_PAGE at once. An issue whose counts
+ * read in pages of DEPENDENCY_COUNTS_PAGE, a few at once. An issue whose counts
  * cannot be read is left out of the map; a page that fails costs its issues
  * only, and `error` names the first such failure.
  * @param {string[]} issueIds - Issue node IDs
@@ -178,11 +181,16 @@ export async function getDependencyCounts(issueIds, token) {
   for (let i = 0; i < issueIds.length; i += DEPENDENCY_COUNTS_PAGE) {
     pages.push(issueIds.slice(i, i + DEPENDENCY_COUNTS_PAGE));
   }
-  const answers = await Promise.allSettled(pages.map(ids => withPartialData(
-    graphQLWithAuth(DEPENDENCY_COUNTS_QUERY, { ids }, token),
-    // Every node is nullable: an error costs that issue's counts only.
-    error => error.path?.[0] === 'nodes' && error.path.length > 1
-  )));
+  // A few pages at once: a whole board at once would trip GitHub's
+  // secondary rate limit.
+  const answers = [];
+  for (let i = 0; i < pages.length; i += DEPENDENCY_COUNTS_CONCURRENCY) {
+    answers.push(...await Promise.allSettled(pages.slice(i, i + DEPENDENCY_COUNTS_CONCURRENCY).map(ids => withPartialData(
+      graphQLWithAuth(DEPENDENCY_COUNTS_QUERY, { ids }, token),
+      // Every node is nullable: an error costs that issue's counts only.
+      error => error.path?.[0] === 'nodes' && error.path.length > 1
+    ))));
+  }
   const counts = new Map();
   let error;
   for (const answer of answers) {
