@@ -8,7 +8,7 @@
  */
 
 import { fetchBounded, graphQLWithAuth } from './api.js';
-import { getItemRelations } from './relations.js';
+import { getItemRelations, getDependencyCounts } from './relations.js';
 import {
   LIST_ITEMS_QUERY,
   ISSUE_DETAIL_QUERY,
@@ -110,11 +110,13 @@ export async function getItemByID(itemId, token) {
       if (issueDetails.node.content.projectsV2?.nodes) {
         item.projects = issueDetails.node.content.projectsV2.nodes.map(p => p.title);
       }
-      // Issues only: a pull request or a draft carries no relations.
-      if (relations?.error) {
+      // Issues only: a pull request or a draft carries no relations, nor a
+      // relations error.
+      const isIssue = issueDetails.node.content.__typename === 'Issue';
+      if (isIssue && relations?.error) {
         logger.warn('Issue relations unreadable', { itemId, error: relations.error.message });
         item.relationsError = relations.error.message;
-      } else if (relations) {
+      } else if (isIssue && relations) {
         Object.assign(item, relations);
       }
     }
@@ -509,12 +511,27 @@ export async function listItems(options) {
       { after, limit, keep: isListed }
     );
 
+    // Open dependency counts come in a request of their own, which may fail
+    // without costing the list: its error is reported as dependencyCountsError.
+    let dependencyCounts = new Map();
+    let dependencyCountsError;
+    const issueIds = items.map(item => item.content?.id).filter(Boolean);
+    if (issueIds.length > 0) {
+      try {
+        dependencyCounts = await getDependencyCounts(issueIds, token);
+      } catch (error) {
+        logger.warn('Dependency counts unreadable', { error: error.message });
+        dependencyCountsError = error.message;
+      }
+    }
+
     return {
       status: 'success',
       hidden,
       totalCount,
       truncated: hasNextPage,
       ...(hasNextPage ? { nextCursor: endCursor } : {}),
+      ...(dependencyCountsError ? { dependencyCountsError } : {}),
       data: items.map(item => {
         // Build compact fields map, omitting empty values
         const fields = {};
@@ -554,7 +571,7 @@ export async function listItems(options) {
         if (assignees.length > 0) entry.assignees = assignees;
         if (labels.length > 0) entry.labels = labels;
         // Open dependencies only, as counts: get_issue_details and list_issue_relations name them
-        const deps = item.content?.issueDependenciesSummary;
+        const deps = dependencyCounts.get(item.content?.id);
         if (deps?.blockedBy > 0) entry.openBlockedBy = deps.blockedBy;
         if (deps?.blocking > 0) entry.openBlocking = deps.blocking;
 
