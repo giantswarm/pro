@@ -46,6 +46,14 @@ export {
   reprioritizeSubIssue
 } from './lib/sub-issues.js';
 
+// Issue relations (GraphQL): blocked by / blocking dependencies, relates to links
+export {
+  RELATION_TYPES,
+  listIssueRelations,
+  addIssueRelation,
+  removeIssueRelation
+} from './lib/relations.js';
+
 // Bulk issue comment fetching (board items -> underlying issue comments)
 export {
   listIssueCommentsForItems,

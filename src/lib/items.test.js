@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { listItems, resolveItemIssues } from './items.js';
+import { listItems, resolveItemIssues, getItemByID } from './items.js';
 
 /**
  * Mock the global fetch used internally by @octokit/graphql so that
@@ -126,6 +126,86 @@ describe('listItems - response mapping', () => {
     const entry = result.data[0];
     assert.equal(entry.state, 'OPEN');
     assert.ok(!('closedAt' in entry), 'closedAt should be omitted for open items');
+  });
+});
+
+describe('listItems - dependency counts', () => {
+  it('carries openBlockedBy/openBlocking counts only when non-zero', async (t) => {
+    const calls = [];
+    const blocked = makeItem({ issueDependenciesSummary: { blockedBy: 2, blocking: 0 } });
+    const free = { ...makeItem({ issueDependenciesSummary: { blockedBy: 0, blocking: 0 } }), id: 'item-2' };
+    mockGraphQLFetch(t, {
+      node: { items: { nodes: [blocked, free], pageInfo: { hasNextPage: false } } }
+    }, calls);
+
+    process.env.GITHUB_API_TOKEN = 'test-token';
+    const result = await listItems({ boardId: 'board-1' });
+
+    assert.equal(result.data[0].openBlockedBy, 2);
+    assert.ok(!('openBlocking' in result.data[0]));
+    assert.ok(!('openBlockedBy' in result.data[1]) && !('openBlocking' in result.data[1]));
+    assert.match(calls[0].query, /issueDependenciesSummary/);
+  });
+});
+
+describe('getItemByID - relations', () => {
+  /** Answer the details request with `details` and the relations request with `relations` ({ data, errors }). */
+  function mockDetailsAndRelations(t, details, relations) {
+    t.mock.method(globalThis, 'fetch', async (url, init) => {
+      const body = JSON.parse(init.body);
+      const answer = body.query.includes('GetItemRelations') ? relations : { data: details };
+      return {
+        status: 200,
+        url: 'https://api.github.com/graphql',
+        headers: new Headers({ 'content-type': 'application/json' }),
+        text: async () => JSON.stringify(answer)
+      };
+    });
+  }
+  const details = { node: { id: 'PVTI_1', fieldValues: { nodes: [] }, content: makeItem().content } };
+  const related = n => ({ number: n, title: `T${n}`, url: `https://github.com/o/r/issues/${n}`, state: 'OPEN', repository: { nameWithOwner: 'o/r' } });
+  const lists = (blockedBy, blocking = { totalCount: 0, nodes: [] }) => ({ blockedBy, blocking, relatesTo: { totalCount: 0, nodes: [] } });
+
+  it('returns blockedBy, blocking and relatesTo of the issue', async (t) => {
+    mockDetailsAndRelations(t, details, { data: { node: { content: { __typename: 'Issue', ...lists({ totalCount: 1, nodes: [related(7)] }, { totalCount: 60, nodes: [related(8)] }) } } } });
+    process.env.GITHUB_API_TOKEN = 'test-token';
+    const item = await getItemByID('PVTI_1');
+
+    assert.deepEqual(item.blockedBy, { issues: [{ number: 7, title: 'T7', url: 'https://github.com/o/r/issues/7', state: 'open', repository: 'o/r' }] });
+    assert.equal(item.blocking.truncated, true);
+    assert.equal(item.blocking.totalCount, 60);
+    assert.deepEqual(item.relatesTo, { issues: [] });
+    assert.ok(!('relationsError' in item));
+  });
+
+  it('counts a related issue the token cannot read as hidden', async (t) => {
+    mockDetailsAndRelations(t, details, {
+      data: { node: { content: { __typename: 'Issue', ...lists({ totalCount: 1, nodes: [null] }) } } },
+      errors: [{ type: 'FORBIDDEN', path: ['node', 'content', 'blockedBy', 'nodes', 0], message: 'no access' }]
+    });
+    process.env.GITHUB_API_TOKEN = 'test-token';
+    const item = await getItemByID('PVTI_1');
+    assert.deepEqual(item.blockedBy, { issues: [], hidden: 1 });
+  });
+
+  it('keeps the details when a whole relation list fails, naming it in relationsError', async (t) => {
+    // The lists are non-null in GitHub's schema: an error on one nulls the issue.
+    mockDetailsAndRelations(t, details, {
+      data: { node: { content: null } },
+      errors: [{ type: 'FORBIDDEN', path: ['node', 'content', 'blocking'], message: 'timeout' }]
+    });
+    process.env.GITHUB_API_TOKEN = 'test-token';
+    const item = await getItemByID('PVTI_1');
+    assert.equal(item.title, 'Some issue');
+    assert.equal(item.relationsError, 'timeout');
+    assert.ok(!('blockedBy' in item));
+  });
+
+  it('carries no relations for a pull request', async (t) => {
+    mockDetailsAndRelations(t, details, { data: { node: { content: { __typename: 'PullRequest' } } } });
+    process.env.GITHUB_API_TOKEN = 'test-token';
+    const item = await getItemByID('PVTI_1');
+    assert.ok(!('blockedBy' in item) && !('relationsError' in item));
   });
 });
 
