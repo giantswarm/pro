@@ -358,6 +358,7 @@ function fieldTerm(param, name, value, allFields, issueFilters) {
     const parts = findMatchingOption(options, value) || !value.includes(',')
       ? [value]
       : value.split(',').map(part => part.trim()).filter(Boolean);
+    if (parts.length === 0) return null;
     const names = parts.map(part => {
       const option = findMatchingOption(options, part);
       if (!option) {
@@ -379,7 +380,7 @@ function fieldTerm(param, name, value, allFields, issueFilters) {
       }
       return `"${escapeProjectQueryValue(iteration.title)}"`;
     });
-    return `${queryKey}:${titles.join(',')}`;
+    return titles.length ? `${queryKey}:${titles.join(',')}` : null;
   }
 
   if (UNFILTERABLE_DATA_TYPES.has(field.dataType)) {

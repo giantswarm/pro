@@ -538,6 +538,7 @@ describe('listItems - field filters of every type (#17), issue filters (#20) and
     ['nonEmptyFields', { nonEmptyFields: ['Quarter'] }, 'has:quarter'],
     ['iteration keywords next to titles', { filters: { Quarter: 'Q3/2026,@current' } }, 'quarter:"Q3/2026",@current'],
     ['no term for a list without values', { assignee: ' , ', label: 'bug' }, 'label:bug'],
+    ['no term for fields without values', { filters: { Status: ',', Quarter: ' , ' }, exclude: { Status: ',' }, label: 'bug' }, 'label:bug'],
     ['an issue filter name in any case', { exclude: { Label: 'wontfix' } }, '-label:wontfix']
   ];
   for (const [what, options, expected] of cases) {
