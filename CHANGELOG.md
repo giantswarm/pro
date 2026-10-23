@@ -34,6 +34,9 @@
 - Trusted client auto-registration via `OAUTH_TRUSTED_CLIENT_IDS` env var: CIMD URLs in the allowlist are fetched and registered on first use, enabling muster to authenticate via OAuth without dynamic client registration
 - Drop the version badges from the chart README template so a release PR's `Chart.yaml` version bump no longer leaves `README.md` stale and fails the helm-docs pre-commit hook.
 
+### Security
+- Refresh `package-lock.json`, limited to releases older than 14 days like Renovate's `minimumReleaseAge`: clears 8 of 9 `npm audit` findings in transitive dependencies (`proxy-addr`, `path-to-regexp`, `hono`, `@hono/node-server`, `qs`, `fast-uri`, `express-rate-limit`, `body-parser`). `ip-address` follows once its fix is 14 days old. `@hono/node-server`, which the MCP SDK's Streamable HTTP transport runs requests through, moves from 1.19 to 2.1 (the SDK allows both).
+
 ### Fixed
 - Streamable HTTP transport now creates a new transport and MCP server per session, fixing "Server already initialized" errors when multiple clients connect
 - Helm values schema: allow plain `value:` env vars on `env[*]` items (previously only `name` + `valueFrom` were permitted, causing HelmRelease install failures)
