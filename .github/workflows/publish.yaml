@@ -7,8 +7,9 @@
 #   2. attaches the npm tarball to the GitHub Release (used by `pro
 #      --self-update` and installable directly via `npm install -g <url>`)
 #   3. publishes @giantswarm-io/pro to the npm registry, a release candidate
-#      under the `next` dist-tag -- skipped with a notice until the NPM_TOKEN
-#      repository secret is configured
+#      under the `next` dist-tag, as an npm trusted publisher: npm trusts this
+#      workflow of giantswarm/pro through its GitHub OIDC token, so no npm
+#      token is stored (configured in the package's settings on npmjs.com)
 #
 # Trigger notes: releases are created by the Auto-release workflow
 # (zz_generated.auto_release.yaml) using GITHUB_TOKEN, and GitHub suppresses
@@ -36,7 +37,7 @@ on:
 
 permissions:
   contents: write   # upload the tarball to the release
-  id-token: write   # npm provenance attestation (Sigstore)
+  id-token: write   # npm trusted publishing and provenance (OIDC)
 
 jobs:
   publish:
@@ -91,6 +92,15 @@ jobs:
           cache: 'npm'
           registry-url: 'https://registry.npmjs.org'
 
+      # Node 24 brings npm 11.19, enough for trusted publishing (11.5.1+);
+      # npm 11.21 is what `npm dist-tag` under it needs, in case `--tag next`
+      # turns out to count as one. Installed before `npm ci` so the tarball is
+      # packed and published by the same npm. 11.21.0 is older than the 14
+      # days the Renovate presets wait for an npm release.
+      - name: Install npm for trusted publishing
+        if: steps.tag.outputs.tag != ''
+        run: npm install -g npm@11.21.0
+
       - name: Install dependencies
         if: steps.tag.outputs.tag != ''
         run: npm ci
@@ -120,26 +130,16 @@ jobs:
           TARBALL: ${{ steps.pack.outputs.tarball }}
         run: gh release upload "$TAG" "$TARBALL" --clobber
 
-      - name: Check for NPM_TOKEN
-        if: steps.tag.outputs.tag != ''
-        id: npm-token
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          if [ -n "$NPM_TOKEN" ]; then
-            echo "available=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "available=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::NPM_TOKEN secret is not configured; skipping npm publish. The tarball is still attached to the GitHub Release."
-          fi
-
+      # Authenticates as an npm trusted publisher (GitHub OIDC). A 404 or 401
+      # here means the package's trusted publisher on npmjs.com no longer
+      # matches: org giantswarm, repo pro, workflow publish.yaml.
+      #
       # npm refuses a prerelease version (v1.14.0-rc.1) without a dist-tag.
       # Release candidates go to `next`, so `latest` stays on the last
       # stable release.
       - name: Publish to npm
-        if: steps.tag.outputs.tag != '' && steps.npm-token.outputs.available == 'true'
+        if: steps.tag.outputs.tag != ''
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           TAG: ${{ steps.tag.outputs.tag }}
         run: |
           set -euo pipefail
