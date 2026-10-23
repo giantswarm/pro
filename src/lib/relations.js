@@ -17,6 +17,8 @@ import {
   ITEM_RELATIONS_QUERY,
   RELATION_ISSUE_IDS_QUERY,
   RELATION_FIELDS,
+  DEPENDENCY_COUNTS_QUERY,
+  DEPENDENCY_COUNTS_PAGE,
   ADD_BLOCKED_BY_MUTATION,
   REMOVE_BLOCKED_BY_MUTATION,
   ADD_RELATES_TO_MUTATION,
@@ -41,6 +43,15 @@ export { RELATION_FIELDS };
 export const inRelationList = error => Boolean(error.path?.some(p => RELATION_FIELDS.includes(p)));
 
 /**
+ * Whether a GraphQL error is on a whole relation list (the list itself, its
+ * totalCount or pageInfo), not on one issue in it.
+ */
+const onRelationList = error => {
+  const at = error.path?.findIndex(p => RELATION_FIELDS.includes(p)) ?? -1;
+  return at >= 0 && error.path[at + 1] !== 'nodes';
+};
+
+/**
  * Compact one related issue from a relation connection node.
  * @param {Object} node - Issue node ({ number, title, url, state, repository })
  * @returns {{ number: number, title: string, url: string, state: string, repository: string|null }}
@@ -57,21 +68,33 @@ export function compactRelatedIssue(node) {
 }
 
 /**
- * Compact a relation connection to its issues. `hidden` counts the issues
- * read but unreadable (null: no access, deleted); `truncated` and
- * `totalCount` flag a connection holding more issues than were read.
- * @param {{ totalCount?: number, nodes?: Array }} [connection]
+ * Compact a relation connection to its issues. `truncated` and `totalCount`
+ * flag a connection with a next page. `hidden` counts the issues the caller
+ * cannot see: nodes read as null (no access, deleted) and, on a last page,
+ * the issues totalCount counts that GitHub left out of the nodes.
+ * @param {{ totalCount?: number, pageInfo?: { hasNextPage: boolean }, nodes?: Array }} [connection]
  * @returns {{ issues: Array, hidden?: number, truncated?: true, totalCount?: number }}
  */
 export function compactRelation(connection) {
   const nodes = connection?.nodes ?? [];
   const relation = { issues: nodes.filter(Boolean).map(compactRelatedIssue) };
-  const hidden = nodes.length - relation.issues.length;
-  if (hidden > 0) relation.hidden = hidden;
   const totalCount = connection?.totalCount ?? nodes.length;
-  if (totalCount > nodes.length) Object.assign(relation, { truncated: true, totalCount });
+  const truncated = Boolean(connection?.pageInfo?.hasNextPage);
+  const left = truncated ? 0 : Math.max(totalCount - nodes.length, 0);
+  const hidden = nodes.length - relation.issues.length + left;
+  if (hidden > 0) relation.hidden = hidden;
+  if (truncated) Object.assign(relation, { truncated: true, totalCount });
   return relation;
 }
+
+/**
+ * The error to report when an issue's relations could not be read at all:
+ * the one on a whole relation list, which nulls the issue, rather than one
+ * on an issue inside a list.
+ * @param {Array} errors - GraphQL errors
+ * @returns {Object|undefined}
+ */
+const relationListError = errors => errors.find(onRelationList) ?? errors[0];
 
 /** GitHub's answer for a missing repository or issue of the ones named. */
 const isNotFound = error => error.type === 'NOT_FOUND';
@@ -98,7 +121,7 @@ export async function listIssueRelations({ owner, repo, issue_number }, token) {
   if (!issue) {
     // An error on a whole relation list nulls the issue too (the lists are
     // non-null); that is no missing issue, so its message is passed on.
-    const other = errors.find(e => !isRootNotFound(e));
+    const other = relationListError(errors.filter(e => !isRootNotFound(e)));
     throw other ? Object.assign(new Error(other.message), { errors }) : notFound({ owner, repo, issue_number });
   }
   if (errors.length > 0) {
@@ -127,7 +150,7 @@ export async function getItemRelations(itemId, token) {
   );
   const content = data?.node?.content;
   if (!content) {
-    if (errors.length > 0) throw Object.assign(new Error(errors[0].message), { errors });
+    if (errors.length > 0) throw Object.assign(new Error(relationListError(errors).message), { errors });
     return null;
   }
   if (content.__typename !== 'Issue') return null;
@@ -139,6 +162,52 @@ export async function getItemRelations(itemId, token) {
     blocking: compactRelation(content.blocking),
     relatesTo: compactRelation(content.relatesTo)
   };
+}
+
+/** Dependency-count pages requested at once. */
+const DEPENDENCY_COUNTS_CONCURRENCY = 4;
+
+/**
+ * The open dependency counts of issues, by issue node ID, for list_issues,
+ * read in pages of DEPENDENCY_COUNTS_PAGE, a few at once. An issue whose counts
+ * cannot be read is left out of the map; a page that fails costs its issues
+ * only, and `error` names the first such failure.
+ * @param {string[]} issueIds - Issue node IDs
+ * @param {string} [token] - Optional per-request GitHub token
+ * @returns {Promise<{ counts: Map<string, { blockedBy: number, blocking: number }>, error?: string }>}
+ */
+export async function getDependencyCounts(issueIds, token) {
+  const pages = [];
+  for (let i = 0; i < issueIds.length; i += DEPENDENCY_COUNTS_PAGE) {
+    pages.push(issueIds.slice(i, i + DEPENDENCY_COUNTS_PAGE));
+  }
+  // A few pages at once: a whole board at once would trip GitHub's
+  // secondary rate limit.
+  const answers = [];
+  for (let i = 0; i < pages.length; i += DEPENDENCY_COUNTS_CONCURRENCY) {
+    answers.push(...await Promise.allSettled(pages.slice(i, i + DEPENDENCY_COUNTS_CONCURRENCY).map(ids => withPartialData(
+      graphQLWithAuth(DEPENDENCY_COUNTS_QUERY, { ids }, token),
+      // Every node is nullable: an error costs that issue's counts only.
+      error => error.path?.[0] === 'nodes' && error.path.length > 1
+    ))));
+  }
+  const counts = new Map();
+  let error;
+  for (const answer of answers) {
+    if (answer.status === 'rejected') {
+      logger.warn('Dependency counts unreadable', { error: answer.reason?.message });
+      error ??= answer.reason?.message ?? String(answer.reason);
+      continue;
+    }
+    const { data, errors } = answer.value;
+    if (errors.length > 0) {
+      logger.warn('Dependency counts partly unreadable', { errors: errors.map(e => e.message) });
+    }
+    for (const node of data?.nodes ?? []) {
+      if (node?.id && node.issueDependenciesSummary) counts.set(node.id, node.issueDependenciesSummary);
+    }
+  }
+  return { counts, ...(error ? { error } : {}) };
 }
 
 async function setIssueRelation(issue, relation, related, remove, token) {

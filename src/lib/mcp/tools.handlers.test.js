@@ -371,6 +371,14 @@ describe('handleListIssues (limit and paging)', () => {
     assert.ok(!('nextCursor' in payload));
   });
 
+  it('passes dependencyCountsError on, and leaves it out when there is none', async (t) => {
+    captureListItems(t, { status: 'success', data: [], truncated: false, dependencyCountsError: 'rate limited' });
+    assert.strictEqual(JSON.parse((await handleListIssues({})).content[0].text).dependencyCountsError, 'rate limited');
+
+    captureListItems(t);
+    assert.ok(!('dependencyCountsError' in JSON.parse((await handleListIssues({})).content[0].text)));
+  });
+
   it('passes the filters map to the lookup as given and forwards no other key as a filter', async (t) => {
     const seen = captureListItems(t);
 
