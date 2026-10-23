@@ -8,7 +8,7 @@
  */
 
 import { fetchBounded, graphQLWithAuth, withPartialData } from './api.js';
-import { getItemRelations } from './relations.js';
+import { getItemRelations, getDependencyCounts } from './relations.js';
 import {
   LIST_ITEMS_QUERY,
   LIST_ITEM_IDS_QUERY,
@@ -113,11 +113,13 @@ export async function getItemByID(itemId, token) {
       if (issueDetails.node.content.projectsV2?.nodes) {
         item.projects = issueDetails.node.content.projectsV2.nodes.map(p => p.title);
       }
-      // Issues only: a pull request or a draft carries no relations.
-      if (relations?.error) {
+      // Issues only: a pull request or a draft carries no relations, nor a
+      // relations error.
+      const isIssue = issueDetails.node.content.__typename === 'Issue';
+      if (isIssue && relations?.error) {
         logger.warn('Issue relations unreadable', { itemId, error: relations.error.message });
         item.relationsError = relations.error.message;
-      } else if (relations) {
+      } else if (isIssue && relations) {
         Object.assign(item, relations);
       }
     }
@@ -429,9 +431,10 @@ const MAX_PARALLEL_READS = 6;
  * @param {string|null} filterQuery - The composed project query
  * @param {string} after - Cursor to continue from
  * @param {string} [token] - Optional per-request GitHub token
+ * @param {(items: Object[]) => void} [onPage] - Called with each page of items as it is read
  * @returns {Promise<Object[]>} - The items, as LIST_ITEMS_QUERY returns them
  */
-async function readItemsInParallel(boardId, filterQuery, after, token) {
+async function readItemsInParallel(boardId, filterQuery, after, token, onPage = () => {}) {
   const reads = [];
   const settled = new Set();
   let inFlight = [];
@@ -444,6 +447,7 @@ async function readItemsInParallel(boardId, filterQuery, after, token) {
         graphQLWithAuth(LIST_ITEMS_BY_ID_QUERY, { ids }, token),
         error => error.type === 'NOT_FOUND'
       );
+      onPage((data?.nodes || []).filter(Boolean));
       return data;
     } catch (error) {
       failed ??= error;
@@ -684,6 +688,15 @@ export async function listItems(options) {
       };
     };
 
+    // Open dependency counts come in requests of their own, which may fail
+    // without costing the list: an error is reported as dependencyCountsError.
+    // A full read asks for each page's counts as soon as the page is read.
+    const countReads = [];
+    const countIssues = nodes => {
+      const ids = nodes.map(node => node?.content?.id).filter(Boolean);
+      if (ids.length > 0) countReads.push(getDependencyCounts(ids, token));
+    };
+
     let items, hasNextPage, endCursor;
     if (limit === 0) {
       // A full read: the first page as usual, then the rest in parallel.
@@ -692,9 +705,10 @@ export async function listItems(options) {
         { projectId: boardId, first, after, filterQuery: projectQuery || null },
         token
       ));
+      countIssues(firstPage.nodes);
       items = firstPage.nodes.filter(isListed);
       if (firstPage.pageInfo.hasNextPage && firstPage.pageInfo.endCursor) {
-        const rest = await readItemsInParallel(boardId, projectQuery || null, firstPage.pageInfo.endCursor, token);
+        const rest = await readItemsInParallel(boardId, projectQuery || null, firstPage.pageInfo.endCursor, token, countIssues);
         items.push(...rest.filter(isListed));
       }
       hasNextPage = false;
@@ -706,6 +720,15 @@ export async function listItems(options) {
         token,
         { after, limit, keep: isListed }
       ));
+      countIssues(items);
+    }
+
+    // getDependencyCounts never rejects: a failed request is its `error`.
+    const dependencyCounts = new Map();
+    let dependencyCountsError;
+    for (const { counts, error } of await Promise.all(countReads)) {
+      for (const [id, summary] of counts) dependencyCounts.set(id, summary);
+      dependencyCountsError ??= error;
     }
 
     return {
@@ -714,6 +737,7 @@ export async function listItems(options) {
       totalCount,
       truncated: hasNextPage,
       ...(hasNextPage ? { nextCursor: endCursor } : {}),
+      ...(dependencyCountsError ? { dependencyCountsError } : {}),
       data: items.map(item => {
         // Build compact fields map, omitting empty values
         const fields = {};
@@ -754,7 +778,7 @@ export async function listItems(options) {
         if (assignees.length > 0) entry.assignees = assignees;
         if (labels.length > 0) entry.labels = labels;
         // Open dependencies only, as counts: get_issue_details and list_issue_relations name them
-        const deps = item.content?.issueDependenciesSummary;
+        const deps = dependencyCounts.get(item.content?.id);
         if (deps?.blockedBy > 0) entry.openBlockedBy = deps.blockedBy;
         if (deps?.blocking > 0) entry.openBlocking = deps.blocking;
 

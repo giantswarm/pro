@@ -176,15 +176,12 @@ const LIST_ITEM_SELECTION = `
             login
           }
         }
+        id
         labels(first: 100) {
           nodes {
             id
             name
           }
-        }
-        issueDependenciesSummary {
-          blockedBy
-          blocking
         }
       }
     }
@@ -301,8 +298,23 @@ const RELATION_FIELDS = ['blockedBy', 'blocking', 'relatesTo'];
 const DETAIL_RELATIONS_PAGE = 50;
 const RELATIONS_PAGE = 100;
 const relationLists = first => RELATION_FIELDS
-  .map(field => `${field}(first: ${first}) { totalCount nodes { number title url state repository { nameWithOwner } } }`)
+  .map(field => `${field}(first: ${first}) { totalCount pageInfo { hasNextPage } nodes { number title url state repository { nameWithOwner } } }`)
   .join('\n');
+
+// Open dependency counts of list_issues' issues, by issue node ID. Not part of
+// LIST_ITEMS_QUERY: issueDependenciesSummary is non-null, so an error on one
+// issue's summary would null that item's content; here it nulls only its node.
+const DEPENDENCY_COUNTS_PAGE = 100;
+const DEPENDENCY_COUNTS_QUERY = `
+  query GetDependencyCounts($ids: [ID!]!) {
+    nodes(ids: $ids) {
+      ... on Issue {
+        id
+        issueDependenciesSummary { blockedBy blocking }
+      }
+    }
+  }
+`;
 
 const ISSUE_DETAIL_QUERY = `
   query($id: ID!) {
@@ -356,6 +368,7 @@ const ISSUE_DETAIL_QUERY = `
           }
         }
         content {
+          __typename
           ... on Issue {
             id
             title
@@ -656,6 +669,8 @@ export {
   RELATION_ISSUE_IDS_QUERY,
   RELATION_FIELDS,
   DETAIL_RELATIONS_PAGE,
+  DEPENDENCY_COUNTS_QUERY,
+  DEPENDENCY_COUNTS_PAGE,
   RELATIONS_PAGE,
   ADD_BLOCKED_BY_MUTATION,
   REMOVE_BLOCKED_BY_MUTATION,

@@ -146,13 +146,34 @@ describe('listItems - response mapping', () => {
 });
 
 describe('listItems - dependency counts', () => {
+  /** Answer the list request with `items` and the counts request with `counts` ({ data, errors }). */
+  function mockListAndCounts(t, items, counts, calls = []) {
+    t.mock.method(globalThis, 'fetch', async (url, init) => {
+      const body = JSON.parse(init.body);
+      calls.push(body);
+      const answer = body.query.includes('GetDependencyCounts')
+        ? counts(body.variables)
+        : { data: { node: { items: { nodes: items, pageInfo: { hasNextPage: false } } } } };
+      return {
+        status: 200,
+        url: 'https://api.github.com/graphql',
+        headers: new Headers({ 'content-type': 'application/json' }),
+        text: async () => JSON.stringify(answer)
+      };
+    });
+    return calls;
+  }
+  const issue = (id, n) => ({ ...makeItem({ id: `I_${n}`, number: n }), id });
+
   it('carries openBlockedBy/openBlocking counts only when non-zero', async (t) => {
-    const calls = [];
-    const blocked = makeItem({ issueDependenciesSummary: { blockedBy: 2, blocking: 0 } });
-    const free = { ...makeItem({ issueDependenciesSummary: { blockedBy: 0, blocking: 0 } }), id: 'item-2' };
-    mockGraphQLFetch(t, {
-      node: { items: { nodes: [blocked, free], pageInfo: { hasNextPage: false } } }
-    }, calls);
+    const calls = mockListAndCounts(t, [issue('item-1', 1), issue('item-2', 2)], () => ({
+      data: {
+        nodes: [
+          { id: 'I_1', issueDependenciesSummary: { blockedBy: 2, blocking: 0 } },
+          { id: 'I_2', issueDependenciesSummary: { blockedBy: 0, blocking: 0 } }
+        ]
+      }
+    }));
 
     process.env.GITHUB_API_TOKEN = 'test-token';
     const result = await listItems({ boardId: 'board-1' });
@@ -160,7 +181,103 @@ describe('listItems - dependency counts', () => {
     assert.equal(result.data[0].openBlockedBy, 2);
     assert.ok(!('openBlocking' in result.data[0]));
     assert.ok(!('openBlockedBy' in result.data[1]) && !('openBlocking' in result.data[1]));
-    assert.match(calls[0].query, /issueDependenciesSummary/);
+    assert.ok(!('dependencyCountsError' in result));
+    // Not in the list query: an error on one summary would null that item's content.
+    assert.doesNotMatch(calls[0].query, /issueDependenciesSummary/);
+    assert.deepEqual(calls[1].variables, { ids: ['I_1', 'I_2'] });
+  });
+
+  it('keeps the list and the other counts when one issue\'s counts fail', async (t) => {
+    mockListAndCounts(t, [issue('item-1', 1), issue('item-2', 2)], () => ({
+      data: { nodes: [null, { id: 'I_2', issueDependenciesSummary: { blockedBy: 0, blocking: 3 } }] },
+      errors: [{ type: 'FORBIDDEN', path: ['nodes', 0, 'issueDependenciesSummary'], message: 'no access' }]
+    }));
+
+    process.env.GITHUB_API_TOKEN = 'test-token';
+    const result = await listItems({ boardId: 'board-1' });
+
+    assert.equal(result.status, 'success');
+    assert.equal(result.data.length, 2);
+    assert.ok(!('openBlockedBy' in result.data[0]) && !('openBlocking' in result.data[0]));
+    assert.equal(result.data[1].openBlocking, 3);
+    assert.ok(!('dependencyCountsError' in result));
+  });
+
+  it('keeps the list when the counts request fails, naming it in dependencyCountsError', async (t) => {
+    mockListAndCounts(t, [issue('item-1', 1)], () => ({
+      data: null,
+      errors: [{ type: 'RATE_LIMITED', message: 'rate limited' }]
+    }));
+
+    process.env.GITHUB_API_TOKEN = 'test-token';
+    const result = await listItems({ boardId: 'board-1' });
+
+    assert.equal(result.status, 'success');
+    assert.equal(result.data.length, 1);
+    assert.ok(!('openBlockedBy' in result.data[0]));
+    assert.match(result.dependencyCountsError, /rate limited/);
+  });
+
+  it('keeps the counts of the pages read when another page fails', async (t) => {
+    const items = Array.from({ length: 150 }, (_, i) => issue(`item-${i}`, i));
+    mockListAndCounts(t, items, ({ ids }) => ids.length === 100
+      ? { data: { nodes: ids.map(id => ({ id, issueDependenciesSummary: { blockedBy: 1, blocking: 0 } })) } }
+      : { data: null, errors: [{ type: 'RATE_LIMITED', message: 'rate limited' }] });
+
+    process.env.GITHUB_API_TOKEN = 'test-token';
+    const result = await listItems({ boardId: 'board-1', limit: 0 });
+
+    assert.equal(result.data.length, 150);
+    assert.equal(result.data.filter(entry => entry.openBlockedBy === 1).length, 100);
+    assert.match(result.dependencyCountsError, /rate limited/);
+  });
+
+  it('asks for at most 4 count pages at once', async (t) => {
+    const items = Array.from({ length: 950 }, (_, i) => issue(`item-${i}`, i));
+    let inFlight = 0;
+    let peak = 0;
+    t.mock.method(globalThis, 'fetch', async (url, init) => {
+      const body = JSON.parse(init.body);
+      let answer = { data: { node: { items: { nodes: items, pageInfo: { hasNextPage: false } } } } };
+      if (body.query.includes('GetDependencyCounts')) {
+        peak = Math.max(peak, ++inFlight);
+        await new Promise(resolve => setTimeout(resolve, 1));
+        inFlight--;
+        answer = { data: { nodes: body.variables.ids.map(id => ({ id, issueDependenciesSummary: { blockedBy: 1, blocking: 0 } })) } };
+      }
+      return {
+        status: 200,
+        url: 'https://api.github.com/graphql',
+        headers: new Headers({ 'content-type': 'application/json' }),
+        text: async () => JSON.stringify(answer)
+      };
+    });
+
+    process.env.GITHUB_API_TOKEN = 'test-token';
+    const result = await listItems({ boardId: 'board-1', limit: 0 });
+
+    assert.equal(peak, 4);
+    assert.ok(result.data.every(entry => entry.openBlockedBy === 1));
+  });
+
+  it('asks for counts in pages of 100 issues and not at all for an empty list', async (t) => {
+    const items = Array.from({ length: 150 }, (_, i) => issue(`item-${i}`, i));
+    const calls = mockListAndCounts(t, items, ({ ids }) => ({
+      data: { nodes: ids.map(id => ({ id, issueDependenciesSummary: { blockedBy: 1, blocking: 0 } })) }
+    }));
+
+    process.env.GITHUB_API_TOKEN = 'test-token';
+    const result = await listItems({ boardId: 'board-1', limit: 0 });
+
+    const countCalls = calls.filter(c => c.query.includes('GetDependencyCounts'));
+    assert.deepEqual(countCalls.map(c => c.variables.ids.length), [100, 50]);
+    assert.ok(result.data.every(entry => entry.openBlockedBy === 1));
+
+    const emptyCalls = [];
+    t.mock.restoreAll();
+    mockListAndCounts(t, [], () => assert.fail('no counts request for an empty list'), emptyCalls);
+    await listItems({ boardId: 'board-1' });
+    assert.equal(emptyCalls.length, 1);
   });
 });
 
@@ -178,12 +295,13 @@ describe('getItemByID - relations', () => {
       };
     });
   }
-  const details = { node: { id: 'PVTI_1', fieldValues: { nodes: [] }, content: makeItem().content } };
+  const details = { node: { id: 'PVTI_1', fieldValues: { nodes: [] }, content: { __typename: 'Issue', ...makeItem().content } } };
+  const prDetails = { node: { id: 'PVTI_1', fieldValues: { nodes: [] }, content: { __typename: 'PullRequest' } } };
   const related = n => ({ number: n, title: `T${n}`, url: `https://github.com/o/r/issues/${n}`, state: 'OPEN', repository: { nameWithOwner: 'o/r' } });
   const lists = (blockedBy, blocking = { totalCount: 0, nodes: [] }) => ({ blockedBy, blocking, relatesTo: { totalCount: 0, nodes: [] } });
 
   it('returns blockedBy, blocking and relatesTo of the issue', async (t) => {
-    mockDetailsAndRelations(t, details, { data: { node: { content: { __typename: 'Issue', ...lists({ totalCount: 1, nodes: [related(7)] }, { totalCount: 60, nodes: [related(8)] }) } } } });
+    mockDetailsAndRelations(t, details, { data: { node: { content: { __typename: 'Issue', ...lists({ totalCount: 1, nodes: [related(7)] }, { totalCount: 60, pageInfo: { hasNextPage: true }, nodes: [related(8)] }) } } } });
     process.env.GITHUB_API_TOKEN = 'test-token';
     const item = await getItemByID('PVTI_1');
 
@@ -217,8 +335,44 @@ describe('getItemByID - relations', () => {
     assert.ok(!('blockedBy' in item));
   });
 
+  it('names the error on the whole relation list, not one on an issue inside another list', async (t) => {
+    mockDetailsAndRelations(t, details, {
+      data: { node: { content: null } },
+      errors: [
+        { type: 'FORBIDDEN', path: ['node', 'content', 'blockedBy', 'nodes', 0], message: 'no access' },
+        { type: 'FORBIDDEN', path: ['node', 'content', 'relatesTo'], message: 'timeout' }
+      ]
+    });
+    process.env.GITHUB_API_TOKEN = 'test-token';
+    const item = await getItemByID('PVTI_1');
+    assert.equal(item.relationsError, 'timeout');
+  });
+
+  it('takes an error on a list\'s pageInfo or totalCount for one on the whole list', async (t) => {
+    mockDetailsAndRelations(t, details, {
+      data: { node: { content: null } },
+      errors: [
+        { type: 'FORBIDDEN', path: ['node', 'content', 'blockedBy', 'nodes', 0], message: 'no access' },
+        { type: 'INTERNAL', path: ['node', 'content', 'blocking', 'pageInfo'], message: 'timeout' }
+      ]
+    });
+    process.env.GITHUB_API_TOKEN = 'test-token';
+    const item = await getItemByID('PVTI_1');
+    assert.equal(item.relationsError, 'timeout');
+  });
+
+  it('carries no relationsError for a pull request whose relations request fails', async (t) => {
+    mockDetailsAndRelations(t, prDetails, {
+      data: { node: null },
+      errors: [{ type: 'INTERNAL', path: ['node'], message: 'timeout' }]
+    });
+    process.env.GITHUB_API_TOKEN = 'test-token';
+    const item = await getItemByID('PVTI_1');
+    assert.ok(!('relationsError' in item) && !('blockedBy' in item));
+  });
+
   it('carries no relations for a pull request', async (t) => {
-    mockDetailsAndRelations(t, details, { data: { node: { content: { __typename: 'PullRequest' } } } });
+    mockDetailsAndRelations(t, prDetails, { data: { node: { content: { __typename: 'PullRequest' } } } });
     process.env.GITHUB_API_TOKEN = 'test-token';
     const item = await getItemByID('PVTI_1');
     assert.ok(!('blockedBy' in item) && !('relationsError' in item));
@@ -444,12 +598,14 @@ describe('resolveItemIssues', () => {
  * Answer every GraphQL call by its operation: the board's fields, a page of
  * items, a page of item ids, or items by id. Records each request body.
  */
-function mockBoardFetch(t, { fields = [], pages = {}, idPages = {}, itemsById = {} }, calls) {
+function mockBoardFetch(t, { fields = [], pages = {}, idPages = {}, itemsById = {}, dependencies = {} }, calls) {
   t.mock.method(globalThis, 'fetch', async (url, init) => {
     const body = JSON.parse(init.body);
     calls.push(body);
     let data;
-    if (body.query.includes('GetProjectItemsById')) {
+    if (body.query.includes('GetDependencyCounts')) {
+      data = { nodes: body.variables.ids.map(id => ({ id, issueDependenciesSummary: dependencies[id] ?? { blockedBy: 0, blocking: 0 } })) };
+    } else if (body.query.includes('GetProjectItemsById')) {
       data = { nodes: body.variables.ids.map(id => itemsById[id] ?? null) };
     } else if (body.query.includes('GetProjectItemIds')) {
       data = { node: { items: idPages[body.variables.after] } };
@@ -495,6 +651,26 @@ describe('listItems - a full read (#194)', () => {
     assert.deepEqual(byId, [['i2', 'i3'], ['i4', 'gone', 'hidden']]);
     const walk = calls.filter(c => c.query.includes('GetProjectItemIds')).map(c => c.variables.after);
     assert.deepEqual(walk, ['c1', 'c2']);
+  });
+
+  it('carries the open dependency counts of items read by id', async (t) => {
+    const item = (id, issueId) => ({ ...makeItem({ id: issueId }), id });
+    const calls = [];
+    mockBoardFetch(t, {
+      pages: { start: { totalCount: 2, nodes: [item('i1', 'I_1')], pageInfo: { hasNextPage: true, endCursor: 'c1' } } },
+      idPages: { c1: { nodes: [{ id: 'i2' }], pageInfo: { hasNextPage: false } } },
+      itemsById: { i2: item('i2', 'I_2') },
+      dependencies: { I_1: { blockedBy: 1, blocking: 0 }, I_2: { blockedBy: 0, blocking: 3 } }
+    }, calls);
+
+    process.env.GITHUB_API_TOKEN = 'test-token';
+    const result = await listItems({ boardId: 'board-1', limit: 0 });
+
+    assert.equal(result.status, 'success', result.error);
+    assert.deepEqual(result.data.map(e => [e.id, e.openBlockedBy, e.openBlocking]), [['i1', 1, undefined], ['i2', undefined, 3]]);
+    // One request per page read, each sent as soon as its page is read.
+    const counted = calls.filter(c => c.query.includes('GetDependencyCounts')).map(c => c.variables.ids);
+    assert.deepEqual(counted, [['I_1'], ['I_2']]);
   });
 
   it('reports an error when a read by id fails', async (t) => {
