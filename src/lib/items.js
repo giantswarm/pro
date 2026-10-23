@@ -299,6 +299,15 @@ function queryValueList(value, mapPart = part => part) {
 }
 
 /**
+ * A comparison, range or @-keyword value without whitespace, which carries
+ * no meaning there: the query cannot quote it, and a space would split the
+ * value into further terms (and `exclude` negate only the first).
+ */
+function comparisonValue(value) {
+  return value.replace(/\s+/g, '');
+}
+
+/**
  * The query term for an issue-level qualifier.
  * Dates (created, updated, closed) keep GitHub's comparison and range syntax.
  * @returns {string|null} - The term, or null for a list without values
@@ -309,7 +318,7 @@ function qualifierTerm(qualifier, value) {
     case 'created':
     case 'updated':
     case 'closed':
-      return `${qualifier}:${value}`;
+      return `${qualifier}:${comparisonValue(value)}`;
     case 'reason':
       return `reason:${queryValue(value)}`;
     case 'repo': {
@@ -388,7 +397,7 @@ function fieldTerm(param, name, value, allFields, issueFilters) {
     const configuration = field.configuration || {};
     const iterations = [...(configuration.iterations || []), ...(configuration.completedIterations || [])];
     const titles = value.split(',').map(part => part.trim()).filter(Boolean).map(part => {
-      if (part.startsWith('@')) return part;
+      if (part.startsWith('@')) return comparisonValue(part);
       const iteration = findMatchingIteration({ configuration: { iterations } }, part);
       if (!iteration) {
         throw new Error(`${param}: iteration '${part}' not found for field '${field.name}'. Available iterations: ${iterations.map(i => i.title).join(', ')}; or "@current", "@next", "@previous"`);
@@ -412,7 +421,7 @@ function fieldTerm(param, name, value, allFields, issueFilters) {
   }
 
   // DATE and NUMBER fields: GitHub's comparison and range syntax as given
-  return `${queryKey}:${value}`;
+  return `${queryKey}:${comparisonValue(value)}`;
 }
 
 /** Reads by id a full read keeps running at once. */
@@ -447,7 +456,8 @@ async function readItemsInParallel(boardId, filterQuery, after, token, onPage = 
         graphQLWithAuth(LIST_ITEMS_BY_ID_QUERY, { ids }, token),
         error => error.type === 'NOT_FOUND'
       );
-      onPage((data?.nodes || []).filter(Boolean));
+      // No more requests for a read that has already failed.
+      if (!failed) onPage((data?.nodes || []).filter(Boolean));
       return data;
     } catch (error) {
       failed ??= error;
@@ -457,11 +467,18 @@ async function readItemsInParallel(boardId, filterQuery, after, token, onPage = 
 
   let cursor = after;
   while (cursor && !failed) {
-    const result = await graphQLWithAuth(
-      LIST_ITEM_IDS_QUERY,
-      { projectId: boardId, filterQuery, after: cursor },
-      token
-    );
+    let result;
+    try {
+      result = await graphQLWithAuth(
+        LIST_ITEM_IDS_QUERY,
+        { projectId: boardId, filterQuery, after: cursor },
+        token
+      );
+    } catch (error) {
+      // The reads still running then start no count requests either.
+      failed ??= error;
+      throw error;
+    }
     const page = result?.node?.items;
     const ids = (page?.nodes || []).map(node => node?.id).filter(Boolean);
     if (ids.length > 0) {

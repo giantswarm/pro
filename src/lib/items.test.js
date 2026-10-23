@@ -728,6 +728,34 @@ describe('listItems - a full read, failures (#194 review)', () => {
     assert.deepEqual(result.data.map(e => e.id), ['item-1', 'i2']);
   });
 
+  it('asks for no dependency counts of pages read after a read failed', async (t) => {
+    const counted = [];
+    t.mock.method(globalThis, 'fetch', async (url, init) => {
+      const body = JSON.parse(init.body);
+      if (body.query.includes('GetDependencyCounts')) {
+        counted.push(...body.variables.ids);
+        return respond({ data: { nodes: [] } });
+      }
+      if (body.query.includes('GetProjectItemIds')) {
+        return respond({ data: { node: { items: { nodes: [{ id: 'fails' }, { id: 'later' }].slice(body.variables.after === 'c1' ? 0 : 1, body.variables.after === 'c1' ? 1 : 2), pageInfo: { hasNextPage: body.variables.after === 'c1', endCursor: 'c2' } } } } });
+      }
+      if (body.query.includes('GetProjectItemsById')) {
+        if (body.variables.ids[0] === 'fails') return respond({ message: 'Bad gateway' }, 502);
+        // This page arrives after the first read failed.
+        await new Promise(resolve => setTimeout(resolve, 30));
+        return respond({ data: { nodes: [{ ...makeItem({ id: 'I_later' }), id: 'later' }] } });
+      }
+      return respond({ data: { node: { items: { nodes: [], pageInfo: { hasNextPage: true, endCursor: 'c1' } } } } });
+    });
+
+    process.env.GITHUB_API_TOKEN = 'test-token';
+    const result = await listItems({ boardId: 'board-1' });
+    await new Promise(resolve => setTimeout(resolve, 60));
+
+    assert.equal(result.status, 'error');
+    assert.deepEqual(counted, []);
+  });
+
   it('stops the walk and reports the error when a read fails while the walk goes on', async (t) => {
     const walked = [];
     t.mock.method(globalThis, 'fetch', async (url, init) => {
@@ -793,6 +821,8 @@ describe('listItems - field filters of every type (#17), issue filters (#20) and
     ['an excluded issue filter, repository resolved', { exclude: { repository: 'roadmap', label: 'wontfix,needs info' } },
       '-repo:giantswarm/roadmap -label:wontfix,"needs info"'],
     ['nonEmptyFields', { nonEmptyFields: ['Quarter'] }, 'has:quarter'],
+    ['comparisons without their whitespace', { updated: '2026-01-01 .. 2026-02-01', exclude: { 'Target Date': '> 2026-01-01' } },
+      'updated:2026-01-01..2026-02-01 -target-date:>2026-01-01'],
     ['iteration keywords next to titles', { filters: { Quarter: 'Q3/2026,@current' } }, 'quarter:"Q3/2026",@current'],
     ['no term for a list without values', { assignee: ' , ', label: 'bug' }, 'label:bug'],
     ['no term for fields without values', { filters: { Status: ',', Quarter: ' , ' }, exclude: { Status: ',' }, label: 'bug' }, 'label:bug'],
