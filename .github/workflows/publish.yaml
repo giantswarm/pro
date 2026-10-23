@@ -6,8 +6,9 @@
 #      0.0.0 in git; the tag is the single source of truth for versions)
 #   2. attaches the npm tarball to the GitHub Release (used by `pro
 #      --self-update` and installable directly via `npm install -g <url>`)
-#   3. publishes @giantswarm-io/pro to the npm registry -- skipped with a notice
-#      until the NPM_TOKEN repository secret is configured
+#   3. publishes @giantswarm-io/pro to the npm registry, a release candidate
+#      under the `next` dist-tag -- skipped with a notice until the NPM_TOKEN
+#      repository secret is configured
 #
 # Trigger notes: releases are created by the Auto-release workflow
 # (zz_generated.auto_release.yaml) using GITHUB_TOKEN, and GitHub suppresses
@@ -132,8 +133,20 @@ jobs:
             echo "::notice::NPM_TOKEN secret is not configured; skipping npm publish. The tarball is still attached to the GitHub Release."
           fi
 
+      # npm refuses a prerelease version (v1.14.0-rc.1) without a dist-tag.
+      # Release candidates go to `next`, so `latest` stays on the last
+      # stable release.
       - name: Publish to npm
         if: steps.tag.outputs.tag != '' && steps.npm-token.outputs.available == 'true'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish --access public --provenance
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          # A semver prerelease has a "-" before any "+build" metadata.
+          VERSION="${TAG#v}"
+          DIST_TAG=latest
+          case "${VERSION%%+*}" in
+            *-*) DIST_TAG=next ;;
+          esac
+          npm publish --access public --provenance --tag "$DIST_TAG"
