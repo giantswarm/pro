@@ -58,13 +58,16 @@ describe('validateToolArguments, every tool', () => {
         assert.equal(tool.inputSchema.additionalProperties, undefined);
       });
 
-      const [firstName, firstSchema] = Object.entries(properties)[0];
-      it(`names a wrong type for ${firstName}`, () => {
-        const value = wrongType(firstSchema);
-        const { error } = validateToolArguments(tool, { ...validArgs(tool), [firstName]: value });
-        assert.match(error, new RegExp(`^${tool.name}: ${firstName} must be `));
-        assert.ok(error.endsWith(accepted), error);
-      });
+      // A tool without arguments (get_server_version) has none to mistype.
+      const [firstName, firstSchema] = Object.entries(properties)[0] || [];
+      if (firstName) {
+        it(`names a wrong type for ${firstName}`, () => {
+          const value = wrongType(firstSchema);
+          const { error } = validateToolArguments(tool, { ...validArgs(tool), [firstName]: value });
+          assert.match(error, new RegExp(`^${tool.name}: ${firstName} must be `));
+          assert.ok(error.endsWith(accepted), error);
+        });
+      }
     });
   }
 });

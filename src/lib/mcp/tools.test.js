@@ -72,6 +72,7 @@ describe('tools exports', () => {
     'get_issue_timeline',
     'get_board_schema',
     'get_item_by_issue',
+    'get_server_version',
     'list_issue_relations'
   ];
   const additiveWrites = ['create_issue_in_project', 'add_existing_issue', 'add_sub_issue', 'add_issue_relation'];
@@ -140,5 +141,13 @@ describe('handleCreateIssueInProject label validation', () => {
 
     assert.ok(result.error);
     assert.match(result.error, /confirmPublicSafe/);
+  });
+});
+
+describe('get_server_version (#202)', () => {
+  it('returns the server name, version and whether it is a development build', async () => {
+    const { version, isDevBuild, name } = await import('../version.js');
+    const result = await toolHandlers.get_server_version({});
+    assert.deepEqual(JSON.parse(result.content[0].text), { name, version, isDevBuild });
   });
 });

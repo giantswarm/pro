@@ -89,3 +89,24 @@ describe('findMatchingOption (#123)', () => {
     assert.strictEqual(match.id, 'opt-a');
   });
 });
+
+describe('matching a value of only punctuation or emoji', () => {
+  const options = [{ id: 'o1', name: 'Done ✅' }, { id: 'o2', name: '🔥' }, { id: 'o3', name: '⭐' }];
+
+  it('matches no option by punctuation that normalizes to nothing', () => {
+    assert.equal(findMatchingOption(options, '!'), null);
+    assert.equal(findMatchingOption(options, ','), null);
+  });
+
+  it('matches an emoji-only option by its name, with whitespace or a variation selector', () => {
+    assert.equal(findMatchingOption(options, '🔥')?.id, 'o2');
+    assert.equal(findMatchingOption(options, ' 🔥 ')?.id, 'o2');
+    assert.equal(findMatchingOption(options, '⭐\uFE0F')?.id, 'o3');
+  });
+
+  it('matches no iteration by punctuation', () => {
+    const field = { configuration: { iterations: [{ id: 'i1', title: 'Q4/2026' }] } };
+    assert.equal(findMatchingIteration(field, '!'), null);
+    assert.equal(findMatchingIteration(field, ' Q4/2026 ')?.id, 'i1');
+  });
+});

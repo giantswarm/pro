@@ -78,16 +78,26 @@ export async function findFieldByName(fieldName, boardId, token) {
 export function findMatchingOption(options, optionName) {
   if (!optionName || !Array.isArray(options)) return null;
 
-  // Try direct match first
-  const exactMatch = options.find(option => option.name === optionName);
+  // Try direct match first, ignoring surrounding whitespace and emoji
+  // variation selectors ("✅️" is "✅")
+  const exact = exactForm(optionName);
+  const exactMatch = options.find(option => exactForm(option.name) === exact);
   if (exactMatch) return exactMatch;
 
   // Try case-insensitive match with normalization
+  // A value of only punctuation or emoji normalizes to nothing, like an
+  // option named only so: it matches no option but by its exact name.
   const normalizedName = normalizeFieldValue(optionName);
+  if (!normalizedName) return null;
   return options.find(option => {
     const normalizedOption = normalizeFieldValue(option.name);
     return normalizedOption === normalizedName;
   });
+}
+
+/** A name as compared exactly: trimmed, without emoji variation selectors. */
+function exactForm(name) {
+  return String(name).replace(/[\uFE0E\uFE0F]/g, '').trim();
 }
 
 /**
@@ -101,11 +111,12 @@ export function findMatchingIteration(field, value) {
   if (!iterations?.length || !value) return null;
 
   // Try direct match first
-  const exactMatch = iterations.find(iter => iter.title === value);
+  const exactMatch = iterations.find(iter => exactForm(iter.title) === exactForm(value));
   if (exactMatch) return exactMatch;
 
   // Try case-insensitive match with normalization
   const normalizedValue = normalizeFieldValue(value);
+  if (!normalizedValue) return null;
   return iterations.find(iter => {
     const normalizedTitle = normalizeFieldValue(iter.title);
     return normalizedTitle === normalizedValue;

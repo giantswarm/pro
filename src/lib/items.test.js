@@ -113,6 +113,22 @@ describe('listItems - response mapping', () => {
     assert.equal(entry.closedAt, '2026-02-01T00:00:00Z');
   });
 
+  it('maps iteration titles and dates into fields next to single-select names', async (t) => {
+    const item = makeItem();
+    item.fieldValues.nodes = [
+      { name: 'Done ✅', field: { name: 'Status' } },
+      { title: 'Q4/2026', field: { name: 'Quarter' } },
+      { date: '2026-12-31', field: { name: 'Target Date' } },
+      { text: 'a note', field: { name: 'Note' } }
+    ];
+    mockGraphQLFetch(t, { node: { items: { nodes: [item], pageInfo: { hasNextPage: false } } } }, []);
+
+    process.env.GITHUB_API_TOKEN = 'test-token';
+    const result = await listItems({ boardId: 'board-1' });
+
+    assert.deepEqual(result.data[0].fields, { Status: 'Done ✅', Quarter: 'Q4/2026', 'Target Date': '2026-12-31' });
+  });
+
   it('omits closedAt entirely for an open item', async (t) => {
     const calls = [];
     const openItem = makeItem({ state: 'OPEN', closedAt: null });
@@ -576,4 +592,267 @@ describe('resolveItemIssues', () => {
     const refs = await resolveItemIssues(['PVTI_1']);
     assert.equal(refs.get('PVTI_1'), null);
   });
+});
+
+/**
+ * Answer every GraphQL call by its operation: the board's fields, a page of
+ * items, a page of item ids, or items by id. Records each request body.
+ */
+function mockBoardFetch(t, { fields = [], pages = {}, idPages = {}, itemsById = {}, dependencies = {} }, calls) {
+  t.mock.method(globalThis, 'fetch', async (url, init) => {
+    const body = JSON.parse(init.body);
+    calls.push(body);
+    let data;
+    if (body.query.includes('GetDependencyCounts')) {
+      data = { nodes: body.variables.ids.map(id => ({ id, issueDependenciesSummary: dependencies[id] ?? { blockedBy: 0, blocking: 0 } })) };
+    } else if (body.query.includes('GetProjectItemsById')) {
+      data = { nodes: body.variables.ids.map(id => itemsById[id] ?? null) };
+    } else if (body.query.includes('GetProjectItemIds')) {
+      data = { node: { items: idPages[body.variables.after] } };
+    } else if (body.query.includes('GetProjectItems')) {
+      data = { node: { items: pages[body.variables.after ?? 'start'] ?? { nodes: [], pageInfo: { hasNextPage: false } } } };
+    } else {
+      data = { node: { fields: { nodes: fields, pageInfo: { hasNextPage: false } } } };
+    }
+    return {
+      status: 200,
+      url: 'https://api.github.com/graphql',
+      headers: new Headers({ 'content-type': 'application/json' }),
+      text: async () => JSON.stringify({ data })
+    };
+  });
+}
+
+describe('listItems - a full read (#194)', () => {
+  it('reads the pages after the first by id, in parallel, in board order', async (t) => {
+    const item = id => ({ ...makeItem(), id });
+    const calls = [];
+    mockBoardFetch(t, {
+      pages: { start: { totalCount: 5, nodes: [item('i1')], pageInfo: { hasNextPage: true, endCursor: 'c1' } } },
+      idPages: {
+        c1: { nodes: [{ id: 'i2' }, { id: 'i3' }], pageInfo: { hasNextPage: true, endCursor: 'c2' } },
+        c2: { nodes: [{ id: 'i4' }, { id: 'gone' }, { id: 'hidden' }], pageInfo: { hasNextPage: false, endCursor: 'c3' } }
+      },
+      itemsById: {
+        i2: item('i2'), i3: item('i3'), i4: item('i4'),
+        hidden: { id: 'hidden', fieldValues: { nodes: [] }, content: null }
+      }
+    }, calls);
+
+    process.env.GITHUB_API_TOKEN = 'test-token';
+    const result = await listItems({ boardId: 'board-1', limit: 0, filters: {} });
+
+    assert.equal(result.status, 'success', result.error);
+    assert.deepEqual(result.data.map(e => e.id), ['i1', 'i2', 'i3', 'i4']);
+    assert.equal(result.hidden, 1);
+    assert.equal(result.totalCount, 5);
+    assert.equal(result.truncated, false);
+    const byId = calls.filter(c => c.query.includes('GetProjectItemsById')).map(c => c.variables.ids);
+    assert.deepEqual(byId, [['i2', 'i3'], ['i4', 'gone', 'hidden']]);
+    const walk = calls.filter(c => c.query.includes('GetProjectItemIds')).map(c => c.variables.after);
+    assert.deepEqual(walk, ['c1', 'c2']);
+  });
+
+  it('carries the open dependency counts of items read by id', async (t) => {
+    const item = (id, issueId) => ({ ...makeItem({ id: issueId }), id });
+    const calls = [];
+    mockBoardFetch(t, {
+      pages: { start: { totalCount: 2, nodes: [item('i1', 'I_1')], pageInfo: { hasNextPage: true, endCursor: 'c1' } } },
+      idPages: { c1: { nodes: [{ id: 'i2' }], pageInfo: { hasNextPage: false } } },
+      itemsById: { i2: item('i2', 'I_2') },
+      dependencies: { I_1: { blockedBy: 1, blocking: 0 }, I_2: { blockedBy: 0, blocking: 3 } }
+    }, calls);
+
+    process.env.GITHUB_API_TOKEN = 'test-token';
+    const result = await listItems({ boardId: 'board-1', limit: 0 });
+
+    assert.equal(result.status, 'success', result.error);
+    assert.deepEqual(result.data.map(e => [e.id, e.openBlockedBy, e.openBlocking]), [['i1', 1, undefined], ['i2', undefined, 3]]);
+    // One request per page read, each sent as soon as its page is read.
+    const counted = calls.filter(c => c.query.includes('GetDependencyCounts')).map(c => c.variables.ids);
+    assert.deepEqual(counted, [['I_1'], ['I_2']]);
+  });
+
+  it('reports an error when a read by id fails', async (t) => {
+    t.mock.method(globalThis, 'fetch', async (url, init) => {
+      const body = JSON.parse(init.body);
+      const data = body.query.includes('GetProjectItemIds')
+        ? { node: { items: { nodes: [{ id: 'i2' }], pageInfo: { hasNextPage: false } } } }
+        : { node: { items: { nodes: [makeItem()], pageInfo: { hasNextPage: true, endCursor: 'c1' } } } };
+      const failed = body.query.includes('GetProjectItemsById');
+      return {
+        status: failed ? 502 : 200,
+        url: 'https://api.github.com/graphql',
+        headers: new Headers({ 'content-type': 'application/json' }),
+        text: async () => JSON.stringify(failed ? { message: 'Bad gateway' } : { data })
+      };
+    });
+
+    process.env.GITHUB_API_TOKEN = 'test-token';
+    const result = await listItems({ boardId: 'board-1' });
+
+    assert.equal(result.status, 'error');
+  });
+});
+
+describe('listItems - a full read, failures (#194 review)', () => {
+  function respond(body, status = 200) {
+    return {
+      status,
+      url: 'https://api.github.com/graphql',
+      headers: new Headers({ 'content-type': 'application/json' }),
+      text: async () => JSON.stringify(body)
+    };
+  }
+  const firstPage = { data: { node: { items: { totalCount: 3, nodes: [makeItem()], pageInfo: { hasNextPage: true, endCursor: 'c1' } } } } };
+
+  it('lists the others when an item is deleted between the walk and the read', async (t) => {
+    t.mock.method(globalThis, 'fetch', async (url, init) => {
+      const body = JSON.parse(init.body);
+      if (body.query.includes('GetProjectItemIds')) {
+        return respond({ data: { node: { items: { nodes: [{ id: 'i2' }, { id: 'gone' }], pageInfo: { hasNextPage: false } } } } });
+      }
+      if (body.query.includes('GetProjectItemsById')) {
+        return respond({
+          data: { nodes: [{ ...makeItem(), id: 'i2' }, null] },
+          errors: [{ type: 'NOT_FOUND', path: ['nodes', 1], message: 'Could not resolve to a node' }]
+        });
+      }
+      return respond(firstPage);
+    });
+
+    process.env.GITHUB_API_TOKEN = 'test-token';
+    const result = await listItems({ boardId: 'board-1' });
+
+    assert.equal(result.status, 'success', result.error);
+    assert.deepEqual(result.data.map(e => e.id), ['item-1', 'i2']);
+  });
+
+  it('asks for no dependency counts of pages read after a read failed', async (t) => {
+    const counted = [];
+    t.mock.method(globalThis, 'fetch', async (url, init) => {
+      const body = JSON.parse(init.body);
+      if (body.query.includes('GetDependencyCounts')) {
+        counted.push(...body.variables.ids);
+        return respond({ data: { nodes: [] } });
+      }
+      if (body.query.includes('GetProjectItemIds')) {
+        return respond({ data: { node: { items: { nodes: [{ id: 'fails' }, { id: 'later' }].slice(body.variables.after === 'c1' ? 0 : 1, body.variables.after === 'c1' ? 1 : 2), pageInfo: { hasNextPage: body.variables.after === 'c1', endCursor: 'c2' } } } } });
+      }
+      if (body.query.includes('GetProjectItemsById')) {
+        if (body.variables.ids[0] === 'fails') return respond({ message: 'Bad gateway' }, 502);
+        // This page arrives after the first read failed.
+        await new Promise(resolve => setTimeout(resolve, 30));
+        return respond({ data: { nodes: [{ ...makeItem({ id: 'I_later' }), id: 'later' }] } });
+      }
+      return respond({ data: { node: { items: { nodes: [], pageInfo: { hasNextPage: true, endCursor: 'c1' } } } } });
+    });
+
+    process.env.GITHUB_API_TOKEN = 'test-token';
+    const result = await listItems({ boardId: 'board-1' });
+    await new Promise(resolve => setTimeout(resolve, 60));
+
+    assert.equal(result.status, 'error');
+    assert.deepEqual(counted, []);
+  });
+
+  it('stops the walk and reports the error when a read fails while the walk goes on', async (t) => {
+    const walked = [];
+    t.mock.method(globalThis, 'fetch', async (url, init) => {
+      const body = JSON.parse(init.body);
+      if (body.query.includes('GetProjectItemIds')) {
+        walked.push(body.variables.after);
+        // The next page of ids arrives after the read of this one failed.
+        await new Promise(resolve => setTimeout(resolve, 20));
+        const next = `c${walked.length + 1}`;
+        return respond({ data: { node: { items: { nodes: [{ id: `i${walked.length}` }], pageInfo: { hasNextPage: walked.length < 5, endCursor: next } } } } });
+      }
+      if (body.query.includes('GetProjectItemsById')) {
+        return respond({ message: 'Bad gateway' }, 502);
+      }
+      return respond(firstPage);
+    });
+
+    process.env.GITHUB_API_TOKEN = 'test-token';
+    const result = await listItems({ boardId: 'board-1' });
+
+    assert.equal(result.status, 'error');
+    assert.ok(walked.length < 5, `walked ${walked.length} pages after a failed read`);
+  });
+});
+
+describe('listItems - field filters of every type (#17), issue filters (#20) and exclude (#21)', () => {
+  const fields = [
+    { __typename: 'ProjectV2SingleSelectField', name: 'Status', dataType: 'SINGLE_SELECT', options: [{ id: 's1', name: 'Done ✅' }, { id: 's2', name: 'Inbox 📥' }, { id: 's3', name: '🔥' }] },
+    { __typename: 'ProjectV2IterationField', name: 'Quarter', dataType: 'ITERATION', configuration: {
+      iterations: [{ id: 'q4', title: 'Q4/2026' }],
+      completedIterations: [{ id: 'q3', title: 'Q3/2026' }]
+    } },
+    { __typename: 'ProjectV2Field', name: 'Target Date', dataType: 'DATE' },
+    { __typename: 'ProjectV2Field', name: 'Priority', dataType: 'NUMBER' },
+    { __typename: 'ProjectV2Field', name: 'Note', dataType: 'TEXT' },
+    { __typename: 'ProjectV2Field', name: 'Title', dataType: 'TITLE' },
+    { __typename: 'ProjectV2Field', name: 'Labels', dataType: 'LABELS' },
+    { __typename: 'ProjectV2Field', name: 'Repository', dataType: 'REPOSITORY' },
+    { __typename: 'ProjectV2Field', name: 'Milestone', dataType: 'MILESTONE' }
+  ];
+
+  async function queryFor(t, options) {
+    const calls = [];
+    mockBoardFetch(t, { fields }, calls);
+    process.env.GITHUB_API_TOKEN = 'test-token';
+    const result = await listItems({ boardId: 'board-1', ...options });
+    const listCall = calls.find(c => c.query.includes('GetProjectItems'));
+    return { result, filterQuery: listCall?.variables.filterQuery };
+  }
+
+  const cases = [
+    ['an iteration title, current or completed', { filters: { Quarter: 'q3/2026' } }, 'quarter:"Q3/2026"'],
+    ['an iteration keyword', { filters: { Quarter: '@current' } }, 'quarter:@current'],
+    ['a date comparison', { filters: { 'Target Date': '>2026-01-01' } }, 'target-date:>2026-01-01'],
+    ['a number range', { filters: { Priority: '1..3' } }, 'priority:1..3'],
+    ['a text value, quoted', { filters: { Note: 'needs review' } }, 'note:"needs review"'],
+    ['single-select options for OR', { filters: { Status: 'done, inbox' } }, 'status:"Done ✅","Inbox 📥"'],
+    ['an emoji-only option by its exact name', { filters: { Status: '🔥' } }, 'status:"🔥"'],
+    ['a field standing for an issue attribute', { filters: { Milestone: 'CAPI RC' } }, 'milestone:"CAPI RC"'],
+    ['milestone, type and parentIssue', { milestone: 'v1', type: 'Bug,Task', parentIssue: 'https://github.com/giantswarm/roadmap/issues/12' },
+      'milestone:v1 type:Bug,Task parent-issue:giantswarm/roadmap#12'],
+    ['an excluded field', { exclude: { Status: 'Done' } }, '-status:"Done ✅"'],
+    ['an excluded issue filter, repository resolved', { exclude: { repository: 'roadmap', label: 'wontfix,needs info' } },
+      '-repo:giantswarm/roadmap -label:wontfix,"needs info"'],
+    ['nonEmptyFields', { nonEmptyFields: ['Quarter'] }, 'has:quarter'],
+    ['comparisons without their whitespace', { updated: '2026-01-01 .. 2026-02-01', exclude: { 'Target Date': '> 2026-01-01' } },
+      'updated:2026-01-01..2026-02-01 -target-date:>2026-01-01'],
+    ['iteration keywords next to titles', { filters: { Quarter: 'Q3/2026,@current' } }, 'quarter:"Q3/2026",@current'],
+    ['no term for a list without values', { assignee: ' , ', label: 'bug' }, 'label:bug'],
+    ['no term for fields without values', { filters: { Status: ',', Quarter: ' , ' }, exclude: { Status: ',' }, label: 'bug' }, 'label:bug'],
+    ['an issue filter name in any case', { exclude: { Label: 'wontfix' } }, '-label:wontfix']
+  ];
+  for (const [what, options, expected] of cases) {
+    it(`sends ${what}`, async (t) => {
+      const { result, filterQuery } = await queryFor(t, options);
+      assert.equal(result.status, 'success', result.error);
+      assert.equal(filterQuery, expected);
+    });
+  }
+
+  const errors = [
+    ['an unknown iteration', { filters: { Quarter: 'Q9' } }, /filters: iteration 'Q9' not found for field 'Quarter'. Available iterations: Q4\/2026, Q3\/2026/],
+    ['an unknown option', { filters: { Status: 'Doing' } }, /filters: value 'Doing' not found for field 'Status'/],
+    ['the title field', { filters: { Title: 'x' } }, /field 'Title' cannot be filtered on; use keyword/],
+    ['an issue filter name under filters', { filters: { label: 'bug' } }, /filters: field 'label' not found/],
+    ['punctuation that would match an emoji-only option', { filters: { Status: '!' } }, /value '!' not found for field 'Status'/],
+    ['an inherited object key', { exclude: { constructor: 'x' } }, /exclude: field 'constructor' not found/],
+    ['a misspelled iteration after a keyword', { filters: { Quarter: '@current,Q9' } }, /iteration 'Q9' not found/],
+    ['an unknown exclude key', { exclude: { Nope: 'x' } }, /exclude: field 'Nope' not found.*or one of repository, assignee/],
+    ['an unknown nonEmptyFields name', { nonEmptyFields: ['Nope'] }, /nonEmptyFields: field 'Nope' not found/],
+    ['a parent issue that is no issue reference', { parentIssue: 'roadmap' }, /Issue reference/i]
+  ];
+  for (const [what, options, pattern] of errors) {
+    it(`refuses ${what}`, async (t) => {
+      const { result } = await queryFor(t, options);
+      assert.equal(result.status, 'error');
+      assert.match(result.error, pattern);
+    });
+  }
 });

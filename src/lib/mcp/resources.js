@@ -80,6 +80,7 @@ async function getSchemaResource(boardKey, token) {
     const hints = {};
     const dateFields = [];
     const textFields = [];
+    const numberFields = [];
     const iterationFields = {};
 
     for (const field of fields) {
@@ -102,8 +103,14 @@ async function getSchemaResource(boardKey, token) {
         dateFields.push(field.name);
       } else if (field.dataType === 'TEXT') {
         textFields.push(field.name);
+      } else if (field.dataType === 'NUMBER') {
+        numberFields.push(field.name);
       } else if (field.__typename === 'ProjectV2IterationField') {
-        const iterations = field.configuration?.iterations || [];
+        // Current and upcoming first, then completed: filters take either.
+        const iterations = [
+          ...(field.configuration?.iterations || []),
+          ...(field.configuration?.completedIterations || [])
+        ];
         iterationFields[field.name] = iterations.map(iter => iter.title);
       }
     }
@@ -113,6 +120,7 @@ async function getSchemaResource(boardKey, token) {
     if (Object.keys(hints).length) schema.hints = hints;
     if (dateFields.length) schema.dateFields = dateFields;
     if (textFields.length) schema.textFields = textFields;
+    if (numberFields.length) schema.numberFields = numberFields;
     if (Object.keys(iterationFields).length) schema.iterationFields = iterationFields;
 
     // Document issue-level filters (not project fields, but available on list_issues)
@@ -122,8 +130,23 @@ async function getSchemaResource(boardKey, token) {
       label: 'Label name (e.g. "bug"). Comma-separated for OR matching.',
       state: '"open" or "closed"',
       keyword: 'Free text search on titles and text fields (word-prefix matching)',
+      milestone: 'Milestone title. Comma-separated for OR matching.',
+      type: 'Issue type (e.g. "Bug"). Comma-separated for OR matching.',
+      parentIssue: 'Parent issue URL or "owner/repo#number": its sub-issues.',
       updated: 'Last-updated date filter. Examples: ">@today-7d" (last 7 days), "<@today-30d" (older than 30 days), "@today" (today), ">2025-01-01" (after date)',
+      created: 'Creation date filter, same syntax as updated.',
+      closed: 'Closed date filter, same syntax as updated.',
       reason: '"completed", "not planned", or "reopened" (close reason for closed items)'
+    };
+
+    // How the values of each field kind are written in filters and exclude
+    schema.filterSyntax = {
+      fields: 'Option names; comma-separated for OR.',
+      iterationFields: 'An iteration title (current, upcoming or completed) or "@current", "@next", "@previous".',
+      dateFields: 'Comparison or range: ">2026-01-01", "<@today-30d", "2026-01-01..2026-03-31", "@today".',
+      numberFields: 'Comparison or range: ">1", "1..3", "2".',
+      textFields: 'The exact text.',
+      exclude: 'Same keys and values as filters, plus the issueFilters names; matching items are left out.'
     };
 
     // Compact repository info
