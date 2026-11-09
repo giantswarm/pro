@@ -31,6 +31,7 @@ import { tools, toolHandlers } from './tools.js';
 import { validateToolArguments } from './validate.js';
 import { listResources, readResource } from './resources.js';
 import { logger } from '../logger.js';
+import { serverIcon } from './icon.js';
 import { version } from '../version.js';
 
 /**
@@ -43,7 +44,8 @@ export function createMCPServer() {
   const server = new Server(
     {
       name: 'giantswarm-pro',
-      version
+      version,
+      icons: [serverIcon]
     },
     {
       capabilities: {

@@ -40,6 +40,7 @@ Pure JavaScript (ES modules), no TypeScript. Node 20+.
 ### MCP Layer (`src/lib/mcp/`)
 
 - **`server.js`** — Creates MCP server, registers handlers for `list_tools`, `call_tool`, `list_resources`, `read_resource`. `call_tool` validates every call's arguments against the tool's declared `inputSchema` (`validate.js`) before the handler runs
+- **`icon.js`** — The server's icon (`serverInfo.icons`): `giantswarm.svg`, a byte-identical copy of giantswarm/mcp-toolkit `brand/giantswarm.svg`, as a base64 SVG data URI
 - **`validate.js`** — `validateToolArguments`: refuses missing required, unknown top-level and mistyped arguments, naming each and listing the accepted arguments (a free-form map is always a declared object property such as list_issues' `filters`, never the top level); exact string spellings of numbers and booleans are converted, null optionals dropped
 - **`tools.js`** — 11 tool definitions and handlers (list_issues, get_issue_details, update_issue_field, create_issue_in_project, add_existing_issue, archive_item, close_issue, reopen_issue, update_issue_labels, list_issue_comments, get_server_version), plus 6 more re-exported from sub-issues.js, 1 from timeline.js, 2 from board.js and 3 from relations.js (23 total)
 - **`sub-issues.js`** — Sub-issue tools (list, add, remove, get_parent)
