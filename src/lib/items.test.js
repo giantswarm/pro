@@ -113,20 +113,32 @@ describe('listItems - response mapping', () => {
     assert.equal(entry.closedAt, '2026-02-01T00:00:00Z');
   });
 
-  it('maps iteration titles and dates into fields next to single-select names', async (t) => {
+  it('maps iteration titles, dates and text into fields next to single-select names', async (t) => {
     const item = makeItem();
     item.fieldValues.nodes = [
       { name: 'Done ✅', field: { name: 'Status' } },
       { title: 'Q4/2026', field: { name: 'Quarter' } },
       { date: '2026-12-31', field: { name: 'Target Date' } },
-      { text: 'a note', field: { name: 'Note' } }
+      { text: 'a note', field: { name: 'Note', dataType: 'TEXT' } },
+      { text: '', field: { name: 'Summary', dataType: 'TEXT' } },
+      { text: 'The issue title', field: { name: 'Title', dataType: 'TITLE' } }
     ];
     mockGraphQLFetch(t, { node: { items: { nodes: [item], pageInfo: { hasNextPage: false } } } }, []);
 
     process.env.GITHUB_API_TOKEN = 'test-token';
     const result = await listItems({ boardId: 'board-1' });
 
-    assert.deepEqual(result.data[0].fields, { Status: 'Done ✅', Quarter: 'Q4/2026', 'Target Date': '2026-12-31' });
+    assert.deepEqual(result.data[0].fields, { Status: 'Done ✅', Quarter: 'Q4/2026', 'Target Date': '2026-12-31', Note: 'a note' });
+  });
+
+  it('selects the field dataType of text values, so the built-in Title can be told apart', async (t) => {
+    const calls = [];
+    mockGraphQLFetch(t, { node: { items: { nodes: [makeItem()], pageInfo: { hasNextPage: false } } } }, calls);
+
+    process.env.GITHUB_API_TOKEN = 'test-token';
+    await listItems({ boardId: 'board-1' });
+
+    assert.match(calls[0].query, /ProjectV2ItemFieldTextValue\s*\{\s*text\s*field\s*\{\s*\.\.\. on ProjectV2FieldCommon\s*\{\s*name\s*dataType/);
   });
 
   it('omits closedAt entirely for an open item', async (t) => {

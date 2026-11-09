@@ -756,11 +756,13 @@ export async function listItems(options) {
       ...(hasNextPage ? { nextCursor: endCursor } : {}),
       ...(dependencyCountsError ? { dependencyCountsError } : {}),
       data: items.map(item => {
-        // Build compact fields map, omitting empty values
+        // Build compact fields map, omitting empty values. The built-in Title
+        // field is a text value too: it is the entry's title, not a field.
         const fields = {};
         if (item.fieldValues?.nodes) {
           for (const node of item.fieldValues.nodes) {
-            const value = node.name ?? node.title ?? node.date;
+            if (node.field?.dataType === 'TITLE') continue;
+            const value = node.name ?? node.title ?? node.date ?? node.text;
             if (node.field?.name && value) {
               fields[node.field.name] = value;
             }

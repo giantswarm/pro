@@ -112,6 +112,7 @@ const LIST_ITEM_SELECTION = `
           field {
             ... on ProjectV2FieldCommon {
               name
+              dataType
             }
           }
         }
