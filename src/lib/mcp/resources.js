@@ -5,12 +5,13 @@
  *   - {board}://schema: Compact field schema with valid option values, repository guidance, and content policy
  *   - {board}://overview: Board-level stats (issue counts, status and repository distribution)
  *
- * Supported boards: roadmap, customer
+ * One pair per board of the registry: the built-in roadmap and customer
+ * boards and the ones PRO_EXTRA_BOARDS adds.
  */
 
 import { listFields } from '../fields.js';
 import { fetchPaginated } from '../api.js';
-import { BOARDS, LIST_ITEMS_OVERVIEW_QUERY } from '../project.js';
+import { BOARDS, BOARD_NAMES, LIST_ITEMS_OVERVIEW_QUERY } from '../project.js';
 import { logger } from '../logger.js';
 
 /**
@@ -68,7 +69,7 @@ const SKIP_DATA_TYPES = new Set([
 async function getSchemaResource(boardKey, token) {
   const board = BOARDS[boardKey];
   if (!board) {
-    throw new Error(`Unknown board '${boardKey}'. Valid boards: ${Object.keys(BOARDS).join(', ')}`);
+    throw new Error(`Unknown board '${boardKey}'. Valid boards: ${BOARD_NAMES.join(', ')}`);
   }
   try {
     logger.info(`MCP: Generating schema resource for ${boardKey} board`);
@@ -164,6 +165,9 @@ async function getSchemaResource(boardKey, token) {
       if (repoInfo.policy?.length) {
         schema.policy = repoInfo.policy.join(' ');
       }
+    } else {
+      // A board added by PRO_EXTRA_BOARDS: only its owner is known
+      schema.repoPattern = `${board.owner}/<repository>`;
     }
 
     return {
@@ -194,7 +198,7 @@ async function getSchemaResource(boardKey, token) {
 async function getOverviewResource(boardKey, token) {
   const board = BOARDS[boardKey];
   if (!board) {
-    throw new Error(`Unknown board '${boardKey}'. Valid boards: ${Object.keys(BOARDS).join(', ')}`);
+    throw new Error(`Unknown board '${boardKey}'. Valid boards: ${BOARD_NAMES.join(', ')}`);
   }
   try {
     logger.info(`MCP: Generating overview resource for ${boardKey} board`);
@@ -308,7 +312,7 @@ export async function readResource(uri, extra) {
     const [, boardKey, resourceType] = match;
 
     if (!BOARDS[boardKey]) {
-      throw new Error(`Unknown board '${boardKey}' in resource URI: ${uri}. Valid boards: ${Object.keys(BOARDS).join(', ')}`);
+      throw new Error(`Unknown board '${boardKey}' in resource URI: ${uri}. Valid boards: ${BOARD_NAMES.join(', ')}`);
     }
 
     if (resourceType === 'schema') {

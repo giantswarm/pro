@@ -41,9 +41,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-PRO (Portfolio Roadmap Organizer) is an MCP server that exposes Giant Swarm's GitHub Projects V2 boards to AI assistants. It manages two boards:
+PRO (Portfolio Roadmap Organizer) is an MCP server that exposes Giant Swarm's GitHub Projects V2 boards to AI assistants. It manages two built-in boards:
 - **Roadmap Board** (#273) — company quarterly goals, team/SIG/WG issues
 - **Customer Board** (#345) — customer activities from private repos
+
+An installation can add boards with `PRO_EXTRA_BOARDS` (`docs/extra-boards.md`).
 
 ## Commands
 
@@ -93,7 +95,7 @@ Pure JavaScript (ES modules), no TypeScript. Node 20+.
 
 ### Domain Layer (`src/lib/`)
 
-- **`project.js`** — Board registry (board name → project ID mapping), all GraphQL queries and mutations
+- **`project.js`** — Board registry (board name → project ID, number, name and owner; the built-in boards plus the ones `parseExtraBoards` reads from `PRO_EXTRA_BOARDS` when the module loads), all GraphQL queries and mutations
 - **`items.js`** — Issue listing with server-side filtering (`fieldTerm` turns a `filters`/`exclude` entry of any field type into a Projects query term; a full read walks item ids and reads them by id in parallel, `readItemsInParallel`), issue detail fetching, field updates, and `resolveItemIssues` — the single batched item→issue resolution helper (issue node ID, owner/repo/number, repo visibility) used by every tool that only needs the issue ref (close/reopen, labels, timeline, comments); and `resolveBoardItem`, which resolves one item by its project item ID and checks its board before a board write (update_issue_field, archive_item), naming a missing or misplaced item
 - **`fields.js`** — Field discovery and fuzzy matching (case-insensitive, emoji/special char normalization)
 - **`api.js`** — Authenticated GraphQL client with cursor-based pagination: `fetchBounded` reads only as many pages as a limit needs (each page sized to what is still missing) and hands back the cursor to continue; `fetchPaginated` reads them all
@@ -106,7 +108,7 @@ Pure JavaScript (ES modules), no TypeScript. Node 20+.
 
 - **Generic field filtering**: No hardcoded field names. LLMs read the board's schema resource to discover fields, then pass field name/value pairs under list_issues' `filters` map, the only place for them (`exclude` negates them).
 - **GraphQL variable names**: `@octokit/graphql` refuses variables named like its request options (`url`, `query`, `method`, `headers`, `request`, `baseUrl`, `mediaType`, `operationName`). The unit tests mock the client, so `src/lib/graphql-variables.test.js` reads the sources instead: every operation's declared `$variables` and the object literal passed to every `graphQLWithAuth`, `fetchBounded` and `fetchPaginated` call. Pass variables as an object literal so it can read them.
-- **Board registry pattern**: `resolveBoardId()` maps board names ("roadmap", "customer") to GitHub project node IDs.
+- **Board registry pattern**: `resolveBoardId()` maps board names ("roadmap", "customer", and the keys of `PRO_EXTRA_BOARDS`) to GitHub project node IDs. Tool schemas take their `board` enum from `BOARD_NAMES`, never a literal list. A short repository name resolves to the board's `owner` (`resolveBoardOwner()`), `giantswarm` on the built-in boards.
 - **Dual transport**: stdio for local clients, HTTP for remote deployment — same server code.
 - **Three auth modes**: `GITHUB_API_TOKEN` env var for stdio/local use; OAuth 2.1 via GitHub for HTTP transport (when `GITHUB_OAUTH_CLIENT_ID` is set); bearer-only for HTTP transport (`OAUTH_BEARER_ONLY=true`: GitHub tokens obtained elsewhere are verified and used per request, no authorization server). Per-request tokens are threaded through the entire call chain. `createGitHubTokenVerifier` (provider.js) is the shared verifier: scoped tokens must cover `repo`, `project`, `read:org`; GitHub App / fine-grained tokens carry no scopes header and are accepted, GitHub enforcing their permissions per call. With `GITHUB_APP_SLUG` the verifier accepts only user access tokens of that GitHub App (pro's own `giantswarm-pro`, pinned in muster), so no write goes through another App's token.
 - **Public repo safety**: Creating issues in `giantswarm/roadmap` (public) requires explicit `confirmPublicSafe=true`. Posting a comment via `close_issue`/`reopen_issue` on an issue in any public repository requires the same `confirmPublicSafe=true` guard; the close/reopen state change itself is ungated.
@@ -115,6 +117,7 @@ Pure JavaScript (ES modules), no TypeScript. Node 20+.
 
 - `GITHUB_API_TOKEN` (required for stdio, optional fallback for HTTP) — PAT with `project:write` and `repo:write` scopes
 - `HTTP_PORT` (optional, default 8080) — for HTTP transport
+- `PRO_EXTRA_BOARDS` (optional) — JSON object of board key → `{ id, number, owner, name }`: boards served next to the built-in ones. Read once at start; an invalid value fails the start. See `docs/extra-boards.md`.
 - `GITHUB_OAUTH_CLIENT_ID` (optional) — GitHub OAuth App client ID. Enables OAuth 2.1 on HTTP transport.
 - `GITHUB_OAUTH_CLIENT_SECRET` (required when OAuth enabled) — GitHub OAuth App client secret
 - `OAUTH_BEARER_ONLY` (optional) — `true` runs the HTTP transport as a plain resource server: every `/mcp` request must carry a GitHub token as bearer (verified via the GitHub API, then used for that request's GitHub calls); no `/authorize`, `/token` or `/register` are served, and RFC 9728 protected resource metadata at `/.well-known/oauth-protected-resource[/mcp]` names `https://github.com/login/oauth` as the authorization server. For clients that hold the person's GitHub grant themselves (muster's GitHub connector). Ignored when a GitHub OAuth App is configured.

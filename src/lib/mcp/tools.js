@@ -22,6 +22,8 @@ import {
   resolveBoardId,
   DEFAULT_BOARD,
   BOARDS,
+  BOARD_NAMES,
+  BOARD_NAMES_TEXT,
   REPO_ID_QUERY,
   CREATE_ISSUE_MUTATION,
   ADD_ITEM_TO_PROJECT_MUTATION,
@@ -46,8 +48,6 @@ import {
   DEFAULT_MAX_PER_ISSUE
 } from '../comments.js';
 import { READ_ONLY, additiveWrite, destructiveWrite } from './annotations.js';
-
-const BOARD_NAMES = Object.keys(BOARDS);
 
 /**
  * Extract the GitHub token from MCP request extra context.
@@ -85,7 +85,7 @@ export const DEFAULT_LIST_LIMIT = 50;
 export const listIssuesTool = {
   name: 'list_issues',
   annotations: READ_ONLY,
-  description: `List and filter issues from a project board (roadmap or customer). Uses generic field filters -- read the board's schema resource first (e.g. roadmap://schema or customer://schema) to discover available fields and valid option values. Field filters go under \`filters\` only (e.g. \`filters: {"Team": "Honey Badger", "Status": "Backlog", "Quarter": "@current"}\`), and \`exclude\` leaves matching items out (e.g. \`exclude: {"Status": "Done"}\`); any other top-level argument that is not listed here is refused with an error naming it. Earlier releases took an unknown top-level string argument as a field filter: a call with \`Team: "X"\` becomes \`filters: {"Team": "X"}\`. Returns at most \`limit\` items (default ${DEFAULT_LIST_LIMIT}; 0 for every matching item, which on a large board takes seconds per hundred items: narrow it with \`closed\` or \`updated\`) as compact entries with \`repo\` (nameWithOwner), \`private\` flag, \`state\` (OPEN/CLOSED), \`createdAt\`/\`updatedAt\` timestamps, \`closedAt\` (only present when the item is closed), and a \`fields\` map of single-select, iteration, date and text values (only non-empty ones; the built-in Title is the entry's \`title\`). The repo URL is always https://github.com/{repo}. Next to \`count\` (items returned), \`hidden\` is the number of matching items left out because their content could not be read (typically issues in private repos the server's GitHub identity cannot access), and \`totalCount\` is GitHub's count of items matching the server-side query (unreadable items, draft issues and pull requests included). \`hidden > 0\` means the result is incomplete. \`truncated: true\` means the limit cut the list with items left: pass \`nextCursor\` as \`cursor\` with the same filters to continue. An issue with open dependencies carries their counts as \`openBlockedBy\` / \`openBlocking\`; when they cannot be read, \`dependencyCountsError\` says why.`,
+  description: `List and filter issues from a project board (${BOARD_NAMES_TEXT}). Uses generic field filters -- read the board's schema resource first (e.g. roadmap://schema or customer://schema) to discover available fields and valid option values. Field filters go under \`filters\` only (e.g. \`filters: {"Team": "Honey Badger", "Status": "Backlog", "Quarter": "@current"}\`), and \`exclude\` leaves matching items out (e.g. \`exclude: {"Status": "Done"}\`); any other top-level argument that is not listed here is refused with an error naming it. Earlier releases took an unknown top-level string argument as a field filter: a call with \`Team: "X"\` becomes \`filters: {"Team": "X"}\`. Returns at most \`limit\` items (default ${DEFAULT_LIST_LIMIT}; 0 for every matching item, which on a large board takes seconds per hundred items: narrow it with \`closed\` or \`updated\`) as compact entries with \`repo\` (nameWithOwner), \`private\` flag, \`state\` (OPEN/CLOSED), \`createdAt\`/\`updatedAt\` timestamps, \`closedAt\` (only present when the item is closed), and a \`fields\` map of single-select, iteration, date and text values (only non-empty ones; the built-in Title is the entry's \`title\`). The repo URL is always https://github.com/{repo}. Next to \`count\` (items returned), \`hidden\` is the number of matching items left out because their content could not be read (typically issues in private repos the server's GitHub identity cannot access), and \`totalCount\` is GitHub's count of items matching the server-side query (unreadable items, draft issues and pull requests included). \`hidden > 0\` means the result is incomplete. \`truncated: true\` means the limit cut the list with items left: pass \`nextCursor\` as \`cursor\` with the same filters to continue. An issue with open dependencies carries their counts as \`openBlockedBy\` / \`openBlocking\`; when they cannot be read, \`dependencyCountsError\` says why.`,
   inputSchema: {
     type: 'object',
     properties: {
@@ -105,7 +105,7 @@ export const listIssuesTool = {
       },
       repository: {
         type: 'string',
-        description: 'Filter by repository. Accepts short name (e.g. "myrepo") which resolves to "giantswarm/myrepo", or full "owner/name" format. On the customer board each customer has their own repo (e.g. "giantswarm/<customer-name>"). On the roadmap board the repos are "giantswarm/roadmap" (public) and "giantswarm/giantswarm" (internal).'
+        description: 'Filter by repository. Accepts short name (e.g. "myrepo") which resolves to the board\'s owner ("giantswarm/myrepo" on the roadmap and customer boards), or full "owner/name" format. On the customer board each customer has their own repo (e.g. "giantswarm/<customer-name>"). On the roadmap board the repos are "giantswarm/roadmap" (public) and "giantswarm/giantswarm" (internal).'
       },
       filters: {
         type: 'object',
@@ -473,7 +473,7 @@ export const createIssueInProjectTool = {
     properties: {
       repository: {
         type: 'string',
-        description: 'Repository name (e.g., "my-app") within the giantswarm org, or full "owner/name" format. Use giantswarm/roadmap for public-safe issues and giantswarm/giantswarm for internal/customer-specific issues.'
+        description: 'Repository name (e.g., "my-app") of the board\'s owner (the giantswarm org on the roadmap and customer boards), or full "owner/name" format. Use giantswarm/roadmap for public-safe issues and giantswarm/giantswarm for internal/customer-specific issues.'
       },
       title: {
         type: 'string',
@@ -539,7 +539,7 @@ export function issueCreationRefusedMessage(owner, repo) {
 export async function handleCreateIssueInProject(args, extra) {
   try {
     const token = extractToken(extra);
-    const board = args.board || DEFAULT_BOARD;
+    const board = (args.board || DEFAULT_BOARD).toLowerCase();
     const boardId = resolveBoardId(board);
     logger.info('MCP: Creating issue in project', { repository: args.repository, title: args.title, board });
 
@@ -548,7 +548,7 @@ export async function handleCreateIssueInProject(args, extra) {
     if (args.repository.includes('/')) {
       [owner, repo] = args.repository.split('/');
     } else {
-      owner = 'giantswarm';
+      owner = BOARDS[board].owner;
       repo = args.repository;
     }
 
