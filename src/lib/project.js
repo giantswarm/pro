@@ -28,12 +28,99 @@ const CUSTOMER_BOARD_ID = 'PVT_kwDOAHNM9M4AHBOF';
 export const DEFAULT_BOARD = 'roadmap';
 
 /**
- * Board registry mapping human-readable keys to project IDs and metadata.
+ * The owner a short repository name ("myrepo") resolves to on the built-in boards.
  */
-export const BOARDS = {
-  roadmap: { id: ROADMAP_BOARD_ID, number: 273, name: 'Roadmap Board' },
-  customer: { id: CUSTOMER_BOARD_ID, number: 345, name: 'Customer Board' }
+const DEFAULT_OWNER = 'giantswarm';
+
+const BUILT_IN_BOARDS = {
+  roadmap: { id: ROADMAP_BOARD_ID, number: 273, name: 'Roadmap Board', owner: DEFAULT_OWNER },
+  customer: { id: CUSTOMER_BOARD_ID, number: 345, name: 'Customer Board', owner: DEFAULT_OWNER }
 };
+
+// A board key is also the scheme of the board's resource URIs ({key}://schema).
+const BOARD_KEY_RE = /^[a-z][a-z0-9-]*$/;
+const EXTRA_BOARD_PROPERTIES = ['id', 'number', 'owner', 'name'];
+
+/**
+ * Parse the boards an installation adds to the built-in ones (PRO_EXTRA_BOARDS):
+ * a JSON object of board key -> { id, number, owner, name }.
+ *   - id: the project's node ID ("PVT_...")
+ *   - number: the project's number, as in its URL
+ *   - owner: the user or organization a short repository name resolves to
+ *   - name: display name (optional, defaults to "<Key> Board")
+ * A mistake fails the start instead of serving a board half configured.
+ * @param {string} [json] - The value of PRO_EXTRA_BOARDS
+ * @returns {Object} - Board registry entries, keyed by board key
+ * @throws {Error} - Naming the entry and what is wrong with it
+ */
+export function parseExtraBoards(json) {
+  if (!json?.trim()) return {};
+
+  const fail = message => { throw new Error(`PRO_EXTRA_BOARDS: ${message}`); };
+
+  let entries;
+  try {
+    entries = JSON.parse(json);
+  } catch (error) {
+    fail(`not valid JSON (${error.message})`);
+  }
+  const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+  if (!isObject(entries)) {
+    fail('expected a JSON object of board key -> { id, number, owner, name }');
+  }
+
+  const boards = {};
+  for (const [key, board] of Object.entries(entries)) {
+    if (!BOARD_KEY_RE.test(key)) {
+      fail(`board key '${key}' must be lowercase letters, digits and hyphens, starting with a letter`);
+    }
+    if (BUILT_IN_BOARDS[key]) {
+      fail(`'${key}' is a built-in board and cannot be redefined`);
+    }
+    if (!isObject(board)) {
+      fail(`board '${key}' must be an object with id, number and owner`);
+    }
+    const unknown = Object.keys(board).filter(property => !EXTRA_BOARD_PROPERTIES.includes(property));
+    if (unknown.length) {
+      fail(`board '${key}' has unknown properties: ${unknown.join(', ')}. Accepted: ${EXTRA_BOARD_PROPERTIES.join(', ')}`);
+    }
+    if (typeof board.id !== 'string' || !board.id.startsWith('PVT_')) {
+      fail(`board '${key}' needs "id", the project's node ID (PVT_...)`);
+    }
+    if (!Number.isInteger(board.number) || board.number < 1) {
+      fail(`board '${key}' needs "number", the project's number as in its URL`);
+    }
+    if (typeof board.owner !== 'string' || !/^[A-Za-z0-9-]+$/.test(board.owner)) {
+      fail(`board '${key}' needs "owner", the user or organization a short repository name resolves to`);
+    }
+    if (board.name !== undefined && (typeof board.name !== 'string' || !board.name.trim())) {
+      fail(`board '${key}': "name" must be a non-empty string`);
+    }
+    boards[key] = {
+      id: board.id,
+      number: board.number,
+      name: board.name?.trim() || `${key[0].toUpperCase()}${key.slice(1)} Board`,
+      owner: board.owner
+    };
+  }
+  return boards;
+}
+
+/**
+ * Board registry mapping human-readable keys to project IDs and metadata:
+ * the built-in boards, then the ones PRO_EXTRA_BOARDS adds.
+ */
+export const BOARDS = { ...BUILT_IN_BOARDS, ...parseExtraBoards(process.env.PRO_EXTRA_BOARDS) };
+
+/**
+ * The board keys, for the `board` argument of the tools.
+ */
+export const BOARD_NAMES = Object.keys(BOARDS);
+
+/**
+ * The board keys as prose ("roadmap or customer"), for tool descriptions.
+ */
+export const BOARD_NAMES_TEXT = new Intl.ListFormat('en', { type: 'disjunction' }).format(BOARD_NAMES);
 
 /**
  * Resolve a board key (e.g. "roadmap", "customer") to its GitHub project node ID.
@@ -46,9 +133,18 @@ export function resolveBoardId(boardKey) {
   const key = (boardKey || DEFAULT_BOARD).toLowerCase();
   const entry = BOARDS[key];
   if (!entry) {
-    throw new Error(`Unknown board '${boardKey}'. Valid boards: ${Object.keys(BOARDS).join(', ')}`);
+    throw new Error(`Unknown board '${boardKey}'. Valid boards: ${BOARD_NAMES.join(', ')}`);
   }
   return entry.id;
+}
+
+/**
+ * The owner a short repository name resolves to on a board.
+ * @param {string} boardId - GitHub project node ID
+ * @returns {string} - The board's owner; the built-in one for a project outside the registry
+ */
+export function resolveBoardOwner(boardId) {
+  return Object.values(BOARDS).find(board => board.id === boardId)?.owner || DEFAULT_OWNER;
 }
 
 // Fetch repository id

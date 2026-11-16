@@ -17,7 +17,9 @@ import {
   ITEM_ISSUE_REFS_QUERY,
   BOARD_ITEM_QUERY,
   BOARDS,
+  BOARD_NAMES,
   DEFAULT_BOARD,
+  resolveBoardOwner,
   UPDATE_ITEM_FIELD_MUTATION,
   CLEAR_ITEM_FIELD_MUTATION
 } from './project.js';
@@ -185,7 +187,7 @@ export async function resolveBoardItem(itemId, boardKey, token) {
   const key = (boardKey || DEFAULT_BOARD).toLowerCase();
   const board = BOARDS[key];
   if (!board) {
-    throw new Error(`Unknown board '${boardKey}'. Valid boards: ${Object.keys(BOARDS).join(', ')}`);
+    throw new Error(`Unknown board '${boardKey}'. Valid boards: ${BOARD_NAMES.join(', ')}`);
   }
   const boardName = `the ${key} board (#${board.number})`;
 
@@ -233,17 +235,18 @@ function fieldNameToQueryKey(fieldName) {
 
 /**
  * Resolve a short or full repository name to "owner/name" format.
- * Accepts "myrepo" -> "giantswarm/myrepo" or "giantswarm/myrepo" -> "giantswarm/myrepo".
+ * Accepts "myrepo" -> "<owner>/myrepo"; a full "owner/name" stays as given.
  *
  * @param {string} repository - Short name or full "owner/name" format
+ * @param {string} owner - The board's owner, which a short name resolves to
  * @returns {string} - Full "owner/name" format
  */
-function resolveRepositoryName(repository) {
+function resolveRepositoryName(repository, owner) {
   const trimmed = repository.trim();
   if (trimmed.includes('/')) {
     return trimmed;
   }
-  return `giantswarm/${trimmed}`;
+  return `${owner}/${trimmed}`;
 }
 
 /**
@@ -310,10 +313,13 @@ function comparisonValue(value) {
 /**
  * The query term for an issue-level qualifier.
  * Dates (created, updated, closed) keep GitHub's comparison and range syntax.
+ * @param {string} qualifier - The query qualifier
+ * @param {string} value - Requested value, trimmed
+ * @param {string} owner - The board's owner, for short repository names
  * @returns {string|null} - The term, or null for a list without values
  * @throws {Error} When a parent issue is not a URL or owner/repo#number
  */
-function qualifierTerm(qualifier, value) {
+function qualifierTerm(qualifier, value, owner) {
   switch (qualifier) {
     case 'created':
     case 'updated':
@@ -322,7 +328,7 @@ function qualifierTerm(qualifier, value) {
     case 'reason':
       return `reason:${queryValue(value)}`;
     case 'repo': {
-      const list = queryValueList(value, resolveRepositoryName);
+      const list = queryValueList(value, part => resolveRepositoryName(part, owner));
       return list ? `repo:${list}` : null;
     }
     case 'parent-issue': {
@@ -358,16 +364,17 @@ function qualifierTerm(qualifier, value) {
  * @param {string} value - Requested value, trimmed
  * @param {Object[]} allFields - The board's fields
  * @param {boolean} issueFilters - Whether issue filter names are accepted
+ * @param {string} owner - The board's owner, for short repository names
  * @returns {string|null} - The query term, or null for a list without values
  * @throws {Error} Naming the unknown field or value and what is available
  */
-function fieldTerm(param, name, value, allFields, issueFilters) {
+function fieldTerm(param, name, value, allFields, issueFilters, owner) {
   const field = allFields.find(f => f?.name?.toLowerCase() === name.toLowerCase());
   if (!field) {
     const filterName = issueFilters &&
       Object.keys(ISSUE_FILTER_QUALIFIERS).find(key => key.toLowerCase() === name.toLowerCase());
     if (filterName) {
-      return qualifierTerm(ISSUE_FILTER_QUALIFIERS[filterName], value);
+      return qualifierTerm(ISSUE_FILTER_QUALIFIERS[filterName], value, owner);
     }
     const available = allFields.map(f => f?.name).filter(Boolean);
     const extra = issueFilters ? `; or one of ${Object.keys(ISSUE_FILTER_QUALIFIERS).join(', ')}` : '';
@@ -413,7 +420,7 @@ function fieldTerm(param, name, value, allFields, issueFilters) {
 
   const qualifier = QUALIFIER_BY_DATA_TYPE[field.dataType];
   if (qualifier) {
-    return qualifierTerm(qualifier, value);
+    return qualifierTerm(qualifier, value, owner);
   }
 
   if (field.dataType === 'TEXT') {
@@ -546,6 +553,7 @@ export async function listItems(options) {
 
     // Build server-side filter query
     const queryTerms = [];
+    const owner = resolveBoardOwner(boardId);
 
     // Issue filters, each in GitHub Projects query syntax. List values are
     // comma-separated for OR matching; a value with spaces is quoted on its
@@ -575,7 +583,7 @@ export async function listItems(options) {
           queryTerms.push(`is:${lower}`);
         }
       } else {
-        const term = qualifierTerm(qualifier, trimmed);
+        const term = qualifierTerm(qualifier, trimmed, owner);
         if (term) queryTerms.push(term);
       }
     }
@@ -622,11 +630,11 @@ export async function listItems(options) {
 
     try {
       for (const [fieldName, value] of filterEntries) {
-        const term = fieldTerm('filters', fieldName, value, allFields, false);
+        const term = fieldTerm('filters', fieldName, value, allFields, false, owner);
         if (term) queryTerms.push(term);
       }
       for (const [fieldName, value] of excludeEntries) {
-        const term = fieldTerm('exclude', fieldName, value, allFields, true);
+        const term = fieldTerm('exclude', fieldName, value, allFields, true, owner);
         if (term) queryTerms.push(`-${term}`);
       }
     } catch (error) {

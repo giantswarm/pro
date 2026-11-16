@@ -12,6 +12,7 @@
  *
  * Optional environment variables:
  *   - HTTP_PORT: Port for HTTP transport (default: 8080)
+ *   - PRO_EXTRA_BOARDS: JSON object of further boards to serve (docs/extra-boards.md)
  */
 
 import { startMCPServer } from '../src/lib/mcp/server.js';

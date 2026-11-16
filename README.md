@@ -100,6 +100,7 @@ each call.
 - `OAUTH_BEARER_ONLY` (optional, HTTP transport): `true` selects the bearer-only mode described above.
 - `GITHUB_APP_SLUG` (optional, bearer-only mode): the slug of the GitHub App whose user access tokens alone are accepted (`giantswarm-pro`, pro's own App, installed on every repository of the organization). Every write is then the person's own, capped by that App's permissions on the repository at hand; a token of another App, an OAuth App or a PAT is answered 401.
 - `HTTP_PORT` (optional): Port for HTTP transport (default: 8080).
+- `PRO_EXTRA_BOARDS` (optional): JSON object of further boards to serve next to the built-in ones; see [Extra boards](docs/extra-boards.md).
 - `PRO_VERSION` (set by the Helm chart): the version the server reports in its startup log and MCP `serverInfo`, the image tag the chart deploys. Unset, the server reports the `package.json` version, which the npm package carries from its release tag; a checkout reports `0.0.0-dev`.
 
 ## Transport Modes
@@ -214,6 +215,8 @@ The container defaults to `--transport=streamable-http`.
 |-------|---------|-------------|
 | `roadmap` | [#273](https://github.com/orgs/giantswarm/projects/273) | Company quarterly goals, team/SIG/WG issues |
 | `customer` | [#345](https://github.com/orgs/giantswarm/projects/345) | Customer activities and requests from private repos |
+
+An installation can add boards of its own, such as a team's or a person's board, with `PRO_EXTRA_BOARDS`: see [Extra boards](docs/extra-boards.md).
 
 The `board` parameter defaults to `"roadmap"` on every board-scoped tool for backward compatibility. Tools that resolve purely by item ID (e.g. `get_issue_details`, `update_issue_labels`) don't take a `board` parameter at all.
 

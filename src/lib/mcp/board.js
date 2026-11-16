@@ -7,7 +7,7 @@
 
 import { listFields } from '../fields.js';
 import { graphQLWithAuth, withPartialData } from '../api.js';
-import { resolveBoardId, BOARDS, DEFAULT_BOARD } from '../project.js';
+import { resolveBoardId, BOARDS, BOARD_NAMES, BOARD_NAMES_TEXT, DEFAULT_BOARD } from '../project.js';
 import { parseIssueRef } from '../rest-api.js';
 import { logger } from '../logger.js';
 import { READ_ONLY } from './annotations.js';
@@ -42,13 +42,13 @@ export function describeField(field) {
 export const getBoardSchemaTool = {
   name: 'get_board_schema',
   annotations: READ_ONLY,
-  description: 'Describe the fields of a project board (roadmap or customer) the way a UI needs them: name, type (singleSelect, iteration, date, text, other), the options a single-select field accepts and the iterations of an iteration field. The same information as the {board}://schema resource, as a tool result.',
+  description: `Describe the fields of a project board (${BOARD_NAMES_TEXT}) the way a UI needs them: name, type (singleSelect, iteration, date, text, other), the options a single-select field accepts and the iterations of an iteration field. The same information as the {board}://schema resource, as a tool result.`,
   inputSchema: {
     type: 'object',
     properties: {
       board: {
         type: 'string',
-        enum: ['roadmap', 'customer'],
+        enum: BOARD_NAMES,
         description: 'Which board to describe. Defaults to "roadmap".'
       }
     }
@@ -162,7 +162,7 @@ export const getItemByIssueTool = {
       issue_number: { type: 'number', description: 'Issue number' },
       board: {
         type: 'string',
-        enum: ['roadmap', 'customer'],
+        enum: BOARD_NAMES,
         description: 'Which board to look on. Defaults to "roadmap".'
       }
     }
