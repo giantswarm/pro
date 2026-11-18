@@ -6,6 +6,8 @@ process.env.GITHUB_API_TOKEN = 'test-token';
 const { octokit } = await import('../rest-api.js');
 const {
   handleGetIssueTimeline,
+  handleListStatusChanges,
+  parseRepository,
   getIssueTimelineTool,
   timelineTools,
   timelineToolHandlers
@@ -68,9 +70,9 @@ function mockItemFetchUnresolvableContent(t) {
 // ---------------------------------------------------------------------------
 
 describe('timeline exports', () => {
-  it('exports 1 tool descriptor', () => {
-    assert.strictEqual(timelineTools.length, 1);
-    assert.deepStrictEqual(timelineTools.map(t => t.name), ['get_issue_timeline']);
+  it('exports 2 tool descriptors', () => {
+    assert.strictEqual(timelineTools.length, 2);
+    assert.deepStrictEqual(timelineTools.map(t => t.name), ['get_issue_timeline', 'list_status_changes']);
   });
 
   it('has a handler for the tool', () => {
@@ -155,5 +157,120 @@ describe('handleGetIssueTimeline', () => {
     const result = await handleGetIssueTimeline({ itemId: 'PVTI_bad_since', since: 'not-a-date' });
     assert.ok(result.error);
     assert.match(result.error, /since/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// handleListStatusChanges
+// ---------------------------------------------------------------------------
+
+function statusEvent(createdAt, from, to, number, login = 'octocat') {
+  return { createdAt, actor: { login }, previousStatus: from, status: to, project: { number, url: `https://github.com/orgs/giantswarm/projects/${number}` } };
+}
+
+function mockIssuesFetch(t, pages) {
+  let call = 0;
+  const bodies = [];
+  t.mock.method(globalThis, 'fetch', async (url, init) => {
+    bodies.push(JSON.parse(init.body));
+    const page = pages[Math.min(call, pages.length - 1)];
+    call += 1;
+    return fetchResponseFor({ data: { repository: { issues: page } } });
+  });
+  return bodies;
+}
+
+describe('parseRepository', () => {
+  it('resolves a short name to giantswarm and splits owner/name', () => {
+    assert.deepStrictEqual(parseRepository('acme'), { owner: 'giantswarm', repo: 'acme' });
+    assert.deepStrictEqual(parseRepository('o/r'), { owner: 'o', repo: 'r' });
+    assert.strictEqual(parseRepository('a/b/c'), null);
+    assert.strictEqual(parseRepository(''), null);
+  });
+});
+
+describe('handleListStatusChanges', () => {
+  it('returns changes with from/to and board, filtered by since, oldest first', async (t) => {
+    const bodies = mockIssuesFetch(t, [{
+      totalCount: 2,
+      pageInfo: { hasNextPage: false, endCursor: null },
+      nodes: [
+        { number: 2, title: 'Two', url: 'https://github.com/giantswarm/acme/issues/2', state: 'OPEN',
+          timelineItems: { totalCount: 2, nodes: [
+            statusEvent('2026-01-01T00:00:00Z', '', 'Inbox 📥', 345),
+            statusEvent('2026-03-02T00:00:00Z', 'Inbox 📥', 'WIP GS ⛏️', 345)
+          ] } },
+        { number: 1, title: 'One', url: 'https://github.com/giantswarm/acme/issues/1', state: 'OPEN',
+          timelineItems: { totalCount: 1, nodes: [statusEvent('2026-03-01T00:00:00Z', 'Inbox 📥', 'In Progress ⛏️', 273)] } }
+      ]
+    }]);
+
+    const parsed = parseResult(await handleListStatusChanges({ repository: 'acme', since: '2026-02-01T00:00:00Z' }));
+
+    assert.strictEqual(parsed.repository, 'giantswarm/acme');
+    assert.strictEqual(parsed.issuesScanned, 2);
+    assert.strictEqual(parsed.issuesTotal, 2);
+    assert.strictEqual(parsed.truncated, false);
+    assert.deepStrictEqual(parsed.timelineTruncated, []);
+    assert.strictEqual(parsed.count, 2);
+    assert.deepStrictEqual(parsed.changes.map(c => [c.number, c.board, c.from, c.to]), [
+      [1, 'roadmap', 'Inbox 📥', 'In Progress ⛏️'],
+      [2, 'customer', 'Inbox 📥', 'WIP GS ⛏️']
+    ]);
+    assert.deepStrictEqual(bodies[0].variables.states, ['OPEN']);
+    assert.strictEqual(bodies[0].variables.filterSince, null);
+    assert.strictEqual(bodies[0].variables.owner, 'giantswarm');
+    assert.strictEqual(bodies[0].variables.repo, 'acme');
+  });
+
+  it('keeps only the requested board and maps unknown projects to null', async (t) => {
+    mockIssuesFetch(t, [{
+      totalCount: 1,
+      pageInfo: { hasNextPage: false },
+      nodes: [{ number: 3, title: 'T', url: 'u', state: 'OPEN', timelineItems: { totalCount: 3, nodes: [
+        statusEvent('2026-03-01T00:00:00Z', 'A', 'B', 345),
+        statusEvent('2026-03-01T00:00:01Z', 'A', 'B', 273),
+        statusEvent('2026-03-01T00:00:02Z', 'A', 'B', 999)
+      ] } }]
+    }]);
+
+    const onlyCustomer = parseResult(await handleListStatusChanges({ repository: 'o/r', board: 'customer' }));
+    assert.deepStrictEqual(onlyCustomer.changes.map(c => c.board), ['customer']);
+  });
+
+  it('reports an unknown project as board null with its number', async (t) => {
+    mockIssuesFetch(t, [{
+      totalCount: 1,
+      pageInfo: { hasNextPage: false },
+      nodes: [{ number: 3, title: 'T', url: 'u', state: 'OPEN', timelineItems: { totalCount: 1, nodes: [
+        statusEvent('2026-03-01T00:00:02Z', 'A', 'B', 999)
+      ] } }]
+    }]);
+
+    const parsed = parseResult(await handleListStatusChanges({ repository: 'o/r' }));
+    assert.strictEqual(parsed.changes[0].board, null);
+    assert.strictEqual(parsed.changes[0].projectNumber, 999);
+  });
+
+  it('narrows closed issues to those updated since and flags truncation', async (t) => {
+    const bodies = mockIssuesFetch(t, [{
+      totalCount: 500,
+      pageInfo: { hasNextPage: true, endCursor: 'c1' },
+      nodes: [{ number: 9, title: 'T', url: 'u', state: 'CLOSED', timelineItems: { totalCount: 80, nodes: [
+        statusEvent('2026-03-05T00:00:00Z', 'A', 'B', 345)
+      ] } }]
+    }]);
+
+    const parsed = parseResult(await handleListStatusChanges({ repository: 'o/r', state: 'closed', since: '2026-03-01T00:00:00Z', maxIssues: 1 }));
+    assert.deepStrictEqual(bodies[0].variables.states, ['CLOSED']);
+    assert.strictEqual(bodies[0].variables.filterSince, '2026-03-01T00:00:00.000Z');
+    assert.strictEqual(parsed.truncated, true);
+    assert.strictEqual(parsed.issuesTotal, 500);
+    assert.deepStrictEqual(parsed.timelineTruncated, [9]);
+  });
+
+  it('refuses a malformed since and an invalid repository', async () => {
+    assert.match((await handleListStatusChanges({ repository: 'o/r', since: 'nope' })).error, /since/);
+    assert.match((await handleListStatusChanges({ repository: 'a/b/c' })).error, /repository/i);
   });
 });

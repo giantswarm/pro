@@ -70,6 +70,7 @@ describe('tools exports', () => {
     'list_sub_issues',
     'get_parent_issue',
     'get_issue_timeline',
+    'list_status_changes',
     'get_board_schema',
     'get_item_by_issue',
     'get_server_version',

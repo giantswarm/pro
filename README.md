@@ -238,6 +238,7 @@ The `board` parameter defaults to `"roadmap"` on every board-scoped tool for bac
 
 - **`get_server_version`** -- The running server's name, version (the release tag, as in the MCP `serverInfo`) and `isDevBuild`.
 - **`get_issue_timeline`** -- Get the compact activity timeline for a board item's underlying issue: label changes, assignments, milestones, renames, cross-references, and close reasons. Board-independent (queries by item ID). Optional `since`/`until`/`eventTypes` filters (applied client-side; malformed `since`/`until` values return an error). When more than 200 events qualify, only the most recent 200 are returned, with a `truncated` flag.
+- **`list_status_changes`** -- List the board Status changes of one repository's issues in one call: per change the issue, the board (`board`, or `null` with `projectNumber` for a project pro does not serve), `from` and `to` (the option names GitHub recorded at the time), `actor` and `createdAt`, oldest first, with optional `since`/`until`/`board` filters. A Status change does not bump an issue's `updatedAt`, so this is how to see board movement since a date. Scans the open issues (newest first, at most `maxIssues`, default 300; `0` for all), or with `state: "closed"` the closed issues updated since `since`; `truncated` says more issues exist, `timelineTruncated` names issues with more than 50 Status changes whose older ones in the window were not read. Needs one GraphQL request per 50 issues.
 
 ### Write Tools
 
