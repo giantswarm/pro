@@ -1,13 +1,22 @@
 /**
  * MCP Issue Timeline Tool
  *
- * Exposes 1 tool for reading an issue's activity timeline:
+ * Exposes 2 tools for reading issue activity:
  *   - get_issue_timeline: List label/assignment/milestone/rename/cross-reference
  *     events for the issue underlying a project board item.
+ *   - list_status_changes: List the board Status changes (from, to, board) of
+ *     the issues of one repository in one call.
  */
 
 import { resolveItemIssues } from '../items.js';
-import { getIssueTimeline, MAX_TIMELINE_EVENTS } from '../timeline.js';
+import {
+  getIssueTimeline,
+  listStatusChanges,
+  MAX_TIMELINE_EVENTS,
+  STATUS_CHANGES_PER_ISSUE,
+  DEFAULT_STATUS_CHANGES_MAX_ISSUES
+} from '../timeline.js';
+import { BOARD_NAMES } from '../project.js';
 import { logger } from '../logger.js';
 import { READ_ONLY } from './annotations.js';
 
@@ -99,13 +108,102 @@ export async function handleGetIssueTimeline(args, extra) {
 }
 
 // ---------------------------------------------------------------------------
+// Tool: list_status_changes
+// ---------------------------------------------------------------------------
+
+export const listStatusChangesTool = {
+  name: 'list_status_changes',
+  annotations: READ_ONLY,
+  description: `List the board Status changes of the issues of one repository in one call: for each change the issue (number, title, url, state), the board it happened on (\`board\`, or null for a project pro does not serve, with \`projectNumber\`), \`from\` and \`to\` (the Status option names as GitHub recorded them at the time; \`from\` is empty when the item was just added), \`actor\` and \`createdAt\`, oldest first. A Status change does not bump an issue's updatedAt, so this is the way to see board movement since a date. Scans the repository's open issues (newest first, at most \`maxIssues\`), or with state "closed" the closed issues updated since \`since\`. \`truncated: true\`: more issues exist than were scanned. \`timelineTruncated\` lists issues with more than ${STATUS_CHANGES_PER_ISSUE} Status changes whose older ones inside the window were not read.`,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      repository: {
+        type: 'string',
+        description: 'The repository: short name (e.g. "myrepo", resolved to "giantswarm/myrepo") or "owner/name".'
+      },
+      since: {
+        type: 'string',
+        description: 'Only changes at or after this ISO 8601 date/time (e.g. "2026-01-01T00:00:00Z").'
+      },
+      until: {
+        type: 'string',
+        description: 'Only changes at or before this ISO 8601 date/time.'
+      },
+      board: {
+        type: 'string',
+        enum: BOARD_NAMES,
+        description: 'Only changes on this board. Omit for every board.'
+      },
+      state: {
+        type: 'string',
+        enum: ['open', 'closed'],
+        description: 'Which issues to scan: "open" (default) or "closed" (those updated since `since`).'
+      },
+      maxIssues: {
+        type: 'integer',
+        minimum: 0,
+        description: `Issues to scan at most, newest first. Default ${DEFAULT_STATUS_CHANGES_MAX_ISSUES}; 0 scans every issue of the state.`
+      }
+    },
+    required: ['repository']
+  }
+};
+
+/**
+ * Split a repository argument into owner and name; a short name is in giantswarm.
+ * @param {string} repository
+ * @returns {{ owner: string, repo: string }|null}
+ */
+export function parseRepository(repository) {
+  const parts = String(repository || '').trim().split('/').filter(Boolean);
+  if (parts.length === 1) return { owner: 'giantswarm', repo: parts[0] };
+  if (parts.length === 2) return { owner: parts[0], repo: parts[1] };
+  return null;
+}
+
+export async function handleListStatusChanges(args, extra) {
+  try {
+    const token = extractToken(extra);
+    const parsed = parseRepository(args.repository);
+    if (!parsed) {
+      return { error: `Invalid repository '${args.repository}': give "name" or "owner/name".` };
+    }
+    logger.info('MCP: Listing status changes', {
+      repository: `${parsed.owner}/${parsed.repo}`, since: args.since, until: args.until, board: args.board, state: args.state
+    });
+
+    const result = await listStatusChanges(
+      {
+        ...parsed,
+        since: args.since || null,
+        until: args.until || null,
+        board: args.board || null,
+        state: args.state || 'open',
+        maxIssues: args.maxIssues ?? DEFAULT_STATUS_CHANGES_MAX_ISSUES
+      },
+      token
+    );
+    if (result.error) {
+      return { error: result.error };
+    }
+    return { content: [{ type: 'text', text: JSON.stringify(result) }] };
+  } catch (error) {
+    logger.error('MCP: Error listing status changes', { error: error.message });
+    return { error: error.message };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Exports
 // ---------------------------------------------------------------------------
 
 export const timelineTools = [
-  getIssueTimelineTool
+  getIssueTimelineTool,
+  listStatusChangesTool
 ];
 
 export const timelineToolHandlers = {
-  get_issue_timeline: handleGetIssueTimeline
+  get_issue_timeline: handleGetIssueTimeline,
+  list_status_changes: handleListStatusChanges
 };

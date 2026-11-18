@@ -12,6 +12,8 @@
 
 import { getOctokit } from './rest-api.js';
 import { logger } from './logger.js';
+import { fetchBounded } from './api.js';
+import { BOARDS } from './project.js';
 
 const DEFAULT_PAGE_SIZE = 100;
 
@@ -178,4 +180,162 @@ export async function getIssueTimeline({ owner, repo, issue_number, since, until
   const kept = truncated ? events.slice(events.length - MAX_TIMELINE_EVENTS) : events;
 
   return { events: kept, truncated };
+}
+
+
+// ---------------------------------------------------------------------------
+// Status changes across one repository (GraphQL)
+// ---------------------------------------------------------------------------
+
+/** Issues read per GraphQL page by listStatusChanges. */
+const STATUS_CHANGES_PAGE_SIZE = 50;
+
+/** Status-change events read per issue (the newest ones). */
+export const STATUS_CHANGES_PER_ISSUE = 50;
+
+/** Issues scanned by listStatusChanges unless maxIssues says otherwise. */
+export const DEFAULT_STATUS_CHANGES_MAX_ISSUES = 300;
+
+const STATUS_CHANGES_QUERY = `
+  query($owner: String!, $repo: String!, $first: Int!, $after: String, $states: [IssueState!], $filterSince: DateTime) {
+    repository(owner: $owner, name: $repo) {
+      issues(first: $first, after: $after, states: $states, filterBy: { since: $filterSince }, orderBy: { field: CREATED_AT, direction: DESC }) {
+        totalCount
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          number
+          title
+          url
+          state
+          timelineItems(last: ${STATUS_CHANGES_PER_ISSUE}, itemTypes: [PROJECT_V2_ITEM_STATUS_CHANGED_EVENT]) {
+            totalCount
+            nodes {
+              ... on ProjectV2ItemStatusChangedEvent {
+                createdAt
+                actor { login }
+                previousStatus
+                status
+                project { number url }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+`;
+
+/**
+ * The board key of a project, matched on its number and owner (the owner is
+ * read from the project URL, https://github.com/orgs/<owner>/projects/<n>).
+ * @param {{ number?: number, url?: string }} [project]
+ * @returns {string|null}
+ */
+export function boardKeyOfProject(project) {
+  if (!project) return null;
+  const owner = /github\.com\/(?:orgs|users)\/([^/]+)\/projects\//.exec(project.url || '')?.[1];
+  const entry = Object.entries(BOARDS).find(([, board]) =>
+    board.number === project.number && (!owner || board.owner.toLowerCase() === owner.toLowerCase()));
+  return entry ? entry[0] : null;
+}
+
+/**
+ * List the board Status changes of the issues of one repository: every
+ * ProjectV2ItemStatusChangedEvent with its previous and new Status and the
+ * board it happened on. Project field changes do not bump an issue's
+ * updatedAt, so open issues are all scanned (newest first, up to maxIssues);
+ * closed issues are narrowed to those updated since \`since\` (closing an
+ * issue bumps it).
+ *
+ * @param {Object} params
+ * @param {string} params.owner
+ * @param {string} params.repo
+ * @param {string} [params.since] - ISO 8601; only changes at or after this instant
+ * @param {string} [params.until] - ISO 8601; only changes at or before this instant
+ * @param {string} [params.board] - Only changes on this board key
+ * @param {'open'|'closed'} [params.state] - Which issues to scan (default open)
+ * @param {number} [params.maxIssues] - Issues to scan at most; 0 = all
+ * @param {string} [token] - Optional per-request GitHub token
+ * @returns {Promise<Object>}
+ */
+export async function listStatusChanges({ owner, repo, since, until, board, state = 'open', maxIssues = DEFAULT_STATUS_CHANGES_MAX_ISSUES }, token) {
+  const sinceDate = since ? new Date(since) : null;
+  const untilDate = until ? new Date(until) : null;
+  if (sinceDate && Number.isNaN(sinceDate.getTime())) {
+    return { error: `Invalid 'since' date/time: '${since}'` };
+  }
+  if (untilDate && Number.isNaN(untilDate.getTime())) {
+    return { error: `Invalid 'until' date/time: '${until}'` };
+  }
+  if (state !== 'open' && state !== 'closed') {
+    return { error: `Invalid 'state': '${state}' (open or closed)` };
+  }
+  if (board && !BOARDS[board]) {
+    return { error: `Unknown board '${board}'` };
+  }
+
+  logger.debug('Listing status changes', { owner, repo, since, until, board, state, maxIssues });
+
+  let totalCount = null;
+  const { nodes, hasNextPage } = await fetchBounded(
+    STATUS_CHANGES_QUERY,
+    {
+      owner,
+      repo,
+      first: STATUS_CHANGES_PAGE_SIZE,
+      states: [state === 'closed' ? 'CLOSED' : 'OPEN'],
+      filterSince: state === 'closed' && sinceDate ? sinceDate.toISOString() : null
+    },
+    (result) => {
+      const issues = result?.repository?.issues;
+      if (totalCount === null && typeof issues?.totalCount === 'number') totalCount = issues.totalCount;
+      return issues || { nodes: [], pageInfo: { hasNextPage: false } };
+    },
+    token,
+    { limit: maxIssues > 0 ? maxIssues : 0 }
+  );
+
+  const changes = [];
+  const timelineTruncated = [];
+  for (const issue of nodes) {
+    const events = (issue.timelineItems?.nodes || []).filter(event => event && event.createdAt);
+    if ((issue.timelineItems?.totalCount ?? 0) > events.length) {
+      const oldestKept = events[0]?.createdAt;
+      if (!sinceDate || !oldestKept || new Date(oldestKept) > sinceDate) timelineTruncated.push(issue.number);
+    }
+    for (const event of events) {
+      const at = new Date(event.createdAt);
+      if (sinceDate && at < sinceDate) continue;
+      if (untilDate && at > untilDate) continue;
+      const eventBoard = boardKeyOfProject(event.project);
+      if (board && eventBoard !== board) continue;
+      changes.push({
+        number: issue.number,
+        title: issue.title,
+        url: issue.url,
+        state: issue.state,
+        board: eventBoard,
+        projectNumber: event.project?.number ?? null,
+        from: event.previousStatus ?? '',
+        to: event.status ?? '',
+        actor: event.actor?.login,
+        createdAt: event.createdAt
+      });
+    }
+  }
+  changes.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+
+  return {
+    repository: `${owner}/${repo}`,
+    state,
+    since: since || null,
+    until: until || null,
+    board: board || null,
+    issuesScanned: nodes.length,
+    issuesTotal: totalCount,
+    truncated: hasNextPage,
+    timelineTruncated,
+    count: changes.length,
+    changes
+  };
 }
